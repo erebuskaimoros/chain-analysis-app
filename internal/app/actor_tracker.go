@@ -1658,16 +1658,16 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		return nil
 	}
 	// Live-holdings enrichment runs after the graph build has already spent most of
-	// the request budget. Detach it from the parent deadline so serialized tracker
-	// calls (for example Etherscan free tier) still get a full lookup window.
-	lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
-	defer cancel()
+	// the request budget. Detach it from the parent deadline, then enforce timeouts
+	// per upstream lookup so slow public trackers do not consume the entire batch.
+	baseLookupCtx := context.WithoutCancel(ctx)
 
 	warnings := []string{}
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	poolByAsset := map[string]MidgardPool{}
-	if pools, err := a.fetchPools(lookupCtx); err == nil {
+	poolsCtx, poolsCancel := context.WithTimeout(baseLookupCtx, a.liveHoldingsLookupTimeout("midgard", "THOR"))
+	if pools, err := a.fetchPools(poolsCtx); err == nil {
 		for _, pool := range pools {
 			asset := normalizeAsset(pool.Asset)
 			if asset == "" {
@@ -1678,17 +1678,21 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 	} else {
 		warnings = append(warnings, "live holdings for pool nodes unavailable")
 	}
+	poolsCancel()
 
 	type nodeRef struct {
 		index int
 	}
 	type addressLookupTask struct {
-		key     string
-		chain   string
-		address string
-		refs    []nodeRef
+		key       string
+		chain     string
+		address   string
+		provider  string
+		bucketKey string
+		refs      []nodeRef
 	}
 	addressLookupTasks := map[string]*addressLookupTask{}
+	nodeLookupRefs := make([]nodeRef, 0)
 	queueAddressLookupTask := func(idx int) {
 		address := normalizeAddress(getString(nodes[idx].Metrics, "address"))
 		if address == "" {
@@ -1707,10 +1711,13 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		}
 		task, ok := addressLookupTasks[key]
 		if !ok {
+			provider := a.liveHoldingsProviderForChain(chain)
 			task = &addressLookupTask{
-				key:     key,
-				chain:   chain,
-				address: address,
+				key:       key,
+				chain:     chain,
+				address:   address,
+				provider:  provider,
+				bucketKey: liveHoldingsBucketKey(provider, chain),
 			}
 			addressLookupTasks[key] = task
 		}
@@ -1745,19 +1752,16 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 			}
 			applyLiveHoldingMetrics(&nodes[i], holdings, "pool_snapshot", now)
 		case "node":
-			nodes[i].Metrics["live_holdings_available"] = false
 			nodes[i].Metrics["node_total_bond"] = ""
+			nodeLookupRefs = append(nodeLookupRefs, nodeRef{index: i})
 		default:
 			queueAddressLookupTask(i)
 		}
 	}
 
-	if len(addressLookupTasks) == 0 {
-		return uniqueStrings(warnings)
-	}
-
 	var (
 		thorBondedByAddress map[string]string
+		thorBondedByNode    map[string]string
 		hasTHORLookups      bool
 	)
 	for _, task := range addressLookupTasks {
@@ -1766,55 +1770,131 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 			break
 		}
 	}
-	if hasTHORLookups {
-		bonded, err := a.fetchTHORBondedRuneIndex(lookupCtx)
+	if hasTHORLookups || len(nodeLookupRefs) > 0 {
+		bondLookupCtx, bondLookupCancel := context.WithTimeout(baseLookupCtx, a.liveHoldingsLookupTimeout("thornode", "THOR"))
+		bondedByAddress, bondedByNode, err := a.fetchTHORBondIndexes(bondLookupCtx)
+		bondLookupCancel()
 		if err != nil {
-			warnings = append(warnings, "live bonded rune unavailable for THOR addresses")
+			if hasTHORLookups {
+				warnings = append(warnings, "live bonded rune unavailable for THOR addresses")
+			}
+			if len(nodeLookupRefs) > 0 {
+				warnings = append(warnings, "live bonded rune unavailable for validator nodes")
+			}
 		} else {
-			thorBondedByAddress = bonded
+			thorBondedByAddress = bondedByAddress
+			thorBondedByNode = bondedByNode
 		}
+	}
+
+	for _, ref := range nodeLookupRefs {
+		idx := ref.index
+		nodeAddress := normalizeAddress(getString(nodes[idx].Metrics, "address"))
+		amountRaw := ""
+		if thorBondedByNode != nil {
+			amountRaw = strings.TrimSpace(thorBondedByNode[nodeAddress])
+		}
+		nodes[idx].Metrics["node_total_bond"] = amountRaw
+		if hasGraphableLiquidity(amountRaw) {
+			holdings := []liveHoldingValue{{
+				Asset:     "THOR.RUNE",
+				AmountRaw: amountRaw,
+				USDSpot:   prices.usdFor("THOR.RUNE", amountRaw),
+			}}
+			applyLiveHoldingMetrics(&nodes[idx], holdings, "thornode_node_bond", now)
+		} else {
+			nodes[idx].Metrics["live_holdings_available"] = false
+			nodes[idx].Metrics["live_holdings_status"] = "error"
+		}
+	}
+
+	if len(addressLookupTasks) == 0 {
+		return uniqueStrings(warnings)
 	}
 
 	type addressResult struct {
 		taskKey  string
 		chain    string
 		address  string
+		provider string
 		holdings []liveHoldingValue
 		err      error
+		elapsed  time.Duration
 	}
-	jobs := make(chan addressLookupTask, len(addressLookupTasks))
 	results := make(chan addressResult, len(addressLookupTasks))
-	workerCount := min(6, len(addressLookupTasks))
-	for i := 0; i < workerCount; i++ {
+	buckets := map[string][]addressLookupTask{}
+	for _, task := range addressLookupTasks {
+		if task == nil {
+			continue
+		}
+		buckets[task.bucketKey] = append(buckets[task.bucketKey], *task)
+	}
+
+	runBucket := func(tasks []addressLookupTask) {
+		if len(tasks) == 0 {
+			return
+		}
+		jobs := make(chan addressLookupTask, len(tasks))
+		workerCount := min(a.liveHoldingsBucketConcurrency(tasks[0].provider, tasks[0].chain), len(tasks))
+		if workerCount < 1 {
+			workerCount = 1
+		}
+		var bucketWG sync.WaitGroup
+		bucketWG.Add(workerCount)
+		for i := 0; i < workerCount; i++ {
+			go func() {
+				defer bucketWG.Done()
+				for task := range jobs {
+					taskTimeout := a.liveHoldingsLookupTimeout(task.provider, task.chain)
+					taskCtx, taskCancel := context.WithTimeout(baseLookupCtx, taskTimeout)
+					startedAt := time.Now()
+
+					var (
+						holdings []liveHoldingValue
+						err      error
+					)
+					if task.chain == "THOR" {
+						holdings, err = a.fetchTHORAddressLiveHoldings(taskCtx, task.address, prices, thorBondedByAddress)
+					} else {
+						holdings, err = a.fetchAddressLiveHoldings(taskCtx, task.chain, task.address, prices)
+					}
+
+					results <- addressResult{
+						taskKey:  task.key,
+						chain:    task.chain,
+						address:  task.address,
+						provider: task.provider,
+						holdings: holdings,
+						err:      err,
+						elapsed:  time.Since(startedAt),
+					}
+					taskCancel()
+				}
+			}()
+		}
+		for _, task := range tasks {
+			jobs <- task
+		}
+		close(jobs)
+		bucketWG.Wait()
+	}
+
+	var lookupWG sync.WaitGroup
+	for _, tasks := range buckets {
+		bucketTasks := append([]addressLookupTask(nil), tasks...)
+		lookupWG.Add(1)
 		go func() {
-			for task := range jobs {
-				var (
-					holdings []liveHoldingValue
-					err      error
-				)
-				if task.chain == "THOR" {
-					holdings, err = a.fetchTHORAddressLiveHoldings(lookupCtx, task.address, prices, thorBondedByAddress)
-				} else {
-					holdings, err = a.fetchAddressLiveHoldings(lookupCtx, task.chain, task.address, prices)
-				}
-				results <- addressResult{
-					taskKey:  task.key,
-					chain:    task.chain,
-					address:  task.address,
-					holdings: holdings,
-					err:      err,
-				}
-			}
+			defer lookupWG.Done()
+			runBucket(bucketTasks)
 		}()
 	}
-	for _, task := range addressLookupTasks {
-		jobs <- *task
-	}
-	close(jobs)
+	go func() {
+		lookupWG.Wait()
+		close(results)
+	}()
 
 	var failed []string
-	for i := 0; i < len(addressLookupTasks); i++ {
-		result := <-results
+	for result := range results {
 		task, ok := addressLookupTasks[result.taskKey]
 		if !ok {
 			continue
@@ -1822,6 +1902,18 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		refs := task.refs
 		if result.err != nil {
 			failed = append(failed, fmt.Sprintf("%s:%s", task.chain, shortAddress(task.address)))
+			fields := map[string]any{
+				"chain":      task.chain,
+				"address":    task.address,
+				"provider":   result.provider,
+				"elapsed_ms": result.elapsed.Milliseconds(),
+			}
+			if task.chain == "THOR" {
+				fields["provider_candidates"] = "thornode,midgard"
+			} else if providers := strings.Join(a.cfg.trackerProvidersForChain(task.chain), ","); providers != "" {
+				fields["provider_candidates"] = providers
+			}
+			logError(baseLookupCtx, "actor_tracker_live_holdings_lookup_failed", result.err, fields)
 			for _, ref := range refs {
 				if nodes[ref.index].Metrics == nil {
 					nodes[ref.index].Metrics = map[string]any{}
@@ -1845,6 +1937,72 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		warnings = append(warnings, fmt.Sprintf("live holdings unavailable for %d address nodes (%s)", len(failed), strings.Join(failed[:limit], ", ")))
 	}
 	return uniqueStrings(warnings)
+}
+
+func (a *App) liveHoldingsProviderForChain(chain string) string {
+	chain = strings.ToUpper(strings.TrimSpace(chain))
+	if chain == "THOR" {
+		return "thornode"
+	}
+	if provider := strings.ToLower(strings.TrimSpace(a.cfg.trackerProviderForChain(chain))); provider != "" {
+		return provider
+	}
+	return "unconfigured"
+}
+
+func (a *App) liveHoldingsLookupTimeout(provider, chain string) time.Duration {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	chain = strings.ToUpper(strings.TrimSpace(chain))
+	switch {
+	case provider == "utxo":
+		return a.clampLiveHoldingsLookupTimeout(8 * time.Second)
+	case provider == "solana" || provider == "xrpl" || provider == "cosmos":
+		return a.clampLiveHoldingsLookupTimeout(6 * time.Second)
+	case provider == "etherscan" || provider == "blockscout" || provider == "nodereal" || provider == "trongrid":
+		return a.clampLiveHoldingsLookupTimeout(12 * time.Second)
+	case provider == "thornode" || provider == "midgard" || chain == "THOR":
+		return a.clampLiveHoldingsLookupTimeout(12 * time.Second)
+	default:
+		return a.clampLiveHoldingsLookupTimeout(10 * time.Second)
+	}
+}
+
+func (a *App) clampLiveHoldingsLookupTimeout(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	if a != nil && a.cfg.RequestTimeout > 0 && a.cfg.RequestTimeout < timeout {
+		return a.cfg.RequestTimeout
+	}
+	return timeout
+}
+
+func (a *App) liveHoldingsBucketConcurrency(provider, chain string) int {
+	if concurrency, _ := trackerThrottlePolicy(provider, chain); concurrency > 0 {
+		return concurrency
+	}
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "", "unconfigured":
+		return 1
+	case "utxo", "blockscout", "xrpl":
+		return 3
+	case "thornode", "midgard":
+		return 2
+	default:
+		return 2
+	}
+}
+
+func liveHoldingsBucketKey(provider, chain string) string {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	chain = strings.ToUpper(strings.TrimSpace(chain))
+	if provider == "" {
+		provider = "unconfigured"
+	}
+	if chain == "" {
+		chain = "UNKNOWN"
+	}
+	return provider + "|" + chain
 }
 
 func applyLiveHoldingMetrics(node *FlowNode, holdings []liveHoldingValue, source, timestamp string) {

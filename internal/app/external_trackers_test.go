@@ -699,6 +699,63 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 	}
 }
 
+func TestEnrichNodesWithLiveHoldingsValidatorNodeUsesTotalBond(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"node_address": "thor1validator",
+					"total_bond":   "450000000",
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		thor:          NewThorClient([]string{server.URL}, 10*time.Second),
+		mid:           NewThorClient([]string{server.URL}, 10*time.Second),
+		httpClient:    server.Client(),
+		trackerHealth: newTrackerHealthStore(),
+	}
+
+	nodes := []FlowNode{
+		{
+			ID:      "node:thor1validator:node_bond:1",
+			Kind:    "node",
+			Label:   "Validator thor1validator",
+			Chain:   "THOR",
+			Stage:   "node_bond",
+			Depth:   1,
+			Metrics: map[string]any{"address": "thor1validator"},
+		},
+	}
+
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{"THOR.RUNE": 2},
+	}, protocolDirectory{})
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %#v", warnings)
+	}
+	if got := nodes[0].Metrics["node_total_bond"]; got != "450000000" {
+		t.Fatalf("expected node_total_bond=450000000, got %#v", got)
+	}
+	if got := nodes[0].Metrics["live_holdings_available"]; got != true {
+		t.Fatalf("expected validator live holdings available=true, got %#v", got)
+	}
+	if got := nodes[0].Metrics["live_holdings_status"]; got != "available" {
+		t.Fatalf("expected validator live holdings status=available, got %#v", got)
+	}
+	if got, ok := nodes[0].Metrics["live_holdings_usd_spot"].(float64); !ok || got != 9 {
+		t.Fatalf("expected validator live_holdings_usd_spot=9, got %#v", nodes[0].Metrics["live_holdings_usd_spot"])
+	}
+}
+
 func TestEnrichNodesWithLiveHoldingsIncludesExternalNode(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -804,6 +861,130 @@ func TestEnrichNodesWithLiveHoldingsIgnoresParentCancellation(t *testing.T) {
 	}
 	if got := nodes[0].Metrics["live_holdings_status"]; got != "available" {
 		t.Fatalf("expected live holdings status=available, got %#v", got)
+	}
+}
+
+func TestEnrichNodesWithLiveHoldingsSlowProviderDoesNotLoseFastBucket(t *testing.T) {
+	var (
+		ethHits atomic.Int64
+		btcHits atomic.Int64
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case r.URL.Path == "/address/bc1fast":
+			btcHits.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"chain_stats": map[string]any{
+					"funded_txo_sum": 125000000,
+					"spent_txo_sum":  25000000,
+				},
+				"mempool_stats": map[string]any{
+					"funded_txo_sum": 0,
+					"spent_txo_sum":  0,
+				},
+			})
+		case r.URL.Query().Get("action") == "balance":
+			ethHits.Add(1)
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(150 * time.Millisecond):
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":  "1",
+				"message": "OK",
+				"result":  "500000000000000000",
+			})
+		case r.URL.Query().Get("action") == "addresstokenbalance":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":  "1",
+				"message": "OK",
+				"result":  []map[string]any{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout:  75 * time.Millisecond,
+			EtherscanAPIURL: server.URL,
+			EtherscanAPIKey: "test-key",
+			UtxoTrackerURLs: map[string]string{"BTC": server.URL},
+		},
+		mid:             NewThorClient([]string{server.URL}, 10*time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerThrottle: newTrackerThrottleStore(),
+	}
+
+	nodes := make([]FlowNode, 0, 7)
+	for i := 0; i < 6; i++ {
+		addr := "0xslow" + string(rune('a'+i))
+		nodes = append(nodes, FlowNode{
+			ID:      "external_address:" + addr + ":external:1",
+			Kind:    "external_address",
+			Label:   addr,
+			Chain:   "ETH",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": addr},
+		})
+	}
+	nodes = append(nodes, FlowNode{
+		ID:      "external_address:bc1fast:external:1",
+		Kind:    "external_address",
+		Label:   "bc1fast",
+		Chain:   "BTC",
+		Stage:   "external",
+		Depth:   1,
+		Metrics: map[string]any{"address": "bc1fast"},
+	})
+
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{
+			"ETH.ETH": 2000,
+			"BTC.BTC": 100000,
+		},
+	}, protocolDirectory{})
+	if len(warnings) == 0 {
+		t.Fatalf("expected mixed-provider warnings, got none")
+	}
+	if got := btcHits.Load(); got == 0 {
+		t.Fatalf("expected BTC tracker to be queried, got %d hits", got)
+	}
+	if got := ethHits.Load(); got == 0 {
+		t.Fatalf("expected ETH tracker to be queried, got %d hits", got)
+	}
+	if got := nodes[len(nodes)-1].Metrics["live_holdings_available"]; got != true {
+		t.Fatalf("expected BTC live holdings available=true, got %#v", got)
+	}
+	if got := nodes[len(nodes)-1].Metrics["live_holdings_status"]; got != "available" {
+		t.Fatalf("expected BTC live holdings status=available, got %#v", got)
+	}
+	for i := 0; i < len(nodes)-1; i++ {
+		if got := nodes[i].Metrics["live_holdings_status"]; got != "error" {
+			t.Fatalf("expected slow ETH node %d live holdings status=error, got %#v", i, got)
+		}
+	}
+}
+
+func TestLiveHoldingsLookupTimeoutHonorsSmallerRequestTimeout(t *testing.T) {
+	app := &App{
+		cfg: Config{
+			RequestTimeout: 150 * time.Millisecond,
+		},
+	}
+
+	if got := app.liveHoldingsLookupTimeout("etherscan", "ETH"); got != 150*time.Millisecond {
+		t.Fatalf("expected etherscan timeout to clamp to request timeout, got %s", got)
+	}
+	if got := app.liveHoldingsLookupTimeout("utxo", "BTC"); got != 150*time.Millisecond {
+		t.Fatalf("expected utxo timeout to clamp to request timeout, got %s", got)
 	}
 }
 

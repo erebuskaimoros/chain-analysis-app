@@ -439,7 +439,7 @@ function bindActorTracker(activateTab, actionLookup) {
   const actorSaveButton = form.querySelector("button[type='submit']");
   graphContainer.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    if (state.cy) {
+    if (graphNodeAtClientPoint(e.clientX, e.clientY)) {
       return;
     }
     showPaneContextMenu({ x: e.clientX, y: e.clientY });
@@ -447,6 +447,7 @@ function bindActorTracker(activateTab, actionLookup) {
   let nodeTapTimer = null;
   let lastTappedNodeID = "";
   let lastTappedAt = 0;
+  let lastPaneContextMenuOpenedAt = 0;
   let graphLabelLayer = null;
   let graphLabelFrame = 0;
   const nodeDoubleTapWindowMS = 320;
@@ -815,6 +816,43 @@ function bindActorTracker(activateTab, actionLookup) {
       return Number(node.renderedHeight() || 0);
     }
     return 0;
+  }
+
+  function nodeContainsRenderedPoint(node, renderedX, renderedY) {
+    if (!node || typeof node.renderedBoundingBox !== "function") {
+      return false;
+    }
+    const box = node.renderedBoundingBox({
+      includeLabels: false,
+      includeOverlays: false,
+    });
+    if (!box) {
+      return false;
+    }
+    return renderedX >= box.x1 && renderedX <= box.x2 && renderedY >= box.y1 && renderedY <= box.y2;
+  }
+
+  function graphNodeAtClientPoint(clientX, clientY) {
+    if (!state.cy) {
+      return null;
+    }
+    const rect = graphContainer.getBoundingClientRect();
+    const renderedX = clientX - rect.left;
+    const renderedY = clientY - rect.top;
+    if (renderedX < 0 || renderedY < 0 || renderedX > rect.width || renderedY > rect.height) {
+      return null;
+    }
+    const nodes = state.cy.nodes();
+    for (let i = nodes.length - 1; i >= 0; i -= 1) {
+      const node = nodes[i];
+      if (typeof node.visible === "function" && !node.visible()) {
+        continue;
+      }
+      if (nodeContainsRenderedPoint(node, renderedX, renderedY)) {
+        return node;
+      }
+    }
+    return null;
   }
 
   function renderGraphNodeLabels() {
@@ -1524,6 +1562,9 @@ function bindActorTracker(activateTab, actionLookup) {
         if (event.target !== state.cy) {
           return;
         }
+        if (Date.now() - lastPaneContextMenuOpenedAt < 120) {
+          return;
+        }
         const rect = graphContainer.getBoundingClientRect();
         const renderedPos = event.renderedPosition || {
           x: graphContainer.clientWidth / 2,
@@ -1859,7 +1900,15 @@ function decorateVisibleNode(node, actorByIDMap, labelAnnotations) {
   const liveHoldingsAvailable = Boolean(node?.metrics?.live_holdings_available);
   const liveHoldingsUSD = Number(node?.metrics?.live_holdings_usd_spot || 0);
   const liveHoldingsStatus = String(node?.metrics?.live_holdings_status || "").trim().toLowerCase();
-  const liveHoldingsLabel = liveHoldingsAvailable ? formatCompactUSD(liveHoldingsUSD) : liveHoldingsStatus === "error" ? "Unavailable" : "";
+  const nodeTotalBondRaw = String(node?.metrics?.node_total_bond || "").trim();
+  const liveHoldingsLabel =
+    node.kind === "node" && nodeTotalBondRaw
+      ? `${formatTokenAmountRaw(nodeTotalBondRaw)} RUNE`
+      : liveHoldingsAvailable
+      ? formatCompactUSD(liveHoldingsUSD)
+      : liveHoldingsStatus === "error"
+      ? "Unavailable"
+      : "";
   const addr = String((node.metrics && node.metrics.address) || "").trim().toLowerCase();
   const customLabel = labelAnnotations && addr ? labelAnnotations.get(addr) : null;
   const displayLabel = customLabel || node.label || "";
@@ -2120,6 +2169,7 @@ function decorateVisibleNode(node, actorByIDMap, labelAnnotations) {
     contextMenuMode = "pane";
     updateContextMenuButtons(contextMenuMode);
     placeContextMenu(pagePos);
+    lastPaneContextMenuOpenedAt = Date.now();
   }
 
   function hideContextMenu() {
