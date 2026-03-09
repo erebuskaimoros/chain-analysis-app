@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>THORChain Chain Analysis</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="shell-header">
+      <div>
+        <h1>THORChain Chain Analysis</h1>
+        <p>On-demand ingestion, cross-chain tracing, and actor-centered DAG analysis.</p>
+      </div>
+      <div class="health-pill" id="health-pill">Checking health…</div>
+    </header>
+
+    <nav class="tabbar" aria-label="Primary">
+      <button class="tab active" data-tab="overview" type="button">Overview</button>
+      <button class="tab" data-tab="queries" type="button">Queries</button>
+      <button class="tab" data-tab="wallets" type="button">Wallets</button>
+      <button class="tab" data-tab="nodes" type="button">Nodes</button>
+      <button class="tab" data-tab="actor-tracker" type="button">Actor Tracker</button>
+    </nav>
+
+    <main class="tab-panels">
+      <section class="tab-panel active" data-panel="overview">
+        <section class="card">
+          <div class="card-head">
+            <h2>Overview</h2>
+            <p>Network and cache summary over a recent block window.</p>
+          </div>
+          <form id="overview-form">
+            <label>
+              Scan window (blocks)
+              <input id="overview-blocks" type="number" min="20" step="20" value="120" />
+            </label>
+            <button type="submit">Refresh Overview</button>
+          </form>
+          <pre id="overview-output"></pre>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-panel="queries">
+        <div class="two-column">
+          <section class="card">
+            <div class="card-head">
+              <h2>On-Demand Ingest</h2>
+              <p>Pre-warm a recent window if you know you are about to investigate it.</p>
+            </div>
+            <form id="ingest-form">
+              <label>
+                Recent blocks to ingest
+                <input id="ingest-blocks" type="number" min="20" step="20" value="120" />
+              </label>
+              <button type="submit">Ingest</button>
+            </form>
+            <pre id="ingest-output"></pre>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>Action Trace Lookup</h2>
+              <p>Resolve one THORChain action by TX hash and attach cached events.</p>
+            </div>
+            <form id="action-form">
+              <label>
+                TX Hash
+                <input id="action-txid" type="text" placeholder="B129DA..." />
+              </label>
+              <label>
+                Max back-scan blocks
+                <input id="action-max-blocks" type="number" min="50" step="50" value="500" />
+              </label>
+              <button type="submit">Lookup Action</button>
+            </form>
+            <pre id="action-output"></pre>
+          </section>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="wallets">
+        <section class="card">
+          <div class="card-head">
+            <h2>Wallet Liquidity + Bonds</h2>
+            <p>Inspect one wallet’s liquidity activity, current bonds, and REBOND continuity.</p>
+          </div>
+          <form id="wallet-form">
+            <label>
+              Wallet Address
+              <input id="wallet-address" type="text" placeholder="thor1..." />
+            </label>
+            <label>
+              Max back-scan blocks
+              <input id="wallet-max-blocks" type="number" min="100" step="100" value="1000" />
+            </label>
+            <button type="submit">Analyze Wallet</button>
+          </form>
+          <div class="two-column">
+            <div>
+              <h3>Liquidity</h3>
+              <pre id="wallet-liquidity-output"></pre>
+            </div>
+            <div>
+              <h3>Bonds</h3>
+              <pre id="wallet-bonds-output"></pre>
+            </div>
+          </div>
+          <h3>REBOND Trace</h3>
+          <pre id="wallet-rebond-output"></pre>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-panel="nodes">
+        <section class="card">
+          <div class="card-head">
+            <h2>Node Bond Providers</h2>
+            <p>Pull live node provider composition from THORNode.</p>
+          </div>
+          <form id="node-form">
+            <label>
+              Node Address
+              <input id="node-address" type="text" placeholder="thor1..." />
+            </label>
+            <button type="submit">Fetch Node Providers</button>
+          </form>
+          <pre id="node-output"></pre>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-panel="actor-tracker">
+        <div class="actor-layout">
+          <aside class="card actor-sidebar">
+            <div class="card-head">
+              <h2>Actors</h2>
+              <p>Create saved named actors with one or more wallet addresses each.</p>
+            </div>
+
+            <form id="actor-form" class="actor-form">
+              <input id="actor-id" type="hidden" />
+              <label>
+                Actor Name
+                <input id="actor-name" type="text" placeholder="Wintermute" />
+              </label>
+              <div class="actor-form-row">
+                <label>
+                  Color
+                  <input id="actor-color" type="color" value="#4ca3ff" />
+                </label>
+                <label>
+                  Notes
+                  <input id="actor-notes" type="text" placeholder="Optional notes" />
+                </label>
+              </div>
+              <label>
+                Addresses
+                <textarea
+                  id="actor-addresses"
+                  rows="8"
+                  placeholder="One per line. Formats:&#10;address&#10;address,label&#10;address,CHAIN,label"
+                ></textarea>
+              </label>
+              <div class="form-actions">
+                <button type="submit">Save Actor</button>
+                <button id="actor-reset" class="secondary" type="button">Clear</button>
+              </div>
+              <div id="actor-form-status" class="inline-status"></div>
+            </form>
+
+            <div class="actor-list-head">
+              <h3>Saved Actors</h3>
+              <span id="actor-count" class="badge">0</span>
+            </div>
+            <div id="actor-list" class="actor-list"></div>
+          </aside>
+
+          <section class="actor-main">
+            <section class="card">
+              <div class="card-head">
+                <h2>Graph Query</h2>
+                <p>Select one or more actors, a time window, and a hop depth to build the combined DAG.</p>
+              </div>
+
+              <form id="actor-graph-form" class="actor-query-form">
+                <label class="wide">
+                  Selected Actors
+                  <div id="actor-selection" class="actor-selection"></div>
+                </label>
+                <label>
+                  Start Time
+                  <input id="actor-start-time" type="datetime-local" />
+                </label>
+                <label>
+                  End Time
+                  <input id="actor-end-time" type="datetime-local" />
+                </label>
+                <label>
+                  Max Hops
+                  <input id="actor-max-hops" type="number" min="1" max="8" value="4" />
+                </label>
+                <label>
+                  Min USD
+                  <input id="actor-min-usd" type="number" min="0" step="any" value="0" />
+                </label>
+                <div class="form-actions wide">
+                  <button type="submit">Build Actor Graph</button>
+                </div>
+              </form>
+
+              <div id="actor-query-summary" class="meta-strip"></div>
+              <div id="actor-warnings" class="warning-list"></div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <h2>Past Runs <span id="graph-run-count" class="badge">0</span></h2>
+                <p>Select a previous graph build to reload or delete.</p>
+              </div>
+              <div id="graph-run-list" class="graph-run-list"></div>
+            </section>
+
+            <section class="card graph-card">
+              <div class="graph-head">
+                <div>
+                  <h2>Flow DAG</h2>
+                  <p>Click actor nodes to expand owned addresses. Click external clusters to expand one chain. Double-click to expand one hop. Right-click nodes for more actions.</p>
+                </div>
+                <div id="actor-graph-stats" class="graph-stats"></div>
+              </div>
+              <div class="graph-container">
+                <div id="actor-graph" class="graph-surface"></div>
+                <div class="graph-toolbar" id="graph-toolbar">
+                  <button type="button" data-graph-action="zoom-in" title="Zoom in (+)">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/>
+                    </svg>
+                  </button>
+                  <button type="button" data-graph-action="zoom-out" title="Zoom out (-)">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="3" y1="8" x2="13" y2="8"/>
+                    </svg>
+                  </button>
+                  <button type="button" data-graph-action="fit" title="Fit to view (0)">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/>
+                    </svg>
+                  </button>
+                  <button type="button" data-graph-action="fullscreen" title="Fullscreen (F)">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="graph-help">Scroll to zoom &middot; Drag to pan &middot; Shift+drag to box-select &middot; Right-click for actions &middot; Double-click to expand</div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <h2>Inspector</h2>
+                <p>Node and edge details from the currently selected graph element.</p>
+              </div>
+              <pre id="actor-inspector">Select a node or edge in the graph.</pre>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <h2>Supporting Actions</h2>
+                <p>Underlying action summaries backing the current graph response.</p>
+              </div>
+              <div class="table-wrap">
+                <table id="actor-actions-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Action</th>
+                      <th>TX</th>
+                      <th>Asset</th>
+                      <th>Amount</th>
+                      <th>USD</th>
+                    </tr>
+                  </thead>
+                  <tbody id="actor-actions-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div id="graph-context-menu" class="graph-context-menu" style="display:none;">
+      <button data-action="check-unavailable" data-scope="pane">Check Unavailable</button>
+      <button data-action="explorer" data-scope="node">View in block explorer</button>
+      <button data-action="copy-address" data-scope="node">Copy address</button>
+      <button data-action="refresh-live-value" data-scope="node">Refresh live value</button>
+      <button data-action="expand-hop" data-scope="node">Expand one hop</button>
+      <button data-action="label-node" data-scope="node">Label node</button>
+      <button data-action="mark-asgard" data-scope="node">Mark Asgard vault</button>
+      <button data-action="remove-node" data-scope="node">Remove from consideration</button>
+    </div>
+
+    <script src="/static/vendor/cytoscape.min.js"></script>
+    <script src="/static/vendor/elk.bundled.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

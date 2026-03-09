@@ -1,0 +1,80 @@
+contract,call,access,domain,call_class,funds_move,graph_behavior,notes
+rujira-fin,swap,public-user,trade,swaps,yes,mixed,Marketable swap into FIN pair
+rujira-fin,order.create,public-user,trade,liquidity,yes,address_to_contract,Limit order funding into FIN contract
+rujira-fin,range,public-user,trade,liquidity,yes,address_to_contract,Range order funding into FIN contract
+rujira-fin,trade,internal-pipeline,trade,swaps,yes,mixed,Execution/fill path through FIN
+rujira-fin,market-maker.fee,internal-pipeline,trade,liquidity,yes,contract_to_address,Fee routing from FIN
+rujira-fin,arb,internal-pipeline,trade,swaps,no,hide,Internal arbitrage orchestration
+rujira-fin,do_swap,internal-pipeline,trade,swaps,no,hide,Internal step runner
+rujira-fin,do_order,internal-pipeline,trade,liquidity,no,hide,Internal step runner
+rujira-fin,do_range,internal-pipeline,trade,liquidity,no,hide,Internal step runner
+rujira-fin,query.config,query-read,trade,read,no,hide,Read-only
+rujira-fin,query.simulate,query-read,trade,read,no,hide,Read-only
+rujira-fin,"query.orders/query.ranges/query.book",query-read,trade,read,no,hide,Read-only listings
+rujira-fin,"admin.update_config/admin.start_schedule/admin.end_schedule",admin-control,trade,control,no,hide,Control plane
+rujira-pilot,swap,public-user,auction,swaps,yes,mixed,Auction swap
+rujira-pilot,order.create,public-user,auction,liquidity,yes,address_to_contract,Auction order funding
+rujira-pilot,query.config,query-read,auction,read,no,hide,Read-only
+rujira-pilot,"query.simulate/query.orders/query.pools",query-read,auction,read,no,hide,Read-only
+rujira-pilot,admin.update_config,admin-control,auction,control,no,hide,Control plane
+rujira-bow,deposit,public-user,liquidity,liquidity,yes,address_to_contract,LP deposit into BOW
+rujira-bow,withdraw,public-user,liquidity,liquidity,yes,contract_to_address,LP withdrawal from BOW
+rujira-bow,swap,public-user,liquidity,swaps,yes,mixed,AMM swap
+rujira-bow,query.quote,query-read,liquidity,read,no,hide,Read-only
+rujira-bow,query.strategy,query-read,liquidity,read,no,hide,Read-only
+rujira-bow,admin.set_strategy,admin-control,liquidity,control,no,hide,Control plane
+rujira-thorchain-swap,swap,role-gated,routing,swaps,yes,mixed,Contract-mediated THORChain swap
+rujira-thorchain-swap,repay,public-user,routing,liquidity,yes,address_to_contract,Repayment into swap router
+rujira-thorchain-swap,callback,internal-pipeline,routing,transfers,no,hide,Internal callback
+rujira-thorchain-swap,"query.config/query.quote/query.markets/query.vaults",query-read,routing,read,no,hide,Read-only
+rujira-thorchain-swap,"admin.set_config/admin.set_market/admin.set_vault",admin-control,routing,control,no,hide,Control plane
+rujira-brune,swap,role-gated,ops,swaps,yes,mixed,Operator-routed swap
+rujira-brune,process_node,role-gated,ops,liquidity,no,hide,Operational process call
+rujira-brune,"query.config/query.state/query.events/query.quote",query-read,ops,read,no,hide,Read-only
+rujira-brune,admin.update_config,admin-control,ops,control,no,hide,Control plane
+rujira-ghost-credit,create,public-user,credit,liquidity,yes,address_to_contract,Create credit account
+rujira-ghost-credit,account.borrow,public-user,credit,liquidity,yes,mixed,Borrow against account
+rujira-ghost-credit,account.repay,public-user,credit,liquidity,yes,address_to_contract,Repay debt into account
+rujira-ghost-credit,account.repay_all,public-user,credit,liquidity,yes,address_to_contract,Repay all debt
+rujira-ghost-credit,account.send,public-user,credit,transfers,yes,address_to_address,Account-managed transfer
+rujira-ghost-credit,account.transfer,public-user,credit,transfers,yes,address_to_address,Account-managed transfer
+rujira-ghost-credit,account.execute,public-user,credit,transfers,no,hide,Opaque nested execution
+rujira-ghost-credit,account.close,public-user,credit,liquidity,yes,contract_to_address,Close account and release funds
+rujira-ghost-credit,account.set_preference_msgs,public-user,credit,control,no,hide,Preference update
+rujira-ghost-credit,account.set_preference_order,public-user,credit,control,no,hide,Preference update
+rujira-ghost-credit,liquidate,public-user,credit,liquidity,yes,mixed,Liquidation path
+rujira-ghost-credit,do_account,internal-pipeline,credit,liquidity,no,hide,Internal pipeline
+rujira-ghost-credit,check_account,internal-pipeline,credit,control,no,hide,Internal health check
+rujira-ghost-credit,do_liquidate,internal-pipeline,credit,liquidity,no,hide,Internal liquidation step
+rujira-ghost-credit,"query.config/query.borrows/query.accounts/query.predict",query-read,credit,read,no,hide,Read-only
+rujira-ghost-credit,"admin.set_vault/admin.set_collateral/admin.update_config",admin-control,credit,control,no,hide,Control plane
+rujira-ghost-vault,deposit,public-user,credit,liquidity,yes,address_to_contract,Collateral deposit
+rujira-ghost-vault,withdraw,public-user,credit,liquidity,yes,contract_to_address,Collateral withdrawal
+rujira-ghost-vault,borrow,role-gated,credit,liquidity,yes,contract_to_address,Loan drawdown
+rujira-ghost-vault,repay,role-gated,credit,liquidity,yes,address_to_contract,Loan repayment
+rujira-ghost-vault,"query.config/query.status/query.borrower/query.delegate/query.borrowers",query-read,credit,read,no,hide,Read-only
+rujira-ghost-vault,"admin.set_borrower/admin.set_interest/admin.set_fee",admin-control,credit,control,no,hide,Control plane
+rujira-ghost-mint,borrow,role-gated,credit,liquidity,yes,contract_to_address,Mint-side loan drawdown
+rujira-ghost-mint,repay,role-gated,credit,liquidity,yes,address_to_contract,Mint-side loan repayment
+rujira-ghost-mint,"query.config/query.status/query.borrower/query.delegate/query.borrowers",query-read,credit,read,no,hide,Read-only
+rujira-ghost-mint,"admin.set_borrower/admin.set_interest/admin.set_fee/admin.set_mint_cap",admin-control,credit,control,no,hide,Control plane
+rujira-staking,account.bond,public-user,staking,liquidity,yes,address_to_contract,Stake into account
+rujira-staking,account.claim,public-user,staking,liquidity,yes,contract_to_address,Claim staking rewards
+rujira-staking,account.withdraw,public-user,staking,liquidity,yes,contract_to_address,Withdraw staked funds
+rujira-staking,liquid.bond,public-user,staking,liquidity,yes,address_to_contract,Liquid staking deposit
+rujira-staking,liquid.unbond,public-user,staking,liquidity,yes,contract_to_address,Liquid staking exit
+rujira-staking,settle,internal-pipeline,staking,liquidity,no,hide,Internal settlement
+rujira-staking,"query.config/query.status/query.account",query-read,staking,read,no,hide,Read-only
+rujira-staking,admin.set_revenue_converter,admin-control,staking,control,no,hide,Control plane
+rujira-revenue,run,role-gated,revenue,liquidity,yes,mixed,Revenue routing/distribution
+rujira-revenue,"query.config/query.actions/query.status",query-read,revenue,read,no,hide,Read-only
+rujira-revenue,"admin.set_owner/admin.set_executor/admin.set_action/admin.unset_action/admin.add_target_denom",admin-control,revenue,control,no,hide,Control plane
+rujira-merge,deposit,public-user,redemption,liquidity,yes,address_to_contract,Deposit into merge contract
+rujira-merge,withdraw,public-user,redemption,liquidity,yes,contract_to_address,Redeem from merge contract
+rujira-merge,"query.config/query.status/query.account",query-read,redemption,read,no,hide,Read-only
+rujira-account,execute.sudo_forward,admin-control,utility,control,no,hide,Sudo-only account shell
+rujira-mint,instantiate,admin-control,utility,control,no,hide,Token bootstrap only
+rujira-demo,execute,admin-control,utility,transfers,no,hide,Raw passthrough
+rujira-demo,sudo,admin-control,utility,control,no,hide,Raw passthrough
+rujira-demo,query.pool,query-read,utility,read,no,hide,Read-only
+rujira-template,"execute/query/sudo",admin-control,utility,control,no,hide,Empty scaffold

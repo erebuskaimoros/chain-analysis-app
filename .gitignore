@@ -1,0 +1,8 @@
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/bin/
+data/logs/*.log
+data/run/*.pid
+server
+.env
