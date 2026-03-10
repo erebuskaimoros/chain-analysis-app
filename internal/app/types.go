@@ -182,6 +182,38 @@ type ActorTrackerResponse struct {
 	SupportingActions []SupportingAction `json:"supporting_actions"`
 }
 
+type AddressExplorerRequest struct {
+	Address   string   `json:"address"`
+	FlowTypes []string `json:"flow_types"`
+	MinUSD    float64  `json:"min_usd"`
+	Direction string   `json:"direction"`  // "newest" or "oldest"
+	Offset    int      `json:"offset"`     // Midgard page offset (0 = first batch)
+	BatchSize int      `json:"batch_size"` // pages per batch, default 10 (500 txns)
+}
+
+type AddressExplorerResponse struct {
+	Address           string               `json:"address"`
+	Query             AddressExplorerQuery `json:"query"`
+	Stats             map[string]any       `json:"stats"`
+	Warnings          []string             `json:"warnings"`
+	Nodes             []FlowNode           `json:"nodes"`
+	Edges             []FlowEdge           `json:"edges"`
+	SupportingActions []SupportingAction   `json:"supporting_actions"`
+	LoadedActions     int                  `json:"loaded_actions"`
+	HasMore           bool                 `json:"has_more"`
+	NextOffset        int                  `json:"next_offset"`
+	TotalEstimate     int                  `json:"total_estimate"` // -1 if unknown
+}
+
+type AddressExplorerQuery struct {
+	Address   string `json:"address"`
+	FlowTypes []string `json:"flow_types"`
+	MinUSD    float64  `json:"min_usd"`
+	Direction string   `json:"direction"`
+	Offset    int      `json:"offset"`
+	BatchSize int      `json:"batch_size"`
+}
+
 type GraphRun struct {
 	ID         int64               `json:"id"`
 	Request    ActorTrackerRequest `json:"request"`

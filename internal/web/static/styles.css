@@ -673,3 +673,33 @@ tbody tr:hover {
 .graph-context-menu button:hover {
   background: rgba(83, 178, 255, 0.12);
 }
+
+/* Address Explorer */
+.direction-chooser {
+  padding: 12px 0;
+  text-align: center;
+}
+
+.direction-chooser p {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.direction-chooser .form-actions {
+  justify-content: center;
+}
+
+.load-more-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.load-more-bar button {
+  font-size: 0.82rem;
+  padding: 5px 14px;
+}

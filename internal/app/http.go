@@ -32,6 +32,7 @@ func (a *App) RegisterRoutes(mux *http.ServeMux) {
 	handle("POST /api/actors", a.handleActors)
 	handle("PUT /api/actors/{id}", a.handleActorByID)
 	handle("DELETE /api/actors/{id}", a.handleActorByID)
+	handle("POST /api/address-explorer/graph", a.handleAddressExplorerGraph)
 	handle("POST /api/actor-tracker/graph", a.handleActorTrackerGraph)
 	handle("POST /api/actor-tracker/expand", a.handleActorTrackerExpand)
 	handle("POST /api/actor-tracker/live-holdings", a.handleActorTrackerLiveHoldings)
@@ -447,6 +448,26 @@ func (a *App) handleActorByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(r, w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
 	}
+}
+
+func (a *App) handleAddressExplorerGraph(w http.ResponseWriter, r *http.Request) {
+	var req AddressExplorerRequest
+	if err := decodeJSONBody(r, &req); err != nil {
+		writeError(r, w, http.StatusBadRequest, err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), a.cfg.RequestTimeout*4)
+	defer cancel()
+	r = r.WithContext(ctx)
+
+	resp, err := a.buildAddressExplorer(ctx, req)
+	if err != nil {
+		writeError(r, w, http.StatusBadRequest, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *App) handleActorTrackerGraph(w http.ResponseWriter, r *http.Request) {

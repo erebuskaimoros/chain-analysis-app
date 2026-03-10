@@ -17,119 +17,12 @@
     </header>
 
     <nav class="tabbar" aria-label="Primary">
-      <button class="tab active" data-tab="overview" type="button">Overview</button>
-      <button class="tab" data-tab="queries" type="button">Queries</button>
-      <button class="tab" data-tab="wallets" type="button">Wallets</button>
-      <button class="tab" data-tab="nodes" type="button">Nodes</button>
-      <button class="tab" data-tab="actor-tracker" type="button">Actor Tracker</button>
+      <button class="tab active" data-tab="actor-tracker" type="button">Actor Tracker</button>
+      <button class="tab" data-tab="address-explorer" type="button">Address Explorer</button>
     </nav>
 
     <main class="tab-panels">
-      <section class="tab-panel active" data-panel="overview">
-        <section class="card">
-          <div class="card-head">
-            <h2>Overview</h2>
-            <p>Network and cache summary over a recent block window.</p>
-          </div>
-          <form id="overview-form">
-            <label>
-              Scan window (blocks)
-              <input id="overview-blocks" type="number" min="20" step="20" value="120" />
-            </label>
-            <button type="submit">Refresh Overview</button>
-          </form>
-          <pre id="overview-output"></pre>
-        </section>
-      </section>
-
-      <section class="tab-panel" data-panel="queries">
-        <div class="two-column">
-          <section class="card">
-            <div class="card-head">
-              <h2>On-Demand Ingest</h2>
-              <p>Pre-warm a recent window if you know you are about to investigate it.</p>
-            </div>
-            <form id="ingest-form">
-              <label>
-                Recent blocks to ingest
-                <input id="ingest-blocks" type="number" min="20" step="20" value="120" />
-              </label>
-              <button type="submit">Ingest</button>
-            </form>
-            <pre id="ingest-output"></pre>
-          </section>
-
-          <section class="card">
-            <div class="card-head">
-              <h2>Action Trace Lookup</h2>
-              <p>Resolve one THORChain action by TX hash and attach cached events.</p>
-            </div>
-            <form id="action-form">
-              <label>
-                TX Hash
-                <input id="action-txid" type="text" placeholder="B129DA..." />
-              </label>
-              <label>
-                Max back-scan blocks
-                <input id="action-max-blocks" type="number" min="50" step="50" value="500" />
-              </label>
-              <button type="submit">Lookup Action</button>
-            </form>
-            <pre id="action-output"></pre>
-          </section>
-        </div>
-      </section>
-
-      <section class="tab-panel" data-panel="wallets">
-        <section class="card">
-          <div class="card-head">
-            <h2>Wallet Liquidity + Bonds</h2>
-            <p>Inspect one wallet’s liquidity activity, current bonds, and REBOND continuity.</p>
-          </div>
-          <form id="wallet-form">
-            <label>
-              Wallet Address
-              <input id="wallet-address" type="text" placeholder="thor1..." />
-            </label>
-            <label>
-              Max back-scan blocks
-              <input id="wallet-max-blocks" type="number" min="100" step="100" value="1000" />
-            </label>
-            <button type="submit">Analyze Wallet</button>
-          </form>
-          <div class="two-column">
-            <div>
-              <h3>Liquidity</h3>
-              <pre id="wallet-liquidity-output"></pre>
-            </div>
-            <div>
-              <h3>Bonds</h3>
-              <pre id="wallet-bonds-output"></pre>
-            </div>
-          </div>
-          <h3>REBOND Trace</h3>
-          <pre id="wallet-rebond-output"></pre>
-        </section>
-      </section>
-
-      <section class="tab-panel" data-panel="nodes">
-        <section class="card">
-          <div class="card-head">
-            <h2>Node Bond Providers</h2>
-            <p>Pull live node provider composition from THORNode.</p>
-          </div>
-          <form id="node-form">
-            <label>
-              Node Address
-              <input id="node-address" type="text" placeholder="thor1..." />
-            </label>
-            <button type="submit">Fetch Node Providers</button>
-          </form>
-          <pre id="node-output"></pre>
-        </section>
-      </section>
-
-      <section class="tab-panel" data-panel="actor-tracker">
+      <section class="tab-panel active" data-panel="actor-tracker">
         <div class="actor-layout">
           <aside class="card actor-sidebar">
             <div class="card-head">
@@ -287,6 +180,111 @@
             </section>
           </section>
         </div>
+      </section>
+
+      <section class="tab-panel" data-panel="address-explorer">
+        <section class="card">
+          <div class="card-head">
+            <h2>Address Explorer</h2>
+            <p>Enter a wallet address to graph its transaction history. Nodes one edge away are shown.</p>
+          </div>
+
+          <form id="explorer-form" class="actor-query-form">
+            <label class="wide">
+              Wallet Address
+              <input id="explorer-address" type="text" placeholder="thor1... or 0x..." />
+            </label>
+            <label>
+              Min USD
+              <input id="explorer-min-usd" type="number" min="0" step="any" value="0" />
+            </label>
+            <div class="form-actions wide">
+              <button type="submit">Explore Address</button>
+            </div>
+          </form>
+
+          <div id="explorer-direction-chooser" class="direction-chooser" style="display:none;">
+            <p>This address has more than 500 transactions. Choose loading direction:</p>
+            <div class="form-actions">
+              <button type="button" data-direction="newest">Newest first</button>
+              <button type="button" data-direction="oldest">Oldest first</button>
+            </div>
+          </div>
+
+          <div id="explorer-pagination" class="load-more-bar" style="display:none;">
+            <span id="explorer-loaded-count"></span>
+            <button id="explorer-load-more" type="button">Load next 500</button>
+          </div>
+
+          <div id="explorer-query-summary" class="meta-strip"></div>
+          <div id="explorer-warnings" class="warning-list"></div>
+        </section>
+
+        <section class="card graph-card">
+          <div class="graph-head">
+            <div>
+              <h2>Flow DAG</h2>
+              <p>Right-click nodes for actions. Double-click to expand one edge outward.</p>
+            </div>
+            <div id="explorer-graph-stats" class="graph-stats"></div>
+          </div>
+          <div class="graph-container">
+            <div id="explorer-graph" class="graph-surface"></div>
+            <div class="graph-toolbar" id="explorer-graph-toolbar">
+              <button type="button" data-graph-action="zoom-in" title="Zoom in (+)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/>
+                </svg>
+              </button>
+              <button type="button" data-graph-action="zoom-out" title="Zoom out (-)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="3" y1="8" x2="13" y2="8"/>
+                </svg>
+              </button>
+              <button type="button" data-graph-action="fit" title="Fit to view (0)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/>
+                </svg>
+              </button>
+              <button type="button" data-graph-action="fullscreen" title="Fullscreen (F)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3"/>
+                </svg>
+              </button>
+            </div>
+            <div class="graph-help">Scroll to zoom &middot; Drag to pan &middot; Right-click for actions &middot; Double-click to expand one edge</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Inspector</h2>
+            <p>Node and edge details from the currently selected graph element.</p>
+          </div>
+          <pre id="explorer-inspector">Select a node or edge in the graph.</pre>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Supporting Actions</h2>
+            <p>Underlying action summaries backing the current graph response.</p>
+          </div>
+          <div class="table-wrap">
+            <table id="explorer-actions-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Action</th>
+                  <th>TX</th>
+                  <th>Asset</th>
+                  <th>Amount</th>
+                  <th>USD</th>
+                </tr>
+              </thead>
+              <tbody id="explorer-actions-body"></tbody>
+            </table>
+          </div>
+        </section>
       </section>
     </main>
 

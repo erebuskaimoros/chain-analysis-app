@@ -13,23 +13,24 @@ import (
 )
 
 const (
-	defaultActorTrackerHops    = 4
-	graphQueryLimitPerFrontier = 1200
-	graphIngestBatch           = int64(120)
-	midgardActionsPageLimit    = 50
-	midgardMaxPagesPerAddress  = 20
-	midgardGraphPagesPerSeed   = 8
-	midgardGraphPagesPerHop    = 1
-	midgardGraphMaxFetches     = 60
-	midgardExpandPagesPerSeed  = 4
-	actorTrackerExpandAddrCap  = 64
-	midgardActionPageDelay     = 250 * time.Millisecond
-	maxFrontierPerHop          = 20
-	midgardConcurrentFetches   = 3
-	midgard429Cooldown         = 2 * time.Second
-	midgardHeightPadding       = int64(2)
-	midgardRangeMergeGap       = int64(24)
-	largeWindowFallbackLimit   = 45 * 24 * time.Hour
+	defaultActorTrackerHops      = 4
+	graphQueryLimitPerFrontier   = 1200
+	graphIngestBatch             = int64(120)
+	midgardActionsPageLimit      = 50
+	midgardMaxPagesPerAddress    = 20
+	midgardGraphPagesPerSeed     = 8
+	midgardGraphPagesPerFirstHop = 8
+	midgardGraphPagesPerHop      = 1
+	midgardGraphMaxFetches       = 60
+	midgardExpandPagesPerSeed    = 4
+	actorTrackerExpandAddrCap    = 64
+	midgardActionPageDelay       = 250 * time.Millisecond
+	maxFrontierPerHop            = 20
+	midgardConcurrentFetches     = 3
+	midgard429Cooldown           = 2 * time.Second
+	midgardHeightPadding         = int64(2)
+	midgardRangeMergeGap         = int64(24)
+	largeWindowFallbackLimit     = 45 * 24 * time.Hour
 )
 
 const asgardModuleAddress = "thor1g98cy3n9mmjrpn0sxmn63lztelera37n8n67c0"
@@ -67,6 +68,13 @@ var knownAddressLabels = map[string]string{
 	"thor136rwqvwy3flttm9wfnc5xgnlr6mu5k8e2elgzs2hdhuwf50w3l2q0nu2qu": "CALC Manager",
 	"thor1t2cnyn98xusxakgemsenn2p9n3ykd6accr2c0zg22nczh097ln7qeze20f": "CALC Scheduler",
 	"thor17dxtxrne37gguxdeun4n36vqd5jmxxku5tr6gkuhhsh4lz9e8gksck4ygu": "CALC DAO",
+}
+
+// knownCalcRepresentativePayouts preserves stable Treasury destinations for
+// long-lived CALC strategies whose live Midgard process rows only expose
+// msg.execute payloads.
+var knownCalcRepresentativePayouts = map[string]string{
+	"thor1f2cgnj7elhxk9f2uq8dufl6vm96rhzz3ve0t4x9z099untck2xfqj9qpe8": "thor10qh5272ktq4wes8ex343ky9rsuehcypddjh08k",
 }
 
 var actorTrackerEventTypes = []string{
@@ -1301,6 +1309,132 @@ func (a *App) fetchMidgardActionsForAddress(ctx context.Context, address string,
 	return actions, true, nil
 }
 
+// fetchMidgardActionsForAddressPaged is like fetchMidgardActionsForAddress but
+// starts at an arbitrary page offset instead of 0. It skips the disk cache
+// because paged requests are not cache-aligned. It does not enforce the
+// midgardMaxPagesPerAddress cap so callers must bound pageCount themselves.
+func (a *App) fetchMidgardActionsForAddressPaged(ctx context.Context, address string, start, end time.Time, startPage, pageCount int) ([]midgardAction, bool, error) {
+	seed := normalizeFrontierAddress(address)
+	if seed.Address == "" {
+		return nil, false, nil
+	}
+	address = seed.Address
+	if pageCount < 1 {
+		pageCount = 1
+	}
+
+	fromTimestamp := start.Unix()
+	if fromTimestamp < 0 {
+		fromTimestamp = 0
+	}
+	endTimestamp := end.Unix()
+	if endTimestamp < fromTimestamp {
+		endTimestamp = fromTimestamp
+	}
+
+	actions := make([]midgardAction, 0, pageCount*midgardActionsPageLimit)
+	for i := 0; i < pageCount; i++ {
+		page := startPage + i
+		params := url.Values{}
+		params.Set("address", address)
+		params.Set("fromTimestamp", strconv.FormatInt(fromTimestamp, 10))
+		params.Set("timestamp", strconv.FormatInt(endTimestamp, 10))
+		params.Set("limit", strconv.Itoa(midgardActionsPageLimit))
+		params.Set("offset", strconv.Itoa(page*midgardActionsPageLimit))
+
+		var response midgardActionsResponse
+		path := "/actions?" + params.Encode()
+		offset := page * midgardActionsPageLimit
+		if err := a.mid.GetJSONObserved(ctx, path, &response, func(meta RequestAttemptMeta) {
+			fields := map[string]any{
+				"address":               address,
+				"page":                  page,
+				"offset":                offset,
+				"limit":                 midgardActionsPageLimit,
+				"path":                  meta.Path,
+				"endpoint":              meta.Endpoint,
+				"url":                   meta.URL,
+				"attempt":               meta.Attempt,
+				"status":                meta.StatusCode,
+				"result":                meta.Result,
+				"duration_ms":           meta.Duration.Milliseconds(),
+				"will_retry":            meta.WillRetry,
+				"retryable_status":      meta.RetryableStatus,
+				"retry_after":           meta.RetryAfter,
+				"x_ratelimit_limit":     meta.XRateLimitLimit,
+				"x_ratelimit_remaining": meta.XRateLimitRemaining,
+				"x_ratelimit_reset":     meta.XRateLimitReset,
+				"ratelimit_limit":       meta.RateLimitLimit,
+				"ratelimit_remaining":   meta.RateLimitRemaining,
+				"ratelimit_reset":       meta.RateLimitReset,
+				"cf_ray":                meta.CFRay,
+				"cf_mitigated":          meta.CFMitigated,
+			}
+			if meta.Result == "success" {
+				logInfo(ctx, "midgard_explorer_paged_call", fields)
+				return
+			}
+			callErr := fmt.Errorf("midgard explorer paged result=%s", meta.Result)
+			if strings.TrimSpace(meta.Error) != "" {
+				callErr = fmt.Errorf("%s", strings.TrimSpace(meta.Error))
+			}
+			logError(ctx, "midgard_explorer_paged_call_failed", callErr, fields)
+		}); err != nil {
+			if isMidgardRateLimitError(err) {
+				sleepWithContext(ctx, midgard429Cooldown)
+			}
+			return actions, false, err
+		}
+
+		actions = append(actions, response.Actions...)
+		if len(response.Actions) < midgardActionsPageLimit {
+			return canonicalizeMidgardLookupActions(actions), false, nil
+		}
+		if i+1 < pageCount && !sleepWithContext(ctx, midgardActionPageDelay) {
+			return actions, false, ctx.Err()
+		}
+	}
+
+	return canonicalizeMidgardLookupActions(actions), true, nil
+}
+
+// probeMidgardTotalPages does a binary search to find the last page with data
+// for an address. Returns the total number of pages (0-indexed last page + 1).
+func (a *App) probeMidgardTotalPages(ctx context.Context, address string, start, end time.Time) (int, error) {
+	// Exponential probe to find upper bound.
+	probe := 10 // start at page 10 (offset 500)
+	for {
+		actions, _, err := a.fetchMidgardActionsForAddressPaged(ctx, address, start, end, probe, 1)
+		if err != nil {
+			return 0, err
+		}
+		if len(actions) == 0 {
+			break
+		}
+		probe *= 2
+		if probe > 20000 {
+			// Safety cap at 1M actions.
+			break
+		}
+	}
+
+	// Binary search between probe/2 and probe.
+	lo, hi := probe/2, probe
+	for lo < hi {
+		mid := (lo + hi) / 2
+		actions, _, err := a.fetchMidgardActionsForAddressPaged(ctx, address, start, end, mid, 1)
+		if err != nil {
+			return 0, err
+		}
+		if len(actions) > 0 {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo, nil
+}
+
 func filterMidgardActionsByTimeRange(actions []midgardAction, startTS, endTS int64) []midgardAction {
 	out := make([]midgardAction, 0, len(actions))
 	for _, a := range actions {
@@ -2164,6 +2298,9 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			if resolvedPayoutAddress == "" {
 				resolvedPayoutAddress = normalizeAddress(b.calcPayoutByContract[normalizeAddress(receiverAddress)])
 			}
+			if resolvedPayoutAddress == "" {
+				resolvedPayoutAddress = knownCalcRepresentativePayoutAddress(receiverAddress)
+			}
 			receiverRef := b.makeContractRef(receiverAddress, contractDesc, baseDepth+1)
 			if receiverRef.ID == "" {
 				continue
@@ -2217,6 +2354,10 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 							addSegment(receiverRef, targetRef, coin.Asset, coin.Amount, 0.84, txID)
 						}
 					}
+					continue
+				}
+				if isCalcStrategyFallbackRepresentative(actionMeta.ContractType) {
+					suppressFallback = true
 					continue
 				}
 				if suppressPayouts {
@@ -3424,9 +3565,6 @@ func (b *graphBuilder) recordCalcRepresentativePayouts(actions []midgardAction) 
 			continue
 		}
 		payoutAddress := findRepresentativeContractPayoutAddress(action)
-		if payoutAddress == "" {
-			continue
-		}
 		sourceHint := findContractExecutionAddress(action.Metadata.Contract.Msg)
 		receiverLegs, _ := splitMidgardContractLegs(action)
 		useExecutionReceiver := preferExecutionAddressAsContractReceiver(action.Metadata.Contract.ContractType)
@@ -3439,9 +3577,19 @@ func (b *graphBuilder) recordCalcRepresentativePayouts(actions []midgardAction) 
 			if receiverAddress == "" {
 				continue
 			}
+			if payoutAddress == "" {
+				payoutAddress = knownCalcRepresentativePayoutAddress(receiverAddress)
+			}
+			if payoutAddress == "" {
+				continue
+			}
 			b.calcPayoutByContract[receiverAddress] = payoutAddress
 		}
 	}
+}
+
+func knownCalcRepresentativePayoutAddress(contractAddress string) string {
+	return normalizeAddress(knownCalcRepresentativePayouts[normalizeAddress(contractAddress)])
 }
 
 func findContractDistributeBankAddresses(value any) []string {
@@ -3489,6 +3637,18 @@ func isCalcStrategyRepresentative(contractType string) bool {
 	return ct == "wasm-calc-manager/strategy.update" || ct == "wasm-calc-strategy/process"
 }
 
+func isCalcStrategyExecute(contractType string) bool {
+	return strings.EqualFold(strings.TrimSpace(contractType), "wasm-calc-strategy/execute")
+}
+
+func isCalcStrategyProcessReply(contractType string) bool {
+	return strings.EqualFold(strings.TrimSpace(contractType), "wasm-calc-strategy/process.reply")
+}
+
+func isCalcStrategyFallbackRepresentative(contractType string) bool {
+	return isCalcStrategyExecute(contractType) || isCalcStrategyProcessReply(contractType)
+}
+
 // hasCalcStrategyMsgPayload returns true when the contract msg contains
 // an update.nodes array, indicating this action is part of a CALC strategy
 // execution pipeline.
@@ -3526,10 +3686,19 @@ func isSuppressedContractSubExecution(action midgardAction) bool {
 		return false
 	}
 	ct := strings.ToLower(strings.TrimSpace(action.Metadata.Contract.ContractType))
-	// Always suppress wasm-calc-strategy/* sub-types other than process
-	// (e.g. process.reply, update, execute, init).
-	if strings.HasPrefix(ct, "wasm-calc-strategy/") && ct != "wasm-calc-strategy/process" {
-		return true
+	// Keep process as the preferred representative. execute / process.reply may
+	// stand in only when the fetched slice is missing a same-tx process row.
+	if strings.HasPrefix(ct, "wasm-calc-strategy/") {
+		switch ct {
+		case "wasm-calc-strategy/process":
+			// representative
+		case "wasm-calc-strategy/execute", "wasm-calc-strategy/process.reply":
+			if hasCalcStrategyMsgPayload(action) {
+				return true
+			}
+		default:
+			return true
+		}
 	}
 	if ct == "wasm-calc-manager/strategy.create" {
 		return true
@@ -3591,6 +3760,9 @@ func midgardGraphPagesForHop(hop int) int {
 	if hop <= 0 {
 		return midgardGraphPagesPerSeed
 	}
+	if hop == 1 {
+		return midgardGraphPagesPerFirstHop
+	}
 	return midgardGraphPagesPerHop
 }
 
@@ -3627,9 +3799,9 @@ func midgardActionTxIDs(action midgardAction) []string {
 	return out
 }
 
-// collectCalcStrategyTxIDs returns the set of txIDs associated with CALC
-// strategy representative actions. Swap actions sharing these txIDs are
-// internal to the CALC pipeline and should be suppressed.
+// collectCalcStrategyTxIDs returns txIDs associated with CALC rows that can
+// stand in for the user-facing Treasury flow. Swap actions sharing these txIDs
+// are internal to the CALC pipeline and should be suppressed.
 func collectCalcStrategyTxIDs(actions []midgardAction) map[string]struct{} {
 	if len(actions) == 0 {
 		return nil
@@ -3639,7 +3811,8 @@ func collectCalcStrategyTxIDs(actions []midgardAction) map[string]struct{} {
 		if action.Metadata.Contract == nil {
 			continue
 		}
-		if !isCalcStrategyRepresentative(action.Metadata.Contract.ContractType) {
+		ct := action.Metadata.Contract.ContractType
+		if !isCalcStrategyRepresentative(ct) && !isCalcStrategyExecute(ct) {
 			continue
 		}
 		for _, txID := range midgardActionTxIDs(action) {
@@ -3724,6 +3897,36 @@ func shouldSkipMidgardActionForGraph(action midgardAction, refundTxIDs map[strin
 		}
 		if txID := midgardSwapCorrelationTxID(action, cleanTxID(midgardSyntheticTxID(action))); txID != "" {
 			if _, ok := calcStrategyProcessTxIDs[txID]; ok {
+				return true, "contract_sub_execution"
+			}
+		}
+	}
+	if action.Metadata.Contract != nil && isCalcStrategyExecute(action.Metadata.Contract.ContractType) {
+		for _, txID := range midgardActionTxIDs(action) {
+			if _, ok := calcStrategyProcessTxIDs[txID]; ok {
+				return true, "contract_sub_execution"
+			}
+		}
+		if txID := midgardSwapCorrelationTxID(action, cleanTxID(midgardSyntheticTxID(action))); txID != "" {
+			if _, ok := calcStrategyProcessTxIDs[txID]; ok {
+				return true, "contract_sub_execution"
+			}
+		}
+	}
+	if action.Metadata.Contract != nil && isCalcStrategyProcessReply(action.Metadata.Contract.ContractType) {
+		for _, txID := range midgardActionTxIDs(action) {
+			if _, ok := calcStrategyProcessTxIDs[txID]; ok {
+				return true, "contract_sub_execution"
+			}
+			if _, ok := calcStrategyTxIDs[txID]; ok {
+				return true, "contract_sub_execution"
+			}
+		}
+		if txID := midgardSwapCorrelationTxID(action, cleanTxID(midgardSyntheticTxID(action))); txID != "" {
+			if _, ok := calcStrategyProcessTxIDs[txID]; ok {
+				return true, "contract_sub_execution"
+			}
+			if _, ok := calcStrategyTxIDs[txID]; ok {
 				return true, "contract_sub_execution"
 			}
 		}

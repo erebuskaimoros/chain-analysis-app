@@ -208,176 +208,6 @@ function bindHealth() {
   refresh();
 }
 
-function bindOverview() {
-  const form = document.getElementById("overview-form");
-  const blocks = document.getElementById("overview-blocks");
-  const output = document.getElementById("overview-output");
-  if (!ensureElements("bindOverview", { form, blocks, output })) {
-    return;
-  }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    output.textContent = "Loading overview…";
-    try {
-      const data = await callAPI(`/api/overview?blocks=${encodeURIComponent(blocks.value)}`);
-      print(output, data);
-    } catch (err) {
-      const message = String(err);
-      if (message.includes("404")) {
-        output.textContent = "Overview endpoint is not available in this server build.";
-        frontendLog("warn", "overview_endpoint_unavailable", { endpoint: "/api/overview" });
-        return;
-      }
-      output.textContent = message;
-    }
-  });
-  output.textContent = "Overview is available on demand. Click Refresh Overview.";
-}
-
-function bindIngest() {
-  const form = document.getElementById("ingest-form");
-  const blocks = document.getElementById("ingest-blocks");
-  const output = document.getElementById("ingest-output");
-  if (!ensureElements("bindIngest", { form, blocks, output })) {
-    return;
-  }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    output.textContent = "Ingesting…";
-    try {
-      const data = await callAPI(`/api/ingest/recent?blocks=${encodeURIComponent(blocks.value)}`, {
-        method: "POST",
-      });
-      print(output, data);
-    } catch (err) {
-      output.textContent = String(err);
-    }
-  });
-}
-
-function bindActionLookup() {
-  const form = document.getElementById("action-form");
-  const txidInput = document.getElementById("action-txid");
-  const maxBlocksInput = document.getElementById("action-max-blocks");
-  const output = document.getElementById("action-output");
-  if (!ensureElements("bindActionLookup", { form, txidInput, maxBlocksInput, output })) {
-    return {
-      lookup() {
-        return Promise.resolve();
-      },
-    };
-  }
-
-  async function runLookup() {
-    const txid = txidInput.value.trim();
-    if (!txid) {
-      output.textContent = "TX hash is required";
-      return;
-    }
-
-    output.textContent = "Fetching action trace…";
-    try {
-      const data = await callAPI(
-        `/api/actions/${encodeURIComponent(txid)}?max_blocks=${encodeURIComponent(maxBlocksInput.value)}`
-      );
-      print(output, data);
-    } catch (err) {
-      output.textContent = String(err);
-    }
-  }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    await runLookup();
-  });
-
-  return {
-    lookup(txid) {
-      txidInput.value = txid;
-      return runLookup();
-    },
-  };
-}
-
-function bindWalletLookup() {
-  const form = document.getElementById("wallet-form");
-  const addressInput = document.getElementById("wallet-address");
-  const maxBlocksInput = document.getElementById("wallet-max-blocks");
-  const liquidityOutput = document.getElementById("wallet-liquidity-output");
-  const bondsOutput = document.getElementById("wallet-bonds-output");
-  const rebondOutput = document.getElementById("wallet-rebond-output");
-  if (
-    !ensureElements("bindWalletLookup", {
-      form,
-      addressInput,
-      maxBlocksInput,
-      liquidityOutput,
-      bondsOutput,
-      rebondOutput,
-    })
-  ) {
-    return;
-  }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const address = addressInput.value.trim();
-    if (!address) {
-      liquidityOutput.textContent = "Wallet address is required";
-      return;
-    }
-
-    const maxBlocks = encodeURIComponent(maxBlocksInput.value);
-    liquidityOutput.textContent = "Loading liquidity…";
-    bondsOutput.textContent = "Loading bonds…";
-    rebondOutput.textContent = "Loading rebond trace…";
-
-    try {
-      const [liq, bonds, rebond] = await Promise.all([
-        callAPI(`/api/wallets/${encodeURIComponent(address)}/liquidity?max_blocks=${maxBlocks}`),
-        callAPI(`/api/wallets/${encodeURIComponent(address)}/bonds?max_blocks=${maxBlocks}`),
-        callAPI(`/api/rebond/${encodeURIComponent(address)}?max_blocks=${maxBlocks}`),
-      ]);
-      print(liquidityOutput, liq);
-      print(bondsOutput, bonds);
-      print(rebondOutput, rebond);
-    } catch (err) {
-      const msg = String(err);
-      liquidityOutput.textContent = msg;
-      bondsOutput.textContent = msg;
-      rebondOutput.textContent = msg;
-    }
-  });
-}
-
-function bindNodeLookup() {
-  const form = document.getElementById("node-form");
-  const nodeInput = document.getElementById("node-address");
-  const output = document.getElementById("node-output");
-  if (!ensureElements("bindNodeLookup", { form, nodeInput, output })) {
-    return;
-  }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const address = nodeInput.value.trim();
-    if (!address) {
-      output.textContent = "Node address is required";
-      return;
-    }
-
-    output.textContent = "Loading node bond providers…";
-    try {
-      const data = await callAPI(`/api/nodes/${encodeURIComponent(address)}/bond-providers`);
-      print(output, data);
-    } catch (err) {
-      output.textContent = String(err);
-    }
-  });
-}
-
 function bindActorTracker(activateTab, actionLookup) {
   const form = document.getElementById("actor-form");
   const actorID = document.getElementById("actor-id");
@@ -864,6 +694,12 @@ function bindActorTracker(activateTab, actionLookup) {
     const width = graphContainer.clientWidth;
     const height = graphContainer.clientHeight;
     const viewportPadding = 140;
+    const zoom = Number(state.cy.zoom() || 1);
+    const labelScale = Math.max(0.3, Math.min(1.35, zoom));
+    const labelFontPx = 11.84 * labelScale;
+    const liveFontPx = 10.88 * labelScale;
+    const labelMaxWidthPx = Math.max(48, Math.min(220, 150 * labelScale));
+    const labelGapPx = Math.max(2, 8 * labelScale);
     const html = [];
 
     state.cy.nodes().forEach((node) => {
@@ -888,18 +724,18 @@ function bindActorTracker(activateTab, actionLookup) {
       }
 
       const renderedHeight = renderedNodeHeight(node);
-      const topY = renderedPos.y - renderedHeight / 2 - 8;
-      const bottomY = renderedPos.y + renderedHeight / 2 + 8;
+      const topY = renderedPos.y - renderedHeight / 2 - labelGapPx;
+      const bottomY = renderedPos.y + renderedHeight / 2 + labelGapPx;
 
       if (displayLabel) {
         html.push(
-          `<div class="graph-node-text graph-node-label" style="left:${renderedPos.x.toFixed(1)}px;top:${topY.toFixed(1)}px;">${escapeHTML(displayLabel)}</div>`
+          `<div class="graph-node-text graph-node-label" style="left:${renderedPos.x.toFixed(1)}px;top:${topY.toFixed(1)}px;font-size:${labelFontPx.toFixed(2)}px;max-width:${labelMaxWidthPx.toFixed(1)}px;">${escapeHTML(displayLabel)}</div>`
         );
       }
       if (liveHoldingsLabel) {
         const unavailableClass = data.liveHoldingsStatus === "error" ? " is-unavailable" : "";
         html.push(
-          `<div class="graph-node-text graph-node-live${unavailableClass}" style="left:${renderedPos.x.toFixed(1)}px;top:${bottomY.toFixed(1)}px;">${escapeHTML(liveHoldingsLabel)}</div>`
+          `<div class="graph-node-text graph-node-live${unavailableClass}" style="left:${renderedPos.x.toFixed(1)}px;top:${bottomY.toFixed(1)}px;font-size:${liveFontPx.toFixed(2)}px;max-width:${labelMaxWidthPx.toFixed(1)}px;">${escapeHTML(liveHoldingsLabel)}</div>`
         );
       }
     });
@@ -1452,7 +1288,7 @@ function bindActorTracker(activateTab, actionLookup) {
         wheelSensitivity: 0.3,
         boxSelectionEnabled: true,
         selectionType: "additive",
-        userPanningEnabled: true,
+        userPanningEnabled: false,
         autoungrabify: false,
       });
 
@@ -1889,53 +1725,6 @@ function bindActorTracker(activateTab, actionLookup) {
     });
 
     return { nodes, edges };
-  }
-
-function decorateVisibleNode(node, actorByIDMap, labelAnnotations) {
-  const colors = node.actorIds
-    .map((id) => actorByIDMap.get(id)?.color)
-    .filter(Boolean);
-  const baseColor = node.color || colors[0] || defaultNodeColor(node.kind);
-  const pies = buildSharedPie(colors);
-  const liveHoldingsAvailable = Boolean(node?.metrics?.live_holdings_available);
-  const liveHoldingsUSD = Number(node?.metrics?.live_holdings_usd_spot || 0);
-  const liveHoldingsStatus = String(node?.metrics?.live_holdings_status || "").trim().toLowerCase();
-  const nodeTotalBondRaw = String(node?.metrics?.node_total_bond || "").trim();
-  const liveHoldingsLabel =
-    node.kind === "node" && nodeTotalBondRaw
-      ? `${formatTokenAmountRaw(nodeTotalBondRaw)} RUNE`
-      : liveHoldingsAvailable
-      ? formatCompactUSD(liveHoldingsUSD)
-      : liveHoldingsStatus === "error"
-      ? "Unavailable"
-      : "";
-  const addr = String((node.metrics && node.metrics.address) || "").trim().toLowerCase();
-  const customLabel = labelAnnotations && addr ? labelAnnotations.get(addr) : null;
-  const displayLabel = customLabel || node.label || "";
-  const showChainLogo = !["actor", "pool", "external_cluster"].includes(node.kind);
-  const chainLogo = showChainLogo ? (CHAIN_LOGO_URLS[node.chain] || "none") : "none";
-  return {
-    ...node,
-    label: displayLabel,
-    displayLabel,
-    liveHoldingsLabel,
-    liveHoldingsStatus,
-    color: baseColor,
-    chainLogo,
-    borderColor: node.shared ? "#f4e7a3" : node.kind === "external_cluster" ? "#75d2ba" : "#a2c4ff",
-    inspect: {
-      id: node.id,
-      label: node.label,
-        kind: node.kind,
-        chain: node.chain,
-        stage: node.stage,
-        depth: node.depth,
-        actor_ids: node.actorIds,
-        raw_node_ids: node.rawNodeIDs,
-        metrics: node.metrics,
-      },
-      ...pies,
-    };
   }
 
   function graphStylesheet() {
@@ -2479,6 +2268,53 @@ function decorateVisibleNode(node, actorByIDMap, labelAnnotations) {
   refreshGraphRuns();
 }
 
+function decorateVisibleNode(node, actorByIDMap, labelAnnotations) {
+  const colors = node.actorIds
+    .map((id) => actorByIDMap.get(id)?.color)
+    .filter(Boolean);
+  const baseColor = node.color || colors[0] || defaultNodeColor(node.kind);
+  const pies = buildSharedPie(colors);
+  const liveHoldingsAvailable = Boolean(node?.metrics?.live_holdings_available);
+  const liveHoldingsUSD = Number(node?.metrics?.live_holdings_usd_spot || 0);
+  const liveHoldingsStatus = String(node?.metrics?.live_holdings_status || "").trim().toLowerCase();
+  const nodeTotalBondRaw = String(node?.metrics?.node_total_bond || "").trim();
+  const liveHoldingsLabel =
+    node.kind === "node" && nodeTotalBondRaw
+      ? `${formatTokenAmountRaw(nodeTotalBondRaw)} RUNE`
+      : liveHoldingsAvailable
+      ? formatCompactUSD(liveHoldingsUSD)
+      : liveHoldingsStatus === "error"
+      ? "Unavailable"
+      : "";
+  const addr = String((node.metrics && node.metrics.address) || "").trim().toLowerCase();
+  const customLabel = labelAnnotations && addr ? labelAnnotations.get(addr) : null;
+  const displayLabel = customLabel || node.label || "";
+  const showChainLogo = !["actor", "pool", "external_cluster"].includes(node.kind);
+  const chainLogo = showChainLogo ? (CHAIN_LOGO_URLS[node.chain] || "none") : "none";
+  return {
+    ...node,
+    label: displayLabel,
+    displayLabel,
+    liveHoldingsLabel,
+    liveHoldingsStatus,
+    color: baseColor,
+    chainLogo,
+    borderColor: node.shared ? "#f4e7a3" : node.kind === "external_cluster" ? "#75d2ba" : "#a2c4ff",
+    inspect: {
+      id: node.id,
+      label: node.label,
+      kind: node.kind,
+      chain: node.chain,
+      stage: node.stage,
+      depth: node.depth,
+      actor_ids: node.actorIds,
+      raw_node_ids: node.rawNodeIDs,
+      metrics: node.metrics,
+    },
+    ...pies,
+  };
+}
+
 function metaChip(label) {
   return `<span class="meta-chip">${escapeHTML(label)}</span>`;
 }
@@ -2773,15 +2609,1183 @@ function safeInit(name, initFn, fallback = undefined) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Address Explorer
+// ---------------------------------------------------------------------------
+function bindAddressExplorer(activateTab) {
+  const form = document.getElementById("explorer-form");
+  const addressInput = document.getElementById("explorer-address");
+  const minUSD = document.getElementById("explorer-min-usd");
+  const graphSummary = document.getElementById("explorer-query-summary");
+  const graphWarnings = document.getElementById("explorer-warnings");
+  const graphStats = document.getElementById("explorer-graph-stats");
+  const inspector = document.getElementById("explorer-inspector");
+  const actionsBody = document.getElementById("explorer-actions-body");
+  const graphContainer = document.getElementById("explorer-graph");
+  const contextMenu = document.getElementById("graph-context-menu");
+  const graphToolbar = document.getElementById("explorer-graph-toolbar");
+  const graphCard = graphContainer ? graphContainer.closest(".graph-card") : null;
+  const directionChooser = document.getElementById("explorer-direction-chooser");
+  const paginationBar = document.getElementById("explorer-pagination");
+  const loadedCountEl = document.getElementById("explorer-loaded-count");
+  const loadMoreBtn = document.getElementById("explorer-load-more");
+
+  if (
+    !ensureElements("bindAddressExplorer", {
+      form,
+      addressInput,
+      graphSummary,
+      graphWarnings,
+      graphStats,
+      inspector,
+      actionsBody,
+      graphContainer,
+      contextMenu,
+      directionChooser,
+      paginationBar,
+      loadedCountEl,
+      loadMoreBtn,
+    })
+  ) {
+    return;
+  }
+
+  // Explorer-specific state keys live on the shared `state` object.
+  state.explorerGraph = null;
+  state.explorerBaseGraph = null;
+  state.explorerCy = null;
+  state.explorerDirection = null;
+  state.explorerHasMore = false;
+  state.explorerNextOffset = 0;
+  state.explorerLoadedActions = 0;
+  state.explorerExpandedHopAddressMap = new Map();
+  state.explorerExpansionInFlight = false;
+  state.explorerViewport = null;
+
+  let explorerLabelLayer = null;
+  let explorerLabelFrame = 0;
+  let explorerNodeTapTimer = null;
+  let explorerLastTappedNodeID = "";
+  let explorerLastTappedAt = 0;
+  let explorerLastPaneContextMenuOpenedAt = 0;
+  const nodeDoubleTapWindowMS = 320;
+  let explorerContextMenuTarget = null;
+  let explorerContextMenuMode = "node";
+  let pendingAddress = "";
+
+  graphContainer.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (explorerGraphNodeAtClientPoint(e.clientX, e.clientY)) {
+      return;
+    }
+    showExplorerPaneContextMenu({ x: e.clientX, y: e.clientY });
+  });
+
+  function explorerGraphNodeAtClientPoint(clientX, clientY) {
+    if (!state.explorerCy) return null;
+    const rect = graphContainer.getBoundingClientRect();
+    const rx = clientX - rect.left;
+    const ry = clientY - rect.top;
+    if (rx < 0 || ry < 0 || rx > rect.width || ry > rect.height) return null;
+    const nodes = state.explorerCy.nodes();
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const node = nodes[i];
+      if (typeof node.visible === "function" && !node.visible()) continue;
+      const box = typeof node.renderedBoundingBox === "function" ? node.renderedBoundingBox({ includeLabels: false, includeOverlays: false }) : null;
+      if (box && rx >= box.x1 && rx <= box.x2 && ry >= box.y1 && ry <= box.y2) return node;
+    }
+    return null;
+  }
+
+  // --- Form submission ---
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const address = addressInput.value.trim();
+    if (!address) {
+      inspector.textContent = "Enter a wallet address to explore.";
+      return;
+    }
+    pendingAddress = address;
+    directionChooser.style.display = "none";
+    paginationBar.style.display = "none";
+    inspector.textContent = "Loading…";
+    graphSummary.innerHTML = "";
+    graphWarnings.innerHTML = "";
+    graphStats.innerHTML = "";
+    actionsBody.innerHTML = "";
+    clearExplorerGraphSurface();
+
+    try {
+      const resp = await callAPI("/api/address-explorer/graph", {
+        method: "POST",
+        body: {
+          address,
+          min_usd: Number(minUSD.value) || 0,
+          direction: "newest",
+          offset: 0,
+          batch_size: 10,
+        },
+      });
+
+      if (resp.has_more) {
+        // More than 500 txns — show direction chooser.
+        state.explorerGraph = resp;
+        state.explorerBaseGraph = resp;
+        state.explorerDirection = null;
+        directionChooser.style.display = "block";
+        inspector.textContent = `This address has more than 500 transactions. Choose loading direction.`;
+        // Render the initial batch while user decides.
+        state.explorerHasMore = resp.has_more;
+        state.explorerNextOffset = resp.next_offset;
+        state.explorerLoadedActions = resp.loaded_actions;
+        renderExplorerGraphResponse();
+        updatePaginationBar();
+        return;
+      }
+
+      // <= 500 txns — render directly.
+      state.explorerDirection = "newest";
+      state.explorerGraph = resp;
+      state.explorerBaseGraph = resp;
+      state.explorerHasMore = resp.has_more;
+      state.explorerNextOffset = resp.next_offset;
+      state.explorerLoadedActions = resp.loaded_actions;
+      state.explorerExpandedHopAddressMap = new Map();
+      renderExplorerGraphResponse();
+      updatePaginationBar();
+    } catch (err) {
+      inspector.textContent = `Explorer failed: ${String(err)}`;
+    }
+  });
+
+  // --- Direction chooser ---
+  directionChooser.addEventListener("click", async (e) => {
+    const btn = e.target instanceof Element ? e.target.closest("button[data-direction]") : null;
+    if (!btn) return;
+    const direction = btn.dataset.direction;
+    directionChooser.style.display = "none";
+
+    if (direction === "newest") {
+      // Already loaded newest-first — just confirm.
+      state.explorerDirection = "newest";
+      updatePaginationBar();
+      return;
+    }
+
+    // Oldest — need to re-fetch.
+    state.explorerDirection = "oldest";
+    inspector.textContent = "Reloading oldest transactions first…";
+    clearExplorerGraphSurface();
+
+    try {
+      const resp = await callAPI("/api/address-explorer/graph", {
+        method: "POST",
+        body: {
+          address: pendingAddress,
+          min_usd: Number(minUSD.value) || 0,
+          direction: "oldest",
+          offset: 0,
+          batch_size: 10,
+        },
+      });
+
+      state.explorerGraph = resp;
+      state.explorerBaseGraph = resp;
+      state.explorerHasMore = resp.has_more;
+      state.explorerNextOffset = resp.next_offset;
+      state.explorerLoadedActions = resp.loaded_actions;
+      state.explorerExpandedHopAddressMap = new Map();
+      renderExplorerGraphResponse();
+      updatePaginationBar();
+    } catch (err) {
+      inspector.textContent = `Explorer failed: ${String(err)}`;
+    }
+  });
+
+  // --- Load more ---
+  loadMoreBtn.addEventListener("click", async () => {
+    if (!state.explorerHasMore || !state.explorerDirection) return;
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.textContent = "Loading…";
+    inspector.textContent = "Loading next batch…";
+
+    try {
+      const resp = await callAPI("/api/address-explorer/graph", {
+        method: "POST",
+        body: {
+          address: pendingAddress,
+          min_usd: Number(minUSD.value) || 0,
+          direction: state.explorerDirection,
+          offset: state.explorerNextOffset,
+          batch_size: 10,
+        },
+      });
+
+      // Merge the new batch into the existing graph.
+      state.explorerGraph = mergeExplorerGraphResponse(state.explorerGraph, resp);
+      state.explorerBaseGraph = mergeExplorerGraphResponse(state.explorerBaseGraph, resp);
+      state.explorerHasMore = resp.has_more;
+      state.explorerNextOffset = resp.next_offset;
+      state.explorerLoadedActions += resp.loaded_actions;
+      if (state.explorerCy) {
+        state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+      }
+      renderExplorerGraphResponse();
+      updatePaginationBar();
+      inspector.textContent = `Loaded ${state.explorerLoadedActions} total actions.`;
+    } catch (err) {
+      inspector.textContent = `Load more failed: ${String(err)}`;
+    } finally {
+      loadMoreBtn.disabled = false;
+      loadMoreBtn.textContent = "Load next 500";
+    }
+  });
+
+  function updatePaginationBar() {
+    if (state.explorerDirection && (state.explorerHasMore || state.explorerLoadedActions > 0)) {
+      paginationBar.style.display = "flex";
+      loadedCountEl.textContent = `${state.explorerLoadedActions} actions loaded`;
+      loadMoreBtn.style.display = state.explorerHasMore ? "" : "none";
+    } else {
+      paginationBar.style.display = "none";
+    }
+  }
+
+  // --- Graph merge ---
+  function mergeExplorerGraphResponse(base, expansion) {
+    if (!base) return expansion;
+
+    function nodeMergeKey(node) {
+      if (!node) return "";
+      const metrics = node.metrics || {};
+      const address = String(metrics.address || "").trim().toLowerCase();
+      const pool = String(metrics.pool || "").trim().toUpperCase();
+      const chain = String(node.chain || "").trim().toUpperCase();
+      const kind = String(node.kind || "").trim().toLowerCase();
+      if (address) return `${kind}|${chain}|${address}`;
+      if (pool) return `${kind}|${pool}`;
+      return String(node.id || "");
+    }
+
+    function edgeMergeKey(edge, nodeAlias) {
+      const from = nodeAlias.get(edge.from) || edge.from;
+      const to = nodeAlias.get(edge.to) || edge.to;
+      let key = `${from}|${to}|${edge.action_key || edge.action_class}`;
+      if (edge.validator_address && String(edge.action_key || edge.action_class || "").toLowerCase().includes("rebond")) {
+        key += `|validator:${edge.validator_address}`;
+      }
+      return key;
+    }
+
+    const nodeMap = new Map();
+    const nodeAlias = new Map();
+    const nodeKeyToID = new Map();
+
+    function mergeNode(node) {
+      const mergeKey = nodeMergeKey(node);
+      const existingID = nodeKeyToID.get(mergeKey) || node.id;
+      nodeAlias.set(node.id, existingID);
+      const existing = nodeMap.get(existingID);
+      if (!existing) {
+        nodeKeyToID.set(mergeKey, existingID);
+        nodeMap.set(existingID, { ...node, id: existingID, metrics: { ...(node.metrics || {}) } });
+        return;
+      }
+      existing.depth = Math.min(Number(existing.depth || 0), Number(node.depth || 0));
+      existing.metrics = { ...(existing.metrics || {}), ...(node.metrics || {}) };
+    }
+
+    (base.nodes || []).forEach(mergeNode);
+    (expansion.nodes || []).forEach(mergeNode);
+
+    const edgeMap = new Map();
+    function addEdge(edge) {
+      const canonicalID = edgeMergeKey(edge, nodeAlias);
+      const existing = edgeMap.get(canonicalID);
+      if (!existing) {
+        edgeMap.set(canonicalID, {
+          ...edge,
+          id: canonicalID,
+          from: nodeAlias.get(edge.from) || edge.from,
+          to: nodeAlias.get(edge.to) || edge.to,
+          tx_ids: [...(edge.tx_ids || [])],
+          heights: [...(edge.heights || [])],
+          assets: (edge.assets || []).map((a) => ({ ...a })),
+        });
+        return;
+      }
+      const knownTxIDs = new Set(existing.tx_ids || []);
+      const hasNovel = (edge.tx_ids || []).some((t) => !knownTxIDs.has(t));
+      existing.tx_ids = uniqueStrings((existing.tx_ids || []).concat(edge.tx_ids || []));
+      existing.heights = uniqueNumbers((existing.heights || []).concat(edge.heights || [])).sort((a, b) => a - b);
+      existing.confidence = Math.max(Number(existing.confidence || 0), Number(edge.confidence || 0));
+      if (!hasNovel) return;
+      existing.usd_spot = Number(existing.usd_spot || 0) + Number(edge.usd_spot || 0);
+      const assetMap = new Map((existing.assets || []).map((a) => [`${a.asset}|${String(a.direction || "").toLowerCase()}`, { ...a }]));
+      (edge.assets || []).forEach((incoming) => {
+        const key = `${incoming.asset}|${String(incoming.direction || "").toLowerCase()}`;
+        const prior = assetMap.get(key);
+        if (!prior) { assetMap.set(key, { ...incoming }); return; }
+        prior.amount_raw = addRawAmountStrings(prior.amount_raw, incoming.amount_raw);
+        prior.usd_spot = Number(prior.usd_spot || 0) + Number(incoming.usd_spot || 0);
+        assetMap.set(key, prior);
+      });
+      existing.assets = Array.from(assetMap.values());
+    }
+    (base.edges || []).forEach(addEdge);
+    (expansion.edges || []).forEach(addEdge);
+
+    const actionKey = (a) => `${a.tx_id}|${a.action_key || a.action_class}|${a.from_node}|${a.to_node}`;
+    const actionMap = new Map((base.supporting_actions || []).map((a) => [actionKey(a), a]));
+    (expansion.supporting_actions || []).forEach((a) => { if (!actionMap.has(actionKey(a))) actionMap.set(actionKey(a), a); });
+
+    return {
+      ...base,
+      warnings: uniqueStrings((base.warnings || []).concat(expansion.warnings || [])),
+      nodes: Array.from(nodeMap.values()),
+      edges: Array.from(edgeMap.values()),
+      supporting_actions: Array.from(actionMap.values()),
+      stats: {
+        ...(base.stats || {}),
+        node_count: nodeMap.size,
+        edge_count: edgeMap.size,
+        supporting_action_count: actionMap.size,
+      },
+    };
+  }
+
+  // --- Render pipeline ---
+  function clearExplorerGraphSurface() {
+    if (explorerLabelFrame) {
+      window.cancelAnimationFrame(explorerLabelFrame);
+      explorerLabelFrame = 0;
+    }
+    explorerLabelLayer = null;
+    graphContainer.innerHTML = "";
+    if (state.explorerCy) {
+      state.explorerCy.destroy();
+      state.explorerCy = null;
+    }
+    inspector.textContent = "Select a node or edge in the graph.";
+  }
+
+  function renderExplorerGraphResponse() {
+    if (!state.explorerGraph) {
+      clearExplorerGraphSurface();
+      graphSummary.innerHTML = "";
+      graphWarnings.innerHTML = "";
+      graphStats.innerHTML = "";
+      actionsBody.innerHTML = "";
+      return;
+    }
+    renderExplorerSummary();
+    renderExplorerWarnings();
+    renderExplorerActions();
+    renderExplorerGraph();
+  }
+
+  function renderExplorerSummary() {
+    const q = state.explorerGraph.query || {};
+    const chips = [
+      metaChip(q.address ? shortHash(q.address) : ""),
+      metaChip(`${q.direction || "newest"} direction`),
+    ];
+    if (state.explorerExpandedHopAddressMap.size > 0) {
+      chips.push(metaChip(`+${state.explorerExpandedHopAddressMap.size} expanded edges`));
+    }
+    graphSummary.innerHTML = chips.join("");
+    graphStats.innerHTML = [
+      metaChip(`${(state.explorerGraph.stats || {}).node_count || 0} nodes`),
+      metaChip(`${(state.explorerGraph.stats || {}).edge_count || 0} edges`),
+      metaChip(`${(state.explorerGraph.stats || {}).supporting_action_count || 0} actions`),
+    ].join("");
+  }
+
+  function renderExplorerWarnings() {
+    const warnings = state.explorerGraph.warnings || [];
+    graphWarnings.innerHTML = warnings.length
+      ? warnings.map((w) => `<span class="warning-chip">${escapeHTML(w)}</span>`).join("")
+      : "";
+  }
+
+  function renderExplorerActions() {
+    const actions = state.explorerGraph.supporting_actions || [];
+    if (!actions.length) {
+      actionsBody.innerHTML = `<tr><td colspan="6" class="empty-state">No supporting actions.</td></tr>`;
+      return;
+    }
+    actionsBody.innerHTML = actions
+      .map(
+        (a) => `<tr>
+          <td>${escapeHTML(formatDateTime(a.time))}</td>
+          <td>${escapeHTML(a.action_label || a.action_class || "")}</td>
+          <td><span class="mono">${escapeHTML(shortHash(a.tx_id))}</span></td>
+          <td class="mono">${escapeHTML(a.primary_asset || "")}</td>
+          <td class="mono">${escapeHTML(a.amount_raw || "")}</td>
+          <td>${formatUSD(a.usd_spot)}</td>
+        </tr>`
+      )
+      .join("");
+  }
+
+  // --- Derive visible graph (simplified: no actor collapsing, no external cluster collapsing) ---
+  function explorerDeriveVisibleGraph(response) {
+    const rawNodes = response.nodes || [];
+    const rawEdges = response.edges || [];
+    const rawNodeByID = new Map(rawNodes.map((n) => [n.id, n]));
+    const incidentCounts = new Map();
+    const nodeUSD = new Map();
+    rawEdges.forEach((edge) => {
+      [edge.from, edge.to].forEach((id) => {
+        incidentCounts.set(id, (incidentCounts.get(id) || 0) + 1);
+        nodeUSD.set(id, (nodeUSD.get(id) || 0) + Number(edge.usd_spot || 0));
+      });
+    });
+
+    const blocklistedAddresses = new Set(state.blocklist.map((b) => String(b.normalized_address || "").toLowerCase()));
+    const asgardAddresses = new Set(
+      state.annotations.filter((a) => a.kind === "asgard_vault").map((a) => String(a.normalized_address || "").toLowerCase())
+    );
+    const labelAnnotations = new Map(
+      state.annotations
+        .filter((a) => a && a.kind === "label" && a.value !== null && a.value !== undefined)
+        .map((a) => [String(a.normalized_address || "").toLowerCase(), String(a.value)])
+    );
+    const hiddenAddresses = new Set([...blocklistedAddresses, ...asgardAddresses]);
+
+    function isHiddenAddress(node) {
+      const addr = String((node.metrics && node.metrics.address) || "").trim().toLowerCase();
+      return addr && hiddenAddresses.has(addr);
+    }
+
+    const visibleNodes = new Map();
+    const visibleEdges = new Map();
+
+    function mapNodeID(rawNode) {
+      if (!rawNode) return null;
+      if (isHiddenAddress(rawNode)) return null;
+      return rawNode.id;
+    }
+
+    function ensureVisibleNode(rawNode, mappedID) {
+      if (!mappedID) return;
+      const existing = visibleNodes.get(mappedID) || {
+        id: mappedID,
+        label: rawNode.label,
+        kind: rawNode.kind,
+        chain: rawNode.chain,
+        stage: rawNode.stage,
+        depth: rawNode.depth,
+        actorIds: [],
+        shared: false,
+        collapsed: false,
+        rawNodeIDs: [],
+        metrics: { ...(rawNode.metrics || {}), live_holdings_usd_spot: 0 },
+        color: rawNode.kind === "explorer_target" ? "#e67e22" : defaultNodeColor(rawNode.kind),
+      };
+      if (!existing.rawNodeIDs.includes(rawNode.id)) {
+        existing.rawNodeIDs.push(rawNode.id);
+        existing.depth = Math.min(existing.depth, rawNode.depth);
+        existing.metrics.live_holdings_usd_spot =
+          Number(existing.metrics.live_holdings_usd_spot || 0) + Number(rawNode?.metrics?.live_holdings_usd_spot || 0);
+        existing.metrics.live_holdings_available =
+          Boolean(existing.metrics.live_holdings_available) || Boolean(rawNode?.metrics?.live_holdings_available);
+        existing.metrics.live_holdings_status = mergeLiveHoldingsStatus(
+          existing.metrics.live_holdings_status,
+          rawNode?.metrics?.live_holdings_status
+        );
+      }
+      visibleNodes.set(mappedID, existing);
+    }
+
+    rawNodes.forEach((n) => ensureVisibleNode(n, mapNodeID(n)));
+
+    rawEdges.forEach((rawEdge) => {
+      const sourceNode = rawNodeByID.get(rawEdge.from);
+      const targetNode = rawNodeByID.get(rawEdge.to);
+      const from = mapNodeID(sourceNode);
+      const to = mapNodeID(targetNode);
+      if (!from || !to || from === to) return;
+      ensureVisibleNode(sourceNode, from);
+      ensureVisibleNode(targetNode, to);
+
+      const edgeID = `${from}|${to}|${rawEdge.action_key || rawEdge.action_class}`;
+      const existing = visibleEdges.get(edgeID) || {
+        id: edgeID,
+        source: from,
+        target: to,
+        actionClass: rawEdge.action_class,
+        actionKey: rawEdge.action_key || rawEdge.action_class,
+        actionLabel: rawEdge.action_label || rawEdge.action_class,
+        actionDomain: rawEdge.action_domain || rawEdge.action_class,
+        validatorAddress: rawEdge.validator_address || "",
+        validatorLabel: rawEdge.validator_label || "",
+        contractType: rawEdge.contract_type || "",
+        contractProtocol: rawEdge.contract_protocol || "",
+        usdSpot: 0,
+        actorIds: [],
+        rawEdgeIDs: [],
+        txCount: 0,
+        txIDs: [],
+        assetTotals: {},
+        inspect: {
+          action_class: rawEdge.action_class,
+          action_key: rawEdge.action_key || rawEdge.action_class,
+          action_label: rawEdge.action_label || rawEdge.action_class,
+          contract_type: rawEdge.contract_type || "",
+          contract_protocol: rawEdge.contract_protocol || "",
+          validator_address: rawEdge.validator_address || "",
+          validator_label: rawEdge.validator_label || "",
+          edges: [],
+        },
+      };
+      existing.usdSpot += Number(rawEdge.usd_spot || 0);
+      existing.rawEdgeIDs.push(rawEdge.id);
+      existing.txIDs = uniqueStrings(existing.txIDs.concat(rawEdge.tx_ids || []));
+      existing.txCount = existing.txIDs.length;
+      if (!existing.validatorAddress) existing.validatorAddress = rawEdge.validator_address || "";
+      if (!existing.validatorLabel) existing.validatorLabel = rawEdge.validator_label || "";
+      (rawEdge.assets || []).forEach((av) => {
+        const bucketKey = `${av.asset || "THOR.RUNE"}|${String(av.direction || "").toLowerCase()}`;
+        const bucket = existing.assetTotals[bucketKey] || { asset: av.asset || "THOR.RUNE", direction: String(av.direction || "").toLowerCase(), amountRaw: "0", usdSpot: 0, tokenSymbol: "" };
+        bucket.amountRaw = addRawAmountStrings(bucket.amountRaw, String(av.amount_raw || "0"));
+        bucket.usdSpot += Number(av.usd_spot || 0);
+        if (!bucket.tokenSymbol && av.token_symbol) bucket.tokenSymbol = av.token_symbol;
+        existing.assetTotals[bucketKey] = bucket;
+      });
+      existing.inspect.edges.push(rawEdge);
+      existing.width = edgeWidth(existing.usdSpot);
+      visibleEdges.set(edgeID, existing);
+    });
+
+    const emptyActorMap = new Map();
+    const nodes = Array.from(visibleNodes.values()).map((n) => decorateVisibleNode(n, emptyActorMap, labelAnnotations));
+    const edges = Array.from(visibleEdges.values()).map((edge) => {
+      const aggregatedAssets = Object.entries(edge.assetTotals)
+        .map(([, b]) => ({ asset: b.asset, direction: b.direction || "", amount_raw: b.amountRaw, usd_spot: b.usdSpot, token_symbol: b.tokenSymbol || "" }))
+        .sort((a, b) => Number(b.usd_spot || 0) - Number(a.usd_spot || 0));
+      const tokenSummary = edge.actionClass === "swaps" ? formatSwapTokenSummary(aggregatedAssets) : formatEdgeTokenSummary(aggregatedAssets);
+      const usdSummary = formatUSD(edge.usdSpot);
+      const validatorSuffix = edge.validatorLabel || edge.validatorAddress ? ` via ${edge.validatorLabel || shortHash(edge.validatorAddress)}` : "";
+      const actionLabel = edge.actionLabel || edge.actionClass;
+      const edgeActionLabel = actionLabel.toLowerCase().includes(" via ") ? actionLabel : `${actionLabel}${validatorSuffix}`;
+      const edgeLabel = edge.actionClass === "ownership" ? "" : `${edgeActionLabel} · ${tokenSummary}\n${usdSummary}`;
+      return {
+        ...edge,
+        edgeLabel,
+        lineColor: edgeColor(edge.actionClass),
+        inspect: {
+          from: edge.source,
+          to: edge.target,
+          action_class: edge.actionClass,
+          action_key: edge.actionKey,
+          action_label: edgeActionLabel,
+          action_domain: edge.actionDomain,
+          validator_address: edge.validatorAddress || "",
+          validator_label: edge.validatorLabel || "",
+          contract_type: edge.contractType,
+          contract_protocol: edge.contractProtocol,
+          usd_spot: edge.usdSpot,
+          tx_ids: edge.txIDs,
+          raw_edge_ids: edge.rawEdgeIDs,
+          aggregated_assets: aggregatedAssets,
+        },
+      };
+    });
+
+    return { nodes, edges };
+  }
+
+  function mergeLiveHoldingsStatus(current, incoming) {
+    const c = String(current || "").trim().toLowerCase();
+    const i = String(incoming || "").trim().toLowerCase();
+    if (c === "available" || i === "available") return "available";
+    if (c === "error" || i === "error") return "error";
+    return c || i;
+  }
+
+  // --- Graph stylesheet (adds explorer_target style) ---
+  function explorerGraphStylesheet() {
+    return [
+      {
+        selector: "node",
+        style: {
+          label: "",
+          color: "#f5fbff",
+          "background-color": "data(color)",
+          "background-image": "data(chainLogo)",
+          "background-fit": "contain",
+          "background-width": "60%",
+          "background-height": "60%",
+          "background-opacity": 0.3,
+          "background-clip": "node",
+          width: 58,
+          height: 58,
+          "font-size": 11,
+          "font-weight": 700,
+          "text-wrap": "wrap",
+          "text-max-width": 110,
+          "text-valign": "center",
+          "text-halign": "center",
+          "border-width": 2,
+          "border-color": "data(borderColor)",
+          "overlay-padding": 8,
+          "pie-size": "76%",
+          "pie-1-background-color": "data(pie1Color)",
+          "pie-1-background-size": "data(pie1Size)",
+          "pie-2-background-color": "data(pie2Color)",
+          "pie-2-background-size": "data(pie2Size)",
+          "pie-3-background-color": "data(pie3Color)",
+          "pie-3-background-size": "data(pie3Size)",
+          "pie-4-background-color": "data(pie4Color)",
+          "pie-4-background-size": "data(pie4Size)",
+        },
+      },
+      { selector: "node:selected", style: { "border-width": 4, "border-color": "#ffdd44", "overlay-color": "rgba(255,221,68,0.15)", "overlay-opacity": 0.3 } },
+      { selector: "node[kind = 'explorer_target']", style: { shape: "hexagon", width: 110, height: 100, "background-color": "#e67e22", "border-color": "#f5c76e", "border-width": 4, "font-size": 13 } },
+      { selector: "node[kind = 'pool']", style: { shape: "diamond", width: 84, height: 84, "background-color": "#1e4f8f" } },
+      { selector: "node[kind = 'actor_address'], node[kind = 'external_address']", style: { shape: "ellipse", width: 62, height: 62 } },
+      { selector: "node[kind = 'node']", style: { shape: "octagon", width: 94, height: 94, "background-color": "#c86b1f", "border-color": "#ffe0b8", "border-width": 4, color: "#fff7ea", "font-size": 12 } },
+      { selector: "node[kind = 'contract_address']", style: { shape: "round-rectangle", width: 108, height: 60, "background-color": "#915a2b" } },
+      { selector: "node[kind = 'bond_address']", style: { shape: "tag", "background-color": "#654590" } },
+      { selector: "node[kind = 'inbound'], node[kind = 'router']", style: { shape: "round-rectangle", "background-color": "#176666" } },
+      { selector: "node[kind = 'external_cluster']", style: { shape: "barrel", width: 120, height: 56, "background-color": "#164a47" } },
+      {
+        selector: "edge",
+        style: {
+          label: "data(edgeLabel)",
+          width: "data(width)",
+          "line-color": "data(lineColor)",
+          "target-arrow-color": "data(lineColor)",
+          "target-arrow-shape": "triangle",
+          "curve-style": "bezier",
+          "arrow-scale": 0.95,
+          opacity: 0.82,
+          color: "#d9ecff",
+          "font-size": 9,
+          "text-wrap": "wrap",
+          "text-max-width": 190,
+          "text-rotation": "autorotate",
+          "text-background-color": "rgba(7, 16, 31, 0.88)",
+          "text-background-opacity": 1,
+          "text-background-shape": "roundrectangle",
+          "text-background-padding": "3px",
+          "text-events": "no",
+          "text-margin-y": -8,
+        },
+      },
+      { selector: "edge[actionClass = 'ownership']", style: { label: "", width: 1.4, "line-style": "dashed", "line-color": "#7a94bb", "target-arrow-color": "#7a94bb", opacity: 0.5 } },
+    ];
+  }
+
+  // --- ELK layout ---
+  async function explorerApplyElkLayout(cy, nodes) {
+    const elk = new ELK();
+    const graph = {
+      id: "root",
+      layoutOptions: {
+        "elk.algorithm": "layered",
+        "elk.direction": "RIGHT",
+        "elk.edgeRouting": "POLYLINE",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "110",
+        "elk.spacing.nodeNode": "42",
+        "elk.padding": "[top=32,left=32,bottom=32,right=32]",
+      },
+      children: nodes.map((n) => ({
+        id: n.id,
+        width: n.kind === "explorer_target" ? 120 : n.kind === "pool" ? 96 : 84,
+        height: n.kind === "explorer_target" ? 108 : n.kind === "pool" ? 96 : 72,
+      })),
+      edges: cy.edges().toArray().map((e) => ({
+        id: e.id(),
+        sources: [e.data("source")],
+        targets: [e.data("target")],
+      })),
+    };
+    const result = await elk.layout(graph);
+    const positions = new Map((result.children || []).map((c) => [c.id, { x: c.x, y: c.y }]));
+    cy.layout({
+      name: "preset",
+      fit: false,
+      animate: false,
+      positions(node) { return positions.get(node.id()) || { x: node.data("depth") * 180, y: 80 }; },
+    }).run();
+  }
+
+  // --- Node label rendering ---
+  function ensureExplorerLabelLayer() {
+    if (explorerLabelLayer && explorerLabelLayer.isConnected) return explorerLabelLayer;
+    explorerLabelLayer = document.createElement("div");
+    explorerLabelLayer.className = "graph-label-layer";
+    graphContainer.appendChild(explorerLabelLayer);
+    return explorerLabelLayer;
+  }
+
+  function renderExplorerNodeLabels() {
+    if (!state.explorerCy) { explorerLabelLayer = null; return; }
+    const layer = ensureExplorerLabelLayer();
+    const width = graphContainer.clientWidth;
+    const height = graphContainer.clientHeight;
+    const viewportPadding = 140;
+    const zoom = Number(state.explorerCy.zoom() || 1);
+    const labelScale = Math.max(0.3, Math.min(1.35, zoom));
+    const labelFontPx = 11.84 * labelScale;
+    const liveFontPx = 10.88 * labelScale;
+    const labelMaxWidthPx = Math.max(48, Math.min(220, 150 * labelScale));
+    const labelGapPx = Math.max(2, 8 * labelScale);
+    const html = [];
+    state.explorerCy.nodes().forEach((node) => {
+      const data = node.data();
+      const displayLabel = String(data.displayLabel || "").trim();
+      const liveHoldingsLabel = String(data.liveHoldingsLabel || "").trim();
+      if (!displayLabel && !liveHoldingsLabel) return;
+      const renderedPos = node.renderedPosition();
+      if (!renderedPos) return;
+      if (renderedPos.x < -viewportPadding || renderedPos.x > width + viewportPadding || renderedPos.y < -viewportPadding || renderedPos.y > height + viewportPadding) return;
+      const rh = typeof node.renderedOuterHeight === "function" ? Number(node.renderedOuterHeight() || 0) : typeof node.renderedHeight === "function" ? Number(node.renderedHeight() || 0) : 0;
+      const topY = renderedPos.y - rh / 2 - labelGapPx;
+      const bottomY = renderedPos.y + rh / 2 + labelGapPx;
+      if (displayLabel) {
+        html.push(`<div class="graph-node-text graph-node-label" style="left:${renderedPos.x.toFixed(1)}px;top:${topY.toFixed(1)}px;font-size:${labelFontPx.toFixed(2)}px;max-width:${labelMaxWidthPx.toFixed(1)}px;">${escapeHTML(displayLabel)}</div>`);
+      }
+      if (liveHoldingsLabel) {
+        const uc = data.liveHoldingsStatus === "error" ? " is-unavailable" : "";
+        html.push(`<div class="graph-node-text graph-node-live${uc}" style="left:${renderedPos.x.toFixed(1)}px;top:${bottomY.toFixed(1)}px;font-size:${liveFontPx.toFixed(2)}px;max-width:${labelMaxWidthPx.toFixed(1)}px;">${escapeHTML(liveHoldingsLabel)}</div>`);
+      }
+    });
+    layer.innerHTML = html.join("");
+  }
+
+  function scheduleExplorerLabelRender() {
+    if (!state.explorerCy) { explorerLabelLayer = null; return; }
+    if (explorerLabelFrame) return;
+    explorerLabelFrame = window.requestAnimationFrame(() => {
+      explorerLabelFrame = 0;
+      renderExplorerNodeLabels();
+    });
+  }
+
+  // --- Render graph ---
+  function renderExplorerGraph() {
+    const visible = explorerDeriveVisibleGraph(state.explorerGraph);
+    if (!visible.nodes.length) {
+      clearExplorerGraphSurface();
+      graphContainer.innerHTML = `<div class="empty-state">No graphable flows found for this address.</div>`;
+      return;
+    }
+
+    const elements = [
+      ...visible.nodes.map((n) => ({ data: n })),
+      ...visible.edges.map((e) => ({ data: e })),
+    ];
+
+    if (!state.explorerCy) {
+      graphContainer.innerHTML = "";
+      state.explorerCy = cytoscape({
+        container: graphContainer,
+        elements,
+        style: explorerGraphStylesheet(),
+        wheelSensitivity: 0.3,
+        boxSelectionEnabled: true,
+        selectionType: "additive",
+        userPanningEnabled: false,
+        autoungrabify: false,
+      });
+
+      // Middle-mouse panning
+      let middlePanning = false;
+      let panStart = { x: 0, y: 0 };
+      let panOrigin = { x: 0, y: 0 };
+      graphContainer.addEventListener("mousedown", (e) => {
+        if (e.button === 1) { middlePanning = true; panStart = { x: e.clientX, y: e.clientY }; panOrigin = { ...state.explorerCy.pan() }; e.preventDefault(); }
+      });
+      graphContainer.addEventListener("mousemove", (e) => {
+        if (middlePanning) state.explorerCy.pan({ x: panOrigin.x + (e.clientX - panStart.x), y: panOrigin.y + (e.clientY - panStart.y) });
+      });
+      graphContainer.addEventListener("mouseup", (e) => { if (e.button === 1) middlePanning = false; });
+      graphContainer.addEventListener("mouseleave", () => { middlePanning = false; });
+      graphContainer.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
+      graphContainer.addEventListener("wheel", (e) => { if (state.explorerCy) e.preventDefault(); }, { passive: false });
+
+      // Node tap / double-tap
+      state.explorerCy.on("tap", "node", (event) => {
+        const data = event.target.data();
+        const nodeID = String(event.target.id() || "");
+        const now = Date.now();
+        if (nodeID && nodeID === explorerLastTappedNodeID && now - explorerLastTappedAt <= nodeDoubleTapWindowMS) {
+          if (explorerNodeTapTimer) { clearTimeout(explorerNodeTapTimer); explorerNodeTapTimer = null; }
+          explorerLastTappedNodeID = "";
+          explorerLastTappedAt = 0;
+          void expandOneEdgeFromNode(data);
+          return;
+        }
+        explorerLastTappedNodeID = nodeID;
+        explorerLastTappedAt = now;
+        if (explorerNodeTapTimer) { clearTimeout(explorerNodeTapTimer); explorerNodeTapTimer = null; }
+        explorerNodeTapTimer = setTimeout(() => {
+          explorerNodeTapTimer = null;
+          explorerLastTappedNodeID = "";
+          explorerLastTappedAt = 0;
+          inspector.textContent = JSON.stringify(data.inspect, null, 2);
+        }, nodeDoubleTapWindowMS);
+      });
+
+      // Context menu on node
+      state.explorerCy.on("cxttap", "node", (event) => {
+        const data = event.target.data();
+        const rect = graphContainer.getBoundingClientRect();
+        const rp = event.renderedPosition || event.target.renderedPosition();
+        showExplorerContextMenu(data, { x: rect.left + rp.x, y: rect.top + rp.y });
+      });
+
+      // Context menu on background
+      state.explorerCy.on("cxttap", (event) => {
+        if (event.target !== state.explorerCy) return;
+        if (Date.now() - explorerLastPaneContextMenuOpenedAt < 120) return;
+        const rect = graphContainer.getBoundingClientRect();
+        const rp = event.renderedPosition || { x: graphContainer.clientWidth / 2, y: graphContainer.clientHeight / 2 };
+        showExplorerPaneContextMenu({ x: rect.left + rp.x, y: rect.top + rp.y });
+      });
+
+      state.explorerCy.on("tap", "edge", (event) => {
+        inspector.textContent = JSON.stringify(event.target.data().inspect, null, 2);
+      });
+      state.explorerCy.on("zoom pan", () => {
+        state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+      });
+      state.explorerCy.on("render zoom pan resize add remove data position", () => {
+        scheduleExplorerLabelRender();
+      });
+    } else {
+      state.explorerCy.elements().remove();
+      state.explorerCy.add(elements);
+    }
+
+    explorerApplyElkLayout(state.explorerCy, visible.nodes)
+      .then(() => {
+        if (state.explorerViewport) {
+          state.explorerCy.zoom(state.explorerViewport.zoom);
+          state.explorerCy.pan(state.explorerViewport.pan);
+        } else {
+          state.explorerCy.fit(state.explorerCy.elements(), 40);
+        }
+        scheduleExplorerLabelRender();
+      })
+      .catch((err) => {
+        inspector.textContent = `Layout failed: ${String(err)}`;
+      });
+  }
+
+  // --- Expand one edge (one hop from neighbor node) ---
+  function explorerNodeAddress(nodeData) {
+    const addr = String((nodeData.metrics && nodeData.metrics.address) || "").trim();
+    if (addr) return addr;
+    const seeds = explorerAddressesForNodeExpansion(nodeData);
+    return seeds.length === 1 ? seeds[0].address : "";
+  }
+
+  function explorerAddressesForNodeExpansion(nodeData) {
+    if (!state.explorerGraph) return [];
+    const rawNodeByID = new Map((state.explorerGraph.nodes || []).map((n) => [n.id, n]));
+    const out = [];
+    const rawNodeIDs = Array.isArray(nodeData.rawNodeIDs) ? nodeData.rawNodeIDs : [];
+    rawNodeIDs.forEach((rawID) => {
+      const rawNode = rawNodeByID.get(rawID);
+      const candidate = rawNode && rawNode.metrics ? String(rawNode.metrics.address || "").trim() : "";
+      if (candidate) out.push(buildFrontierSeed(candidate, rawNode?.chain));
+    });
+    const seen = new Map();
+    out.forEach((seed) => { if (seed && seed.encoded && !seen.has(seed.encoded)) seen.set(seed.encoded, seed); });
+    return Array.from(seen.values());
+  }
+
+  function explorerRawNodesForVisibleNode(nodeData) {
+    if (!state.explorerGraph) return [];
+    const rawNodeByID = new Map((state.explorerGraph.nodes || []).map((n) => [String(n.id), n]));
+    const requestedIDs = Array.isArray(nodeData.rawNodeIDs) && nodeData.rawNodeIDs.length ? nodeData.rawNodeIDs.map((id) => String(id)) : [String(nodeData.id || "")];
+    const seen = new Set();
+    const out = [];
+    requestedIDs.forEach((rawID) => {
+      const rawNode = rawNodeByID.get(rawID);
+      if (rawNode && !seen.has(rawID)) { seen.add(rawID); out.push(rawNode); }
+    });
+    return out;
+  }
+
+  async function expandOneEdgeFromNode(nodeData) {
+    if (!state.explorerBaseGraph) return;
+    if (state.explorerExpansionInFlight) return;
+
+    const seeds = explorerAddressesForNodeExpansion(nodeData);
+    if (!seeds.length) {
+      inspector.textContent = "Selected node has no address context to expand.";
+      return;
+    }
+
+    const newlyAddedKeys = [];
+    seeds.forEach((seed) => {
+      const key = addressKey(seed.encoded);
+      if (!key || state.explorerExpandedHopAddressMap.has(key)) return;
+      state.explorerExpandedHopAddressMap.set(key, seed.encoded);
+      newlyAddedKeys.push(key);
+    });
+    if (!newlyAddedKeys.length) {
+      inspector.textContent = "Already expanded from this node.";
+      return;
+    }
+
+    state.explorerExpansionInFlight = true;
+    if (state.explorerCy) {
+      state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+    }
+    inspector.textContent = `Expanding one edge from ${seeds.length} address(es)…`;
+
+    try {
+      const expansion = await callAPI("/api/actor-tracker/expand", {
+        method: "POST",
+        body: {
+          actor_ids: [],
+          start_time: new Date(0).toISOString(),
+          end_time: new Date().toISOString(),
+          flow_types: [...DEFAULT_FLOW_TYPES],
+          min_usd: Number(minUSD.value || 0),
+          collapse_external: false,
+          display_mode: "combined",
+          addresses: Array.from(state.explorerExpandedHopAddressMap.values()),
+        },
+      });
+      state.explorerGraph = mergeExplorerGraphResponse(state.explorerBaseGraph, expansion);
+      renderExplorerGraphResponse();
+      inspector.textContent = `Expanded from ${state.explorerExpandedHopAddressMap.size} address seed(s).`;
+    } catch (err) {
+      newlyAddedKeys.forEach((key) => state.explorerExpandedHopAddressMap.delete(key));
+      inspector.textContent = `Edge expansion failed: ${String(err)}`;
+    } finally {
+      state.explorerExpansionInFlight = false;
+    }
+  }
+
+  // --- Live value refresh ---
+  async function explorerRefreshLiveValueForNode(nodeData) {
+    if (!state.explorerGraph) { inspector.textContent = "Explore an address first."; return; }
+    const rawNodes = explorerRawNodesForVisibleNode(nodeData);
+    if (!rawNodes.length) { inspector.textContent = "No live value context."; return; }
+    if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+    inspector.textContent = `Refreshing live value for ${rawNodes.length} node(s)…`;
+    try {
+      const response = await callAPI("/api/actor-tracker/live-holdings", { method: "POST", body: { nodes: rawNodes } });
+      const refreshedNodes = Array.isArray(response.nodes) ? response.nodes : [];
+      const refreshedNodeByID = new Map(refreshedNodes.map((n) => [String(n.id), n]));
+      function applyRefresh(graph) {
+        if (!graph || !Array.isArray(graph.nodes)) return;
+        graph.nodes = graph.nodes.map((n) => {
+          const r = refreshedNodeByID.get(String(n.id));
+          return r ? { ...n, metrics: { ...(n.metrics || {}), ...(r.metrics || {}) } } : n;
+        });
+      }
+      applyRefresh(state.explorerBaseGraph);
+      applyRefresh(state.explorerGraph);
+      renderExplorerGraphResponse();
+      inspector.textContent = `Refreshed ${refreshedNodes.length} node(s).`;
+    } catch (err) {
+      inspector.textContent = `Live value refresh failed: ${String(err)}`;
+    }
+  }
+
+  async function explorerRefreshUnavailableNodes() {
+    if (!state.explorerGraph) { inspector.textContent = "Explore an address first."; return; }
+    const unavailable = (state.explorerGraph.nodes || []).filter((n) => {
+      const s = String(n?.metrics?.live_holdings_status || "").trim().toLowerCase();
+      return s === "error" || s === "unavailable";
+    });
+    if (!unavailable.length) { inspector.textContent = "No unavailable nodes."; return; }
+    if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+    inspector.textContent = `Checking ${unavailable.length} unavailable node(s)…`;
+    try {
+      const response = await callAPI("/api/actor-tracker/live-holdings", { method: "POST", body: { nodes: unavailable } });
+      const refreshedNodes = Array.isArray(response.nodes) ? response.nodes : [];
+      const refreshedNodeByID = new Map(refreshedNodes.map((n) => [String(n.id), n]));
+      function applyRefresh(graph) {
+        if (!graph || !Array.isArray(graph.nodes)) return;
+        graph.nodes = graph.nodes.map((n) => {
+          const r = refreshedNodeByID.get(String(n.id));
+          return r ? { ...n, metrics: { ...(n.metrics || {}), ...(r.metrics || {}) } } : n;
+        });
+      }
+      applyRefresh(state.explorerBaseGraph);
+      applyRefresh(state.explorerGraph);
+      renderExplorerGraphResponse();
+      inspector.textContent = `Checked ${unavailable.length}; refreshed ${refreshedNodes.length}.`;
+    } catch (err) {
+      inspector.textContent = `Unavailable check failed: ${String(err)}`;
+    }
+  }
+
+  // --- Context menu for explorer graph ---
+  function showExplorerContextMenu(nodeData, pagePos) {
+    explorerContextMenuTarget = nodeData;
+    explorerContextMenuMode = "node";
+    // Swap "Expand one hop" label to "Expand one edge"
+    const expandBtn = contextMenu.querySelector('[data-action="expand-hop"]');
+    if (expandBtn) expandBtn.textContent = "Expand one edge";
+    updateExplorerContextMenuButtons(explorerContextMenuMode);
+    contextMenu.style.display = "block";
+    const menuRect = contextMenu.getBoundingClientRect();
+    contextMenu.style.left = `${Math.min(pagePos.x, window.innerWidth - menuRect.width - 8)}px`;
+    contextMenu.style.top = `${Math.min(pagePos.y, window.innerHeight - menuRect.height - 8)}px`;
+  }
+
+  function showExplorerPaneContextMenu(pagePos) {
+    explorerContextMenuTarget = null;
+    explorerContextMenuMode = "pane";
+    const expandBtn = contextMenu.querySelector('[data-action="expand-hop"]');
+    if (expandBtn) expandBtn.textContent = "Expand one edge";
+    updateExplorerContextMenuButtons(explorerContextMenuMode);
+    contextMenu.style.display = "block";
+    const menuRect = contextMenu.getBoundingClientRect();
+    contextMenu.style.left = `${Math.min(pagePos.x, window.innerWidth - menuRect.width - 8)}px`;
+    contextMenu.style.top = `${Math.min(pagePos.y, window.innerHeight - menuRect.height - 8)}px`;
+    explorerLastPaneContextMenuOpenedAt = Date.now();
+  }
+
+  function updateExplorerContextMenuButtons(mode) {
+    const nm = String(mode || "").trim().toLowerCase();
+    contextMenu.querySelectorAll("button[data-action]").forEach((btn) => {
+      const scopes = String(btn.dataset.scope || "node,pane").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
+      btn.style.display = scopes.includes(nm) ? "block" : "none";
+    });
+  }
+
+  // Override the shared context menu click handler when explorer tab is active.
+  contextMenu.addEventListener("click", async (e) => {
+    if (!document.querySelector('[data-panel="address-explorer"].active')) return;
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+    const button = target.closest("button[data-action]");
+    if (!button) return;
+    const action = button.dataset.action;
+    const data = explorerContextMenuTarget;
+    contextMenu.style.display = "none";
+    explorerContextMenuTarget = null;
+
+    if (action === "check-unavailable") {
+      e.stopImmediatePropagation();
+      await explorerRefreshUnavailableNodes();
+      return;
+    }
+    if (!data) return;
+    e.stopImmediatePropagation();
+    const address = explorerNodeAddress(data);
+
+    switch (action) {
+      case "explorer": {
+        const url = explorerURLForAddress(address, data.chain);
+        if (url) window.open(url, "_blank");
+        break;
+      }
+      case "copy-address":
+        if (address) navigator.clipboard.writeText(address).then(() => { inspector.textContent = `Copied: ${address}`; });
+        break;
+      case "refresh-live-value":
+        await explorerRefreshLiveValueForNode(data);
+        break;
+      case "expand-hop":
+        void expandOneEdgeFromNode(data);
+        break;
+      case "label-node": {
+        const label = prompt("Enter label for this node:", "");
+        if (label !== null && address) {
+          try {
+            await callAPI("/api/address-annotations", { method: "PUT", body: { address, kind: "label", value: label } });
+            if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+            renderExplorerGraph();
+          } catch (err) { inspector.textContent = `Label failed: ${String(err)}`; }
+        }
+        break;
+      }
+      case "mark-asgard":
+        if (address) {
+          try {
+            await callAPI("/api/address-annotations", { method: "PUT", body: { address, kind: "asgard_vault", value: "true" } });
+            if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+            renderExplorerGraph();
+          } catch (err) { inspector.textContent = `Mark Asgard failed: ${String(err)}`; }
+        }
+        break;
+      case "remove-node":
+        if (address) {
+          try {
+            await callAPI("/api/address-blocklist", { method: "POST", body: { address, reason: "Removed from graph" } });
+            if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+            renderExplorerGraph();
+          } catch (err) { inspector.textContent = `Remove failed: ${String(err)}`; }
+        }
+        break;
+    }
+  });
+
+  // --- Keyboard shortcuts for explorer ---
+  document.addEventListener("keydown", (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (!document.querySelector('[data-panel="address-explorer"].active')) return;
+    if (!state.explorerCy) return;
+    switch (e.key) {
+      case "+": case "=":
+        e.preventDefault();
+        state.explorerCy.zoom({ level: state.explorerCy.zoom() * 1.3, renderedPosition: { x: graphContainer.clientWidth / 2, y: graphContainer.clientHeight / 2 } });
+        break;
+      case "-": case "_":
+        e.preventDefault();
+        state.explorerCy.zoom({ level: state.explorerCy.zoom() / 1.3, renderedPosition: { x: graphContainer.clientWidth / 2, y: graphContainer.clientHeight / 2 } });
+        break;
+      case "0":
+        e.preventDefault();
+        state.explorerCy.fit(state.explorerCy.elements(), 40);
+        state.explorerViewport = null;
+        break;
+      case "f": case "F":
+        e.preventDefault();
+        if (!graphCard) break;
+        const isFs = graphCard.classList.toggle("fullscreen");
+        document.body.style.overflow = isFs ? "hidden" : "";
+        if (state.explorerCy) { state.explorerCy.resize(); if (!isFs) state.explorerCy.fit(state.explorerCy.elements(), 40); scheduleExplorerLabelRender(); }
+        break;
+    }
+  });
+
+  // --- Graph toolbar ---
+  if (graphToolbar) {
+    graphToolbar.addEventListener("click", (e) => {
+      const button = e.target instanceof Element ? e.target.closest("button[data-graph-action]") : null;
+      if (!button || !state.explorerCy) return;
+      switch (button.dataset.graphAction) {
+        case "zoom-in":
+          state.explorerCy.zoom({ level: state.explorerCy.zoom() * 1.3, renderedPosition: { x: graphContainer.clientWidth / 2, y: graphContainer.clientHeight / 2 } });
+          break;
+        case "zoom-out":
+          state.explorerCy.zoom({ level: state.explorerCy.zoom() / 1.3, renderedPosition: { x: graphContainer.clientWidth / 2, y: graphContainer.clientHeight / 2 } });
+          break;
+        case "fit":
+          state.explorerCy.fit(state.explorerCy.elements(), 40);
+          state.explorerViewport = null;
+          break;
+        case "fullscreen":
+          if (!graphCard) break;
+          const isFs = graphCard.classList.toggle("fullscreen");
+          document.body.style.overflow = isFs ? "hidden" : "";
+          if (state.explorerCy) { state.explorerCy.resize(); if (!isFs) state.explorerCy.fit(state.explorerCy.elements(), 40); scheduleExplorerLabelRender(); }
+          break;
+      }
+    });
+  }
+}
+
 const activateTab = safeInit("bindTabs", bindTabs, () => {});
 safeInit("bindHealth", bindHealth);
-safeInit("bindOverview", bindOverview);
-safeInit("bindIngest", bindIngest);
-const actionLookup = safeInit("bindActionLookup", bindActionLookup, {
+safeInit("bindActorTracker", () => bindActorTracker(activateTab, {
   lookup() {
     return Promise.resolve();
   },
-});
-safeInit("bindWalletLookup", bindWalletLookup);
-safeInit("bindNodeLookup", bindNodeLookup);
-safeInit("bindActorTracker", () => bindActorTracker(activateTab, actionLookup));
+}));
+safeInit("bindAddressExplorer", () => bindAddressExplorer(activateTab));

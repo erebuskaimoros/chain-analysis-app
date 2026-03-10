@@ -233,6 +233,9 @@ func TestMidgardGraphPagesForHop(t *testing.T) {
 	if got := midgardGraphPagesForHop(0); got != midgardGraphPagesPerSeed {
 		t.Fatalf("hop 0 pages = %d, want %d", got, midgardGraphPagesPerSeed)
 	}
+	if got := midgardGraphPagesForHop(1); got != midgardGraphPagesPerFirstHop {
+		t.Fatalf("hop 1 pages = %d, want %d", got, midgardGraphPagesPerFirstHop)
+	}
 	if got := midgardGraphPagesForHop(2); got != midgardGraphPagesPerHop {
 		t.Fatalf("hop 2 pages = %d, want %d", got, midgardGraphPagesPerHop)
 	}
@@ -574,7 +577,8 @@ func TestProjectMidgardCalcManagerUpdateUsesInboundSenderForFunds(t *testing.T) 
 		},
 		prices: priceBook{
 			AssetUSD: map[string]float64{
-				"BTC.BTC": 100000,
+				"BTC.BTC":  100000,
+				"THOR.TCY": 1,
 			},
 		},
 		allowedFlowTypes: flowTypeSet([]string{"swaps", "liquidity", "transfers"}),
@@ -637,8 +641,8 @@ func TestProjectMidgardCalcManagerUpdateUsesInboundSenderForFunds(t *testing.T) 
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %v", warnings)
 	}
-	if len(segments) != 1 {
-		t.Fatalf("expected 1 segment, got %d", len(segments))
+	if len(segments) != 2 {
+		t.Fatalf("expected 2 segments, got %d", len(segments))
 	}
 	if segments[0].Source.Address != normalizeAddress("thor10qh5272ktq4wes8ex343ky9rsuehcypddjh08k") {
 		t.Fatalf("expected inbound sender source, got %s", segments[0].Source.Address)
@@ -651,6 +655,15 @@ func TestProjectMidgardCalcManagerUpdateUsesInboundSenderForFunds(t *testing.T) 
 	}
 	if segments[0].ActionKey != "calc.manager.strategy.update" {
 		t.Fatalf("unexpected action key: %s", segments[0].ActionKey)
+	}
+	if segments[1].Source.Address != normalizeAddress("thor1f2cgnj7elhxk9f2uq8dufl6vm96rhzz3ve0t4x9z099untck2xfqj9qpe8") {
+		t.Fatalf("expected contract payout source, got %s", segments[1].Source.Address)
+	}
+	if segments[1].Target.Address != normalizeAddress("thor10qh5272ktq4wes8ex343ky9rsuehcypddjh08k") {
+		t.Fatalf("expected Treasury payout target, got %s", segments[1].Target.Address)
+	}
+	if segments[1].Asset != "THOR.TCY" || segments[1].AmountRaw != "141710520481" {
+		t.Fatalf("unexpected payout segment: %#v", segments[1])
 	}
 }
 
@@ -1009,6 +1022,66 @@ func TestCalcStrategyExecuteReusesKnownTreasuryPayout(t *testing.T) {
 	}
 }
 
+func TestCalcStrategyProcessKnownContractFallbackRoutesPayoutToTreasury(t *testing.T) {
+	builder := &graphBuilder{
+		ownerMap:   map[string][]int64{},
+		actorsByID: map[int64]Actor{},
+		protocols: protocolDirectory{
+			AddressKinds: map[string]protocolAddress{},
+		},
+		prices: priceBook{
+			AssetUSD: map[string]float64{
+				"THOR.TCY": 1,
+			},
+		},
+		calcPayoutByContract: map[string]string{},
+		allowedFlowTypes:     flowTypeSet([]string{"swaps", "liquidity", "transfers"}),
+		nodes:                map[string]*FlowNode{},
+		edges:                map[string]*FlowEdge{},
+		actions:              map[string]*SupportingAction{},
+	}
+
+	action := midgardAction{
+		Type:   "contract",
+		Status: "success",
+		In: []midgardActionLeg{
+			{Address: "thor1user7d88zhlqhagf8vhar480ef0xps6tc7fake", TxID: "CALCFALLBACK1"},
+		},
+		Out: []midgardActionLeg{
+			{Address: "thor1f2cgnj7elhxk9f2uq8dufl6vm96rhzz3ve0t4x9z099untck2xfqj9qpe8", TxID: "CALCFALLBACK1"},
+			{
+				Address: "thor1n5a08r0zvmqca39ka2tgwlkjy9ugalutk7fjpzptfppqcccnat2ska5t4g",
+				Coins:   []midgardActionCoin{{Amount: "109380344490", Asset: "THOR.TCY"}},
+			},
+		},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-calc-strategy/process",
+				Msg: map[string]any{
+					"execute": []any{"16978320920792957714"},
+				},
+			},
+		},
+	}
+
+	segments, _, warnings := builder.projectMidgardAction(action, 1)
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if len(segments) != 1 {
+		t.Fatalf("expected 1 segment, got %d", len(segments))
+	}
+	if segments[0].Source.Address != normalizeAddress("thor1f2cgnj7elhxk9f2uq8dufl6vm96rhzz3ve0t4x9z099untck2xfqj9qpe8") {
+		t.Fatalf("expected contract payout source, got %s", segments[0].Source.Address)
+	}
+	if segments[0].Target.Address != normalizeAddress("thor10qh5272ktq4wes8ex343ky9rsuehcypddjh08k") {
+		t.Fatalf("expected Treasury fallback target, got %s", segments[0].Target.Address)
+	}
+	if segments[0].Asset != "THOR.TCY" || segments[0].AmountRaw != "109380344490" {
+		t.Fatalf("unexpected fallback payout segment: asset=%s amount=%s", segments[0].Asset, segments[0].AmountRaw)
+	}
+}
+
 func TestCalcStrategyExecuteWithoutKnownContractSuppressesFallback(t *testing.T) {
 	builder := &graphBuilder{
 		ownerMap:   map[string][]int64{},
@@ -1057,6 +1130,52 @@ func TestCalcStrategyExecuteWithoutKnownContractSuppressesFallback(t *testing.T)
 	}
 	if len(segments) != 0 {
 		t.Fatalf("expected scheduler execute leg to be suppressed, got %#v", segments)
+	}
+}
+
+func TestShouldSkipMidgardActionForGraphAllowsExecuteWithoutProcess(t *testing.T) {
+	execute := midgardAction{
+		Type:   "contract",
+		Status: "success",
+		In: []midgardActionLeg{
+			{TxID: "CALCEXEC1"},
+		},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-calc-strategy/execute",
+				Msg:          map[string]any{"execute": []any{"7458177349767362226"}},
+			},
+		},
+	}
+
+	if skip, reason := shouldSkipMidgardActionForGraph(execute, nil, nil, map[string]struct{}{"CALCEXEC1": {}}, nil); skip {
+		t.Fatalf("did not expect execute fallback to be skipped without process, got reason=%q", reason)
+	}
+	if skip, reason := shouldSkipMidgardActionForGraph(execute, nil, nil, map[string]struct{}{"CALCEXEC1": {}}, map[string]struct{}{"CALCEXEC1": {}}); !skip || reason != "contract_sub_execution" {
+		t.Fatalf("expected execute fallback to be skipped when process exists, got skip=%v reason=%q", skip, reason)
+	}
+}
+
+func TestShouldSkipMidgardActionForGraphAllowsProcessReplyAsLastFallback(t *testing.T) {
+	reply := midgardAction{
+		Type:   "contract",
+		Status: "success",
+		In: []midgardActionLeg{
+			{TxID: "CALCREPLY1"},
+		},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-calc-strategy/process.reply",
+				Msg:          map[string]any{"execute": []any{"7458177349767362226"}},
+			},
+		},
+	}
+
+	if skip, reason := shouldSkipMidgardActionForGraph(reply, nil, nil, nil, nil); skip {
+		t.Fatalf("did not expect lone process.reply fallback to be skipped, got reason=%q", reason)
+	}
+	if skip, reason := shouldSkipMidgardActionForGraph(reply, nil, nil, map[string]struct{}{"CALCREPLY1": {}}, nil); !skip || reason != "contract_sub_execution" {
+		t.Fatalf("expected process.reply to be skipped when execute/representative exists, got skip=%v reason=%q", skip, reason)
 	}
 }
 
