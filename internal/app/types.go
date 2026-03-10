@@ -126,24 +126,33 @@ type FlowNode struct {
 	Metrics   map[string]any `json:"metrics"`
 }
 
+type FlowEdgeTransaction struct {
+	TxID    string           `json:"tx_id"`
+	Height  int64            `json:"height"`
+	Time    time.Time        `json:"time"`
+	USDSpot float64          `json:"usd_spot"`
+	Assets  []FlowAssetValue `json:"assets"`
+}
+
 type FlowEdge struct {
-	ID               string           `json:"id"`
-	From             string           `json:"from"`
-	To               string           `json:"to"`
-	ActionClass      string           `json:"action_class"`
-	ActionKey        string           `json:"action_key"`
-	ActionLabel      string           `json:"action_label"`
-	ActionDomain     string           `json:"action_domain"`
-	ValidatorAddress string           `json:"validator_address,omitempty"`
-	ValidatorLabel   string           `json:"validator_label,omitempty"`
-	ContractType     string           `json:"contract_type"`
-	ContractProtocol string           `json:"contract_protocol"`
-	Assets           []FlowAssetValue `json:"assets"`
-	USDSpot          float64          `json:"usd_spot"`
-	TxIDs            []string         `json:"tx_ids"`
-	Heights          []int64          `json:"heights"`
-	ActorIDs         []int64          `json:"actor_ids"`
-	Confidence       float64          `json:"confidence"`
+	ID               string                `json:"id"`
+	From             string                `json:"from"`
+	To               string                `json:"to"`
+	ActionClass      string                `json:"action_class"`
+	ActionKey        string                `json:"action_key"`
+	ActionLabel      string                `json:"action_label"`
+	ActionDomain     string                `json:"action_domain"`
+	ValidatorAddress string                `json:"validator_address,omitempty"`
+	ValidatorLabel   string                `json:"validator_label,omitempty"`
+	ContractType     string                `json:"contract_type"`
+	ContractProtocol string                `json:"contract_protocol"`
+	Assets           []FlowAssetValue      `json:"assets"`
+	Transactions     []FlowEdgeTransaction `json:"transactions"`
+	USDSpot          float64               `json:"usd_spot"`
+	TxIDs            []string              `json:"tx_ids"`
+	Heights          []int64               `json:"heights"`
+	ActorIDs         []int64               `json:"actor_ids"`
+	Confidence       float64               `json:"confidence"`
 }
 
 type SupportingAction struct {

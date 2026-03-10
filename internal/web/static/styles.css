@@ -515,6 +515,103 @@ pre {
   filter: none;
 }
 
+.graph-toolbar button.is-active {
+  color: #f5fbff;
+  border-color: rgba(117, 210, 186, 0.72);
+  background: rgba(16, 52, 54, 0.94);
+}
+
+.graph-filter-popover {
+  position: absolute;
+  top: 12px;
+  right: 56px;
+  z-index: 12;
+  width: min(320px, calc(100vw - 48px));
+  border: 1px solid rgba(109, 152, 222, 0.28);
+  border-radius: 14px;
+  background: rgba(9, 18, 35, 0.96);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  padding: 14px;
+}
+
+.graph-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.graph-filter-head strong {
+  font-size: 0.9rem;
+}
+
+.graph-filter-section {
+  padding-top: 10px;
+  border-top: 1px solid rgba(109, 152, 222, 0.12);
+}
+
+.graph-filter-section + .graph-filter-section {
+  margin-top: 10px;
+}
+
+.graph-filter-section-title {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.graph-filter-options {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-filter-options-scroll {
+  max-height: 154px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.graph-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.graph-filter-option input {
+  margin: 0;
+}
+
+.graph-filter-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.graph-filter-field:last-child {
+  margin-bottom: 0;
+}
+
+.graph-filter-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.graph-filter-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .graph-help {
   position: absolute;
   bottom: 8px;

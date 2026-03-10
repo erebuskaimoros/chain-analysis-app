@@ -2654,6 +2654,130 @@ func TestAddProjectedSegmentSplitsRebondEdgesByValidator(t *testing.T) {
 		if strings.TrimSpace(edge.ValidatorAddress) == "" {
 			t.Fatalf("expected validator metadata on rebond edge, got %#v", edge)
 		}
+		if len(edge.Transactions) != 1 {
+			t.Fatalf("expected one tx entry per rebond edge, got %#v", edge.Transactions)
+		}
+	}
+}
+
+func TestAddProjectedSegmentMergesTransactionsPerEdge(t *testing.T) {
+	builder := &graphBuilder{
+		nodes:            map[string]*FlowNode{},
+		edges:            map[string]*FlowEdge{},
+		actions:          map[string]*SupportingAction{},
+		seenCanonicalKey: map[string]struct{}{},
+	}
+	source := flowRef{
+		ID:      "external_address:thor1source:external:1",
+		Key:     normalizeAddress("thor1source"),
+		Kind:    "external_address",
+		Label:   "Source",
+		Chain:   "THOR",
+		Stage:   "external",
+		Depth:   1,
+		Address: normalizeAddress("thor1source"),
+	}
+	target := flowRef{
+		ID:      "external_address:thor1target:external:2",
+		Key:     normalizeAddress("thor1target"),
+		Kind:    "external_address",
+		Label:   "Target",
+		Chain:   "THOR",
+		Stage:   "external",
+		Depth:   2,
+		Address: normalizeAddress("thor1target"),
+	}
+	baseTime := time.Unix(1_700_000_000, 0).UTC()
+
+	builder.addProjectedSegment(projectedSegment{
+		Source:       source,
+		Target:       target,
+		ActionClass:  "transfers",
+		ActionKey:    "tracker.transfer",
+		ActionLabel:  "Transfer",
+		ActionDomain: "transfers",
+		Asset:        "THOR.RUNE",
+		AmountRaw:    "10",
+		USDSpot:      15,
+		TxID:         "TX1",
+		Height:       10,
+		Time:         baseTime,
+	})
+	builder.addProjectedSegment(projectedSegment{
+		Source:       source,
+		Target:       target,
+		ActionClass:  "transfers",
+		ActionKey:    "tracker.transfer",
+		ActionLabel:  "Transfer",
+		ActionDomain: "transfers",
+		Asset:        "THOR.RUNE",
+		AmountRaw:    "20",
+		USDSpot:      25,
+		TxID:         "TX1",
+		Height:       11,
+		Time:         baseTime.Add(2 * time.Minute),
+	})
+	builder.addProjectedSegment(projectedSegment{
+		Source:       source,
+		Target:       target,
+		ActionClass:  "transfers",
+		ActionKey:    "tracker.transfer",
+		ActionLabel:  "Transfer",
+		ActionDomain: "transfers",
+		Asset:        "THOR.RUNE",
+		AmountRaw:    "5",
+		USDSpot:      7,
+		TxID:         "TX2",
+		Height:       13,
+		Time:         baseTime.Add(5 * time.Minute),
+	})
+
+	edges := builder.edgeList()
+	if len(edges) != 1 {
+		t.Fatalf("expected one edge, got %d", len(edges))
+	}
+	edge := edges[0]
+	if len(edge.Transactions) != 2 {
+		t.Fatalf("expected two tx entries, got %#v", edge.Transactions)
+	}
+	if edge.USDSpot != 47 {
+		t.Fatalf("unexpected edge usd total %f", edge.USDSpot)
+	}
+	if len(edge.TxIDs) != 2 || edge.TxIDs[0] != "TX1" || edge.TxIDs[1] != "TX2" {
+		t.Fatalf("unexpected edge tx ids %#v", edge.TxIDs)
+	}
+	if len(edge.Heights) != 2 || edge.Heights[0] != 10 || edge.Heights[1] != 13 {
+		t.Fatalf("unexpected edge heights %#v", edge.Heights)
+	}
+	if len(edge.Assets) != 1 || edge.Assets[0].AmountRaw != "35" || edge.Assets[0].USDSpot != 47 {
+		t.Fatalf("unexpected edge assets %#v", edge.Assets)
+	}
+	txByID := map[string]FlowEdgeTransaction{}
+	for _, tx := range edge.Transactions {
+		txByID[tx.TxID] = tx
+	}
+	tx1, ok := txByID["TX1"]
+	if !ok {
+		t.Fatalf("missing tx1 entry %#v", edge.Transactions)
+	}
+	if tx1.Height != 10 {
+		t.Fatalf("expected earliest height for tx1, got %d", tx1.Height)
+	}
+	if !tx1.Time.Equal(baseTime) {
+		t.Fatalf("expected earliest time for tx1, got %s", tx1.Time)
+	}
+	if tx1.USDSpot != 40 {
+		t.Fatalf("unexpected tx1 usd total %f", tx1.USDSpot)
+	}
+	if len(tx1.Assets) != 1 || tx1.Assets[0].AmountRaw != "30" || tx1.Assets[0].USDSpot != 40 {
+		t.Fatalf("unexpected tx1 assets %#v", tx1.Assets)
+	}
+	tx2, ok := txByID["TX2"]
+	if !ok {
+		t.Fatalf("missing tx2 entry %#v", edge.Transactions)
+	}
+	if tx2.Height != 13 || !tx2.Time.Equal(baseTime.Add(5*time.Minute)) {
+		t.Fatalf("unexpected tx2 metadata %#v", tx2)
 	}
 }
 

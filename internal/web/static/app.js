@@ -15,12 +15,19 @@ const CHAIN_LOGO_URLS = {
 };
 
 const DEFAULT_FLOW_TYPES = ["liquidity", "swaps", "bonds", "transfers"];
+const GRAPH_FILTER_TXN_TYPES = [
+  { key: "bond_unbond", label: "Bond/Unbond" },
+  { key: "rebond", label: "Rebond" },
+  { key: "transfer", label: "Send/Transfer" },
+  { key: "swap", label: "Swap" },
+];
 
 const state = {
   actors: [],
   actorGraph: null,
   baseActorGraph: null,
   actorGraphRequest: null,
+  actorGraphFilters: null,
   cy: null,
   expandedActors: new Set(),
   expandedExternalChains: new Set(),
@@ -34,6 +41,7 @@ const state = {
   explorerRuns: [],
   selectedExplorerRunID: null,
   explorerPreview: null,
+  explorerGraphFilters: null,
 };
 
 const FRONTEND_LOG_PREFIX = "[chain-analysis-ui]";
@@ -206,6 +214,468 @@ function normalizeExplorerRequest(rawRequest) {
     offset: Number.isFinite(offset) && offset > 0 ? Math.floor(offset) : 0,
     batch_size: Number.isFinite(batchSize) && batchSize > 0 ? Math.floor(batchSize) : 10,
   };
+}
+
+function createGraphFilterState() {
+  const txnTypes = {};
+  GRAPH_FILTER_TXN_TYPES.forEach((item) => {
+    txnTypes[item.key] = true;
+  });
+  return {
+    initialized: false,
+    isOpen: false,
+    txnTypes,
+    availableChains: [],
+    selectedChains: [],
+    graphMinTime: "",
+    graphMaxTime: "",
+    startTime: "",
+    endTime: "",
+  };
+}
+
+function normalizeISODateTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function graphFilterMetadataFromResponse(response) {
+  const availableChains = uniqueStrings(
+    (response?.nodes || [])
+      .map((node) => String(node?.chain || "").trim().toUpperCase())
+      .filter(Boolean)
+  ).sort();
+  let graphMinTime = "";
+  let graphMaxTime = "";
+  (response?.edges || []).forEach((edge) => {
+    normalizeEdgeTransactions(edge).forEach((tx) => {
+      const when = normalizeISODateTime(tx.time);
+      if (!when) {
+        return;
+      }
+      if (!graphMinTime || when < graphMinTime) {
+        graphMinTime = when;
+      }
+      if (!graphMaxTime || when > graphMaxTime) {
+        graphMaxTime = when;
+      }
+    });
+  });
+  return { availableChains, graphMinTime, graphMaxTime };
+}
+
+function chainSelectionsMatchAll(selectedChains, availableChains) {
+  const selected = uniqueStrings((selectedChains || []).map((item) => String(item || "").trim().toUpperCase())).sort();
+  const available = uniqueStrings((availableChains || []).map((item) => String(item || "").trim().toUpperCase())).sort();
+  if (selected.length !== available.length) {
+    return false;
+  }
+  return selected.every((item, index) => item === available[index]);
+}
+
+function timeSelectionsMatchFullRange(filters, graphMinTime, graphMaxTime) {
+  const start = normalizeISODateTime(filters?.startTime || "");
+  const end = normalizeISODateTime(filters?.endTime || "");
+  return start === normalizeISODateTime(graphMinTime) && end === normalizeISODateTime(graphMaxTime);
+}
+
+function clampISOToRange(value, minValue, maxValue) {
+  const normalized = normalizeISODateTime(value);
+  if (!normalized) {
+    return "";
+  }
+  const minISO = normalizeISODateTime(minValue);
+  const maxISO = normalizeISODateTime(maxValue);
+  let output = normalized;
+  if (minISO && output < minISO) {
+    output = minISO;
+  }
+  if (maxISO && output > maxISO) {
+    output = maxISO;
+  }
+  return output;
+}
+
+function syncGraphFilterStateWithResponse(filterState, response, options = {}) {
+  if (!filterState) {
+    return;
+  }
+  const { reset = false } = options;
+  const previousChains = Array.isArray(filterState.availableChains) ? [...filterState.availableChains] : [];
+  const previousMinTime = normalizeISODateTime(filterState.graphMinTime);
+  const previousMaxTime = normalizeISODateTime(filterState.graphMaxTime);
+  const selectedAllChains = chainSelectionsMatchAll(filterState.selectedChains, previousChains);
+  const selectedFullRange = timeSelectionsMatchFullRange(filterState, previousMinTime, previousMaxTime);
+  const metadata = graphFilterMetadataFromResponse(response);
+
+  filterState.availableChains = metadata.availableChains;
+  filterState.graphMinTime = metadata.graphMinTime;
+  filterState.graphMaxTime = metadata.graphMaxTime;
+
+  if (reset || !filterState.initialized) {
+    GRAPH_FILTER_TXN_TYPES.forEach((item) => {
+      filterState.txnTypes[item.key] = true;
+    });
+    filterState.selectedChains = metadata.availableChains.slice();
+    filterState.startTime = metadata.graphMinTime;
+    filterState.endTime = metadata.graphMaxTime;
+    filterState.initialized = true;
+    return;
+  }
+
+  if (selectedAllChains) {
+    filterState.selectedChains = metadata.availableChains.slice();
+  } else {
+    filterState.selectedChains = uniqueStrings(
+      (filterState.selectedChains || []).filter((chain) => metadata.availableChains.includes(chain))
+    );
+  }
+  if (!filterState.selectedChains.length && metadata.availableChains.length) {
+    filterState.selectedChains = metadata.availableChains.slice();
+  }
+
+  if (selectedFullRange) {
+    filterState.startTime = metadata.graphMinTime;
+    filterState.endTime = metadata.graphMaxTime;
+  } else {
+    filterState.startTime = clampISOToRange(filterState.startTime, metadata.graphMinTime, metadata.graphMaxTime);
+    filterState.endTime = clampISOToRange(filterState.endTime, metadata.graphMinTime, metadata.graphMaxTime);
+    if (filterState.startTime && filterState.endTime && filterState.startTime > filterState.endTime) {
+      filterState.startTime = metadata.graphMinTime;
+      filterState.endTime = metadata.graphMaxTime;
+    }
+  }
+}
+
+function graphFiltersAreActive(filterState) {
+  if (!filterState) {
+    return false;
+  }
+  const allTxnEnabled = GRAPH_FILTER_TXN_TYPES.every((item) => filterState.txnTypes[item.key] !== false);
+  const allChainsSelected = chainSelectionsMatchAll(filterState.selectedChains, filterState.availableChains);
+  const fullRangeSelected = timeSelectionsMatchFullRange(filterState, filterState.graphMinTime, filterState.graphMaxTime);
+  return !(allTxnEnabled && allChainsSelected && fullRangeSelected);
+}
+
+function setGraphFilterDateValue(filterState, field, localValue) {
+  if (!filterState) {
+    return;
+  }
+  const normalized = normalizeISODateTime(localValue ? new Date(localValue) : "");
+  if (!normalized) {
+    filterState[field] = field === "startTime" ? filterState.graphMinTime : filterState.graphMaxTime;
+  } else {
+    filterState[field] = clampISOToRange(normalized, filterState.graphMinTime, filterState.graphMaxTime);
+  }
+  if (filterState.startTime && filterState.endTime && filterState.startTime > filterState.endTime) {
+    if (field === "startTime") {
+      filterState.endTime = filterState.startTime;
+    } else {
+      filterState.startTime = filterState.endTime;
+    }
+  }
+}
+
+function resetGraphFilters(filterState) {
+  if (!filterState) {
+    return;
+  }
+  GRAPH_FILTER_TXN_TYPES.forEach((item) => {
+    filterState.txnTypes[item.key] = true;
+  });
+  filterState.selectedChains = [...(filterState.availableChains || [])];
+  filterState.startTime = filterState.graphMinTime || "";
+  filterState.endTime = filterState.graphMaxTime || "";
+}
+
+function isRebondGraphAction(actionClass, actionKey, actionLabel) {
+  if (String(actionClass || "").trim().toLowerCase() !== "bonds") {
+    return false;
+  }
+  const key = `${String(actionKey || "").trim().toLowerCase()} ${String(actionLabel || "").trim().toLowerCase()}`;
+  return key.includes("rebond");
+}
+
+function graphTxnBucket(actionClass, actionKey, actionLabel) {
+  const normalizedClass = String(actionClass || "").trim().toLowerCase();
+  switch (normalizedClass) {
+    case "bonds":
+      return isRebondGraphAction(normalizedClass, actionKey, actionLabel) ? "rebond" : "bond_unbond";
+    case "transfers":
+      return "transfer";
+    case "swaps":
+      return "swap";
+    default:
+      return "";
+  }
+}
+
+function graphTxnTypeAllowed(actionClass, actionKey, actionLabel, filterState) {
+  const bucket = graphTxnBucket(actionClass, actionKey, actionLabel);
+  if (!bucket) {
+    return true;
+  }
+  return filterState?.txnTypes?.[bucket] !== false;
+}
+
+function cloneFlowAssetValue(asset) {
+  return {
+    asset: String(asset?.asset || ""),
+    amount_raw: String(asset?.amount_raw || "0"),
+    usd_spot: Number(asset?.usd_spot || 0),
+    direction: String(asset?.direction || "").toLowerCase(),
+    asset_kind: String(asset?.asset_kind || ""),
+    token_standard: String(asset?.token_standard || ""),
+    token_address: String(asset?.token_address || ""),
+    token_symbol: String(asset?.token_symbol || ""),
+    token_name: String(asset?.token_name || ""),
+    token_decimals: Number(asset?.token_decimals || 0),
+  };
+}
+
+function mergeFlowAssetValues(targetAssets, incomingAssets) {
+  const assetMap = new Map();
+  (targetAssets || []).forEach((asset) => {
+    const cloned = cloneFlowAssetValue(asset);
+    assetMap.set(`${cloned.asset}|${cloned.direction}`, cloned);
+  });
+  (incomingAssets || []).forEach((asset) => {
+    const cloned = cloneFlowAssetValue(asset);
+    const key = `${cloned.asset}|${cloned.direction}`;
+    const existing = assetMap.get(key);
+    if (!existing) {
+      assetMap.set(key, cloned);
+      return;
+    }
+    existing.amount_raw = addRawAmountStrings(existing.amount_raw, cloned.amount_raw);
+    existing.usd_spot = Number(existing.usd_spot || 0) + Number(cloned.usd_spot || 0);
+    if (!existing.asset_kind) existing.asset_kind = cloned.asset_kind;
+    if (!existing.token_standard) existing.token_standard = cloned.token_standard;
+    if (!existing.token_address) existing.token_address = cloned.token_address;
+    if (!existing.token_symbol) existing.token_symbol = cloned.token_symbol;
+    if (!existing.token_name) existing.token_name = cloned.token_name;
+    if (!existing.token_decimals) existing.token_decimals = cloned.token_decimals;
+    assetMap.set(key, existing);
+  });
+  return Array.from(assetMap.values()).sort((a, b) => Number(b.usd_spot || 0) - Number(a.usd_spot || 0));
+}
+
+function edgeTransactionKey(tx, index = 0) {
+  const txID = String(tx?.tx_id || "").trim();
+  if (txID) {
+    return txID;
+  }
+  return `${String(tx?.height || 0)}|${normalizeISODateTime(tx?.time)}|${index}`;
+}
+
+function cloneEdgeTransaction(tx, index = 0) {
+  return {
+    tx_id: String(tx?.tx_id || edgeTransactionKey(tx, index)),
+    height: Number(tx?.height || 0),
+    time: normalizeISODateTime(tx?.time),
+    usd_spot: Number(tx?.usd_spot || 0),
+    assets: mergeFlowAssetValues([], tx?.assets || []),
+  };
+}
+
+function normalizeEdgeTransactions(edge) {
+  if (!Array.isArray(edge?.transactions) || !edge.transactions.length) {
+    if (!edge) {
+      return [];
+    }
+    return [{
+      tx_id: String((edge.tx_ids || [])[0] || edge.id || ""),
+      height: Number((edge.heights || [])[0] || 0),
+      time: "",
+      usd_spot: Number(edge.usd_spot || 0),
+      assets: mergeFlowAssetValues([], edge.assets || []),
+    }];
+  }
+  return edge.transactions.map((tx, index) => cloneEdgeTransaction(tx, index));
+}
+
+function mergeEdgeTransactions(existingTransactions, incomingTransactions) {
+  const txMap = new Map();
+  (existingTransactions || []).forEach((tx, index) => {
+    const cloned = cloneEdgeTransaction(tx, index);
+    txMap.set(edgeTransactionKey(cloned, index), cloned);
+  });
+  (incomingTransactions || []).forEach((tx, index) => {
+    const cloned = cloneEdgeTransaction(tx, index);
+    const key = edgeTransactionKey(cloned, index);
+    const existing = txMap.get(key);
+    if (!existing) {
+      txMap.set(key, cloned);
+      return;
+    }
+    if (!existing.height || (cloned.height && cloned.height < existing.height)) {
+      existing.height = cloned.height || existing.height;
+    }
+    if (!existing.time || (cloned.time && cloned.time < existing.time)) {
+      existing.time = cloned.time || existing.time;
+    }
+    existing.usd_spot = Number(existing.usd_spot || 0) + Number(cloned.usd_spot || 0);
+    existing.assets = mergeFlowAssetValues(existing.assets, cloned.assets);
+    txMap.set(key, existing);
+  });
+  return Array.from(txMap.values()).sort((a, b) => {
+    if (a.time === b.time) {
+      return String(a.tx_id || "").localeCompare(String(b.tx_id || ""));
+    }
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return a.time.localeCompare(b.time);
+  });
+}
+
+function summarizeTransactions(transactions) {
+  const txIDs = [];
+  const heights = [];
+  let usdSpot = 0;
+  let assets = [];
+  (transactions || []).forEach((tx) => {
+    usdSpot += Number(tx?.usd_spot || 0);
+    const txID = String(tx?.tx_id || "").trim();
+    if (txID) {
+      txIDs.push(txID);
+    }
+    const height = Number(tx?.height || 0);
+    if (Number.isFinite(height) && height > 0) {
+      heights.push(height);
+    }
+    assets = mergeFlowAssetValues(assets, tx?.assets || []);
+  });
+  return {
+    usd_spot: usdSpot,
+    tx_ids: uniqueStrings(txIDs).sort(),
+    heights: uniqueNumbers(heights).sort((a, b) => a - b),
+    assets,
+  };
+}
+
+function filterTransactionsByTime(transactions, filterState) {
+  const startTime = normalizeISODateTime(filterState?.startTime);
+  const endTime = normalizeISODateTime(filterState?.endTime);
+  return (transactions || []).filter((tx) => {
+    const when = normalizeISODateTime(tx?.time);
+    if ((startTime || endTime) && !when) {
+      return false;
+    }
+    if (startTime && when < startTime) {
+      return false;
+    }
+    if (endTime && when > endTime) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function rawNodeChain(node) {
+  return String(node?.chain || "").trim().toUpperCase();
+}
+
+function graphItemChainSet(sourceNode, targetNode) {
+  return uniqueStrings([rawNodeChain(sourceNode), rawNodeChain(targetNode)].filter(Boolean));
+}
+
+function graphChainsAllowed(chainSet, filterState) {
+  const selected = new Set((filterState?.selectedChains || []).map((chain) => String(chain || "").trim().toUpperCase()));
+  if (!selected.size) {
+    return !(filterState?.availableChains || []).length;
+  }
+  if (!chainSet.length) {
+    return true;
+  }
+  return chainSet.some((chain) => selected.has(chain));
+}
+
+function filterSupportingActions(actions, response, filterState) {
+  const rawNodeByID = new Map((response?.nodes || []).map((node) => [String(node.id), node]));
+  const startTime = normalizeISODateTime(filterState?.startTime);
+  const endTime = normalizeISODateTime(filterState?.endTime);
+  return (actions || []).filter((action) => {
+    if (!graphTxnTypeAllowed(action.action_class, action.action_key, action.action_label, filterState)) {
+      return false;
+    }
+    const chainSet = graphItemChainSet(rawNodeByID.get(String(action.from_node || "")), rawNodeByID.get(String(action.to_node || "")));
+    if (!graphChainsAllowed(chainSet, filterState)) {
+      return false;
+    }
+    const when = normalizeISODateTime(action.time);
+    if ((startTime || endTime) && !when) {
+      return false;
+    }
+    if (startTime && when < startTime) {
+      return false;
+    }
+    if (endTime && when > endTime) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function graphFilterPopoverMarkup(filterState) {
+  const txnOptions = GRAPH_FILTER_TXN_TYPES.map(
+    (item) => `
+      <label class="graph-filter-option">
+        <input type="checkbox" data-filter-txn="${escapeHTML(item.key)}" ${filterState?.txnTypes?.[item.key] !== false ? "checked" : ""} />
+        <span>${escapeHTML(item.label)}</span>
+      </label>
+    `
+  ).join("");
+  const chainOptions = (filterState?.availableChains || []).length
+    ? filterState.availableChains
+        .map(
+          (chain) => `
+            <label class="graph-filter-option">
+              <input type="checkbox" data-filter-chain="${escapeHTML(chain)}" ${(filterState?.selectedChains || []).includes(chain) ? "checked" : ""} />
+              <span>${escapeHTML(chain)}</span>
+            </label>
+          `
+        )
+        .join("")
+    : `<div class="graph-filter-empty">No chains loaded.</div>`;
+  const startValue = filterState?.startTime ? toLocalInputValue(new Date(filterState.startTime)) : "";
+  const endValue = filterState?.endTime ? toLocalInputValue(new Date(filterState.endTime)) : "";
+  return `
+    <div class="graph-filter-head">
+      <strong>Filters</strong>
+      <button type="button" class="secondary" data-filter-reset>Reset</button>
+    </div>
+    <div class="graph-filter-section">
+      <div class="graph-filter-section-title">Txn Types</div>
+      <div class="graph-filter-options">${txnOptions}</div>
+    </div>
+    <div class="graph-filter-section">
+      <div class="graph-filter-section-title">Chains Shown</div>
+      <div class="graph-filter-options graph-filter-options-scroll">${chainOptions}</div>
+    </div>
+    <div class="graph-filter-section">
+      <div class="graph-filter-section-title">Time Window</div>
+      <label class="graph-filter-field">
+        <span>Start</span>
+        <input type="datetime-local" data-filter-time="start" value="${escapeHTML(startValue)}" />
+      </label>
+      <label class="graph-filter-field">
+        <span>End</span>
+        <input type="datetime-local" data-filter-time="end" value="${escapeHTML(endValue)}" />
+      </label>
+    </div>
+  `;
+}
+
+function updateGraphFilterButtonState(toolbar, filterState) {
+  const button = toolbar?.querySelector('[data-graph-action="filters"]');
+  if (!button) {
+    return;
+  }
+  button.classList.toggle("is-active", Boolean(filterState?.isOpen) || graphFiltersAreActive(filterState));
 }
 
 function clamp(value, min, max) {
@@ -488,6 +958,7 @@ function bindActorTracker(activateTab, actionLookup) {
   const graphRunList = document.getElementById("graph-run-list");
   const graphRunCount = document.getElementById("graph-run-count");
   const graphToolbar = document.getElementById("graph-toolbar");
+  const graphFilterPopover = document.getElementById("graph-filter-popover");
   const graphCard = graphContainer ? graphContainer.closest(".graph-card") : null;
   if (
     !ensureElements("bindActorTracker", {
@@ -514,11 +985,13 @@ function bindActorTracker(activateTab, actionLookup) {
       minUSD,
       graphContainer,
       contextMenu,
+      graphFilterPopover,
     })
   ) {
     return;
   }
   const actorSaveButton = form.querySelector("button[type='submit']");
+  state.actorGraphFilters = createGraphFilterState();
   graphContainer.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (graphNodeAtClientPoint(e.clientX, e.clientY)) {
@@ -541,6 +1014,98 @@ function bindActorTracker(activateTab, actionLookup) {
 
   startTime.value = toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
   endTime.value = toLocalInputValue(new Date());
+
+  function renderGraphFilterPopover() {
+    graphFilterPopover.innerHTML = graphFilterPopoverMarkup(state.actorGraphFilters);
+    graphFilterPopover.hidden = !state.actorGraphFilters.isOpen;
+    updateGraphFilterButtonState(graphToolbar, state.actorGraphFilters);
+  }
+
+  function hideGraphFilterPopover() {
+    if (!state.actorGraphFilters.isOpen) {
+      updateGraphFilterButtonState(graphToolbar, state.actorGraphFilters);
+      return;
+    }
+    state.actorGraphFilters.isOpen = false;
+    renderGraphFilterPopover();
+  }
+
+  function toggleGraphFilterPopover() {
+    if (!state.actorGraph) {
+      return;
+    }
+    state.actorGraphFilters.isOpen = !state.actorGraphFilters.isOpen;
+    renderGraphFilterPopover();
+  }
+
+  graphFilterPopover.addEventListener("change", (e) => {
+    const target = e.target instanceof HTMLInputElement ? e.target : null;
+    if (!target) {
+      return;
+    }
+    if (target.dataset.filterTxn) {
+      state.actorGraphFilters.txnTypes[target.dataset.filterTxn] = target.checked;
+      renderGraphFilterPopover();
+      renderGraphResponse();
+      return;
+    }
+    if (target.dataset.filterChain) {
+      const chain = String(target.dataset.filterChain || "");
+      const selected = new Set(state.actorGraphFilters.selectedChains || []);
+      if (target.checked) {
+        selected.add(chain);
+      } else {
+        selected.delete(chain);
+      }
+      state.actorGraphFilters.selectedChains = Array.from(selected).sort();
+      renderGraphFilterPopover();
+      renderGraphResponse();
+      return;
+    }
+    if (target.dataset.filterTime === "start") {
+      setGraphFilterDateValue(state.actorGraphFilters, "startTime", target.value);
+      renderGraphFilterPopover();
+      renderGraphResponse();
+      return;
+    }
+    if (target.dataset.filterTime === "end") {
+      setGraphFilterDateValue(state.actorGraphFilters, "endTime", target.value);
+      renderGraphFilterPopover();
+      renderGraphResponse();
+    }
+  });
+
+  graphFilterPopover.addEventListener("click", (e) => {
+    const target = e.target instanceof Element ? e.target.closest("[data-filter-reset]") : null;
+    if (!target) {
+      return;
+    }
+    resetGraphFilters(state.actorGraphFilters);
+    renderGraphFilterPopover();
+    renderGraphResponse();
+  });
+
+  graphContainer.addEventListener("click", (e) => {
+    const target = e.target instanceof Element ? e.target.closest("[data-graph-reset-filters='actor']") : null;
+    if (!target) {
+      return;
+    }
+    resetGraphFilters(state.actorGraphFilters);
+    renderGraphFilterPopover();
+    renderGraphResponse();
+  });
+
+  document.addEventListener("mousedown", (e) => {
+    if (!state.actorGraphFilters.isOpen) {
+      return;
+    }
+    const target = e.target instanceof Node ? e.target : null;
+    const filterButton = graphToolbar?.querySelector('[data-graph-action="filters"]');
+    if ((target && graphFilterPopover.contains(target)) || (filterButton && target && filterButton.contains(target))) {
+      return;
+    }
+    hideGraphFilterPopover();
+  });
 
   function parseAddressLines(text) {
     const lines = text
@@ -786,6 +1351,8 @@ function bindActorTracker(activateTab, actionLookup) {
         state.baseActorGraph = null;
         state.actorGraphRequest = null;
         state.expandedHopAddressMap = new Map();
+        state.actorGraphFilters.isOpen = false;
+        renderGraphFilterPopover();
         clearGraphSurface();
       }
       await refreshActors();
@@ -831,6 +1398,9 @@ function bindActorTracker(activateTab, actionLookup) {
       state.expandedExternalChains = new Set();
       state.expandedHopAddressMap = new Map();
       state.expansionInFlight = false;
+      state.actorGraphFilters.isOpen = false;
+      syncGraphFilterStateWithResponse(state.actorGraphFilters, response, { reset: true });
+      renderGraphFilterPopover();
       renderGraphResponse();
       refreshGraphRuns();
     } catch (err) {
@@ -1016,6 +1586,8 @@ function bindActorTracker(activateTab, actionLookup) {
 
   function renderGraphResponse() {
     if (!state.actorGraph) {
+      state.actorGraphFilters.isOpen = false;
+      renderGraphFilterPopover();
       clearGraphSurface();
       graphSummary.innerHTML = "";
       graphWarnings.innerHTML = "";
@@ -1024,13 +1596,17 @@ function bindActorTracker(activateTab, actionLookup) {
       return;
     }
 
-    renderQuerySummary();
+    syncGraphFilterStateWithResponse(state.actorGraphFilters, state.actorGraph);
+    const visible = deriveVisibleGraph(state.actorGraph);
+    const filteredActions = filterSupportingActions(state.actorGraph.supporting_actions || [], state.actorGraph, state.actorGraphFilters);
+    renderGraphFilterPopover();
+    renderQuerySummary(visible, filteredActions);
     renderWarnings();
-    renderActions();
-    renderGraph();
+    renderActions(filteredActions);
+    renderGraph(visible);
   }
 
-  function renderQuerySummary() {
+  function renderQuerySummary(visible, filteredActions) {
     const { query } = state.actorGraph;
     const start = new Date(query.start_time).toLocaleString();
     const end = new Date(query.end_time).toLocaleString();
@@ -1044,11 +1620,20 @@ function bindActorTracker(activateTab, actionLookup) {
     if (state.expandedHopAddressMap.size > 0) {
       summaryChips.push(metaChip(`+${state.expandedHopAddressMap.size} one-hop seeds`));
     }
+    if (graphFiltersAreActive(state.actorGraphFilters)) {
+      summaryChips.push(metaChip("Filters active"));
+    }
     graphSummary.innerHTML = summaryChips.join("");
+    const filteredNodeCount = Array.isArray(visible?.nodes) ? visible.nodes.length : 0;
+    const filteredEdgeCount = Array.isArray(visible?.edges) ? visible.edges.length : 0;
+    const filteredActionCount = Array.isArray(filteredActions) ? filteredActions.length : 0;
+    const totalNodeCount = Number(state.actorGraph.stats?.node_count || 0);
+    const totalEdgeCount = Number(state.actorGraph.stats?.edge_count || 0);
+    const totalActionCount = Number(state.actorGraph.stats?.supporting_action_count || 0);
     graphStats.innerHTML = [
-      metaChip(`${state.actorGraph.stats.node_count} nodes`),
-      metaChip(`${state.actorGraph.stats.edge_count} edges`),
-      metaChip(`${state.actorGraph.stats.supporting_action_count} actions`),
+      metaChip(graphFiltersAreActive(state.actorGraphFilters) ? `${filteredNodeCount} / ${totalNodeCount} nodes` : `${totalNodeCount} nodes`),
+      metaChip(graphFiltersAreActive(state.actorGraphFilters) ? `${filteredEdgeCount} / ${totalEdgeCount} edges` : `${totalEdgeCount} edges`),
+      metaChip(graphFiltersAreActive(state.actorGraphFilters) ? `${filteredActionCount} / ${totalActionCount} actions` : `${totalActionCount} actions`),
     ].join("");
   }
 
@@ -1063,8 +1648,7 @@ function bindActorTracker(activateTab, actionLookup) {
       .join("");
   }
 
-  function renderActions() {
-    const actions = state.actorGraph.supporting_actions || [];
+  function renderActions(actions) {
     if (!actions.length) {
       actionsBody.innerHTML = `<tr><td colspan="6" class="empty-state">No supporting actions returned.</td></tr>`;
       return;
@@ -1354,42 +1938,36 @@ function bindActorTracker(activateTab, actionLookup) {
     (base.nodes || []).forEach(mergeNode);
     (expansion.nodes || []).forEach(mergeNode);
 
-    const edgeMap = new Map();
-    (base.edges || []).forEach((edge) => {
-      const canonicalID = edgeMergeKey(edge, nodeAlias);
-      edgeMap.set(canonicalID, {
+    function cloneMergedEdge(edge, canonicalID) {
+      const transactions = mergeEdgeTransactions([], normalizeEdgeTransactions(edge));
+      const summary = summarizeTransactions(transactions);
+      return {
         ...edge,
         id: canonicalID,
         from: nodeAlias.get(edge.from) || edge.from,
         to: nodeAlias.get(edge.to) || edge.to,
         actor_ids: [...(edge.actor_ids || [])],
-        tx_ids: [...(edge.tx_ids || [])],
-        heights: [...(edge.heights || [])],
-        assets: (edge.assets || []).map((asset) => ({ ...asset })),
-      });
+        transactions,
+        tx_ids: summary.tx_ids,
+        heights: summary.heights,
+        assets: summary.assets,
+        usd_spot: summary.usd_spot,
+      };
+    }
+
+    const edgeMap = new Map();
+    (base.edges || []).forEach((edge) => {
+      const canonicalID = edgeMergeKey(edge, nodeAlias);
+      edgeMap.set(canonicalID, cloneMergedEdge(edge, canonicalID));
     });
     (expansion.edges || []).forEach((edge) => {
       const canonicalID = edgeMergeKey(edge, nodeAlias);
       const existing = edgeMap.get(canonicalID);
       if (!existing) {
-        edgeMap.set(canonicalID, {
-          ...edge,
-          id: canonicalID,
-          from: nodeAlias.get(edge.from) || edge.from,
-          to: nodeAlias.get(edge.to) || edge.to,
-          actor_ids: [...(edge.actor_ids || [])],
-          tx_ids: [...(edge.tx_ids || [])],
-          heights: [...(edge.heights || [])],
-          assets: (edge.assets || []).map((asset) => ({ ...asset })),
-        });
+        edgeMap.set(canonicalID, cloneMergedEdge(edge, canonicalID));
         return;
       }
-      const knownTxIDs = new Set(existing.tx_ids || []);
-      const incomingTxIDs = edge.tx_ids || [];
-      const hasNovelTx = incomingTxIDs.some((txID) => !knownTxIDs.has(txID));
       existing.actor_ids = uniqueNumbers((existing.actor_ids || []).concat(edge.actor_ids || []));
-      existing.tx_ids = uniqueStrings((existing.tx_ids || []).concat(incomingTxIDs));
-      existing.heights = uniqueNumbers((existing.heights || []).concat(edge.heights || [])).sort((a, b) => a - b);
       existing.confidence = Math.max(Number(existing.confidence || 0), Number(edge.confidence || 0));
       existing.action_key = existing.action_key || edge.action_key || edge.action_class;
       existing.action_label = existing.action_label || edge.action_label || edge.action_class;
@@ -1398,26 +1976,12 @@ function bindActorTracker(activateTab, actionLookup) {
       existing.validator_label = existing.validator_label || edge.validator_label || "";
       existing.contract_type = existing.contract_type || edge.contract_type || "";
       existing.contract_protocol = existing.contract_protocol || edge.contract_protocol || "";
-      if (!hasNovelTx) {
-        return;
-      }
-      existing.usd_spot = Number(existing.usd_spot || 0) + Number(edge.usd_spot || 0);
-      const assetMap = new Map(
-        (existing.assets || []).map((asset) => [`${asset.asset}|${String(asset.direction || "").toLowerCase()}`, { ...asset }])
-      );
-      (edge.assets || []).forEach((incoming) => {
-        const key = `${incoming.asset}|${String(incoming.direction || "").toLowerCase()}`;
-        const prior = assetMap.get(key);
-        if (!prior) {
-          assetMap.set(key, { ...incoming });
-          return;
-        }
-        prior.amount_raw = addRawAmountStrings(prior.amount_raw, incoming.amount_raw);
-        prior.usd_spot = Number(prior.usd_spot || 0) + Number(incoming.usd_spot || 0);
-        prior.direction = String(prior.direction || incoming.direction || "").toLowerCase();
-        assetMap.set(key, prior);
-      });
-      existing.assets = Array.from(assetMap.values());
+      existing.transactions = mergeEdgeTransactions(existing.transactions, normalizeEdgeTransactions(edge));
+      const summary = summarizeTransactions(existing.transactions);
+      existing.tx_ids = summary.tx_ids;
+      existing.heights = summary.heights;
+      existing.assets = summary.assets;
+      existing.usd_spot = summary.usd_spot;
     });
 
     const actionKey = (action) => `${action.tx_id}|${action.action_key || action.action_class}|${action.from_node}|${action.to_node}`;
@@ -1523,11 +2087,12 @@ function bindActorTracker(activateTab, actionLookup) {
     }
   }
 
-  function renderGraph() {
-    const visible = deriveVisibleGraph(state.actorGraph);
+  function renderGraph(visible) {
     if (!visible.nodes.length) {
       clearGraphSurface();
-      graphContainer.innerHTML = `<div class="empty-state">No graphable flows found for the selected actors and time window.</div>`;
+      graphContainer.innerHTML = graphFiltersAreActive(state.actorGraphFilters)
+        ? `<div class="empty-state">No graph elements match the current filters. <button type="button" class="secondary" data-graph-reset-filters="actor">Reset filters</button></div>`
+        : `<div class="empty-state">No graphable flows found for the selected actors and time window.</div>`;
       return;
     }
 
@@ -1591,7 +2156,7 @@ function bindActorTracker(activateTab, actionLookup) {
               state.expandedActors.add(actorID);
             }
             state.viewport = { zoom: state.cy.zoom(), pan: state.cy.pan() };
-            renderGraph();
+            renderGraphResponse();
             return;
           }
           if (data.kind === "external_cluster") {
@@ -1602,7 +2167,7 @@ function bindActorTracker(activateTab, actionLookup) {
               state.expandedExternalChains.add(chain);
             }
             state.viewport = { zoom: state.cy.zoom(), pan: state.cy.pan() };
-            renderGraph();
+            renderGraphResponse();
             return;
           }
           inspector.textContent = JSON.stringify(data.inspect, null, 2);
@@ -1689,14 +2254,10 @@ function bindActorTracker(activateTab, actionLookup) {
     const rawEdges = response.edges || [];
     const rawNodeByID = new Map(rawNodes.map((node) => [node.id, node]));
     const actorByIDMap = new Map((response.actors || []).map((actor) => [actor.id, actor]));
+    const filterState = state.actorGraphFilters || createGraphFilterState();
     const incidentCounts = new Map();
     const nodeUSD = new Map();
-    rawEdges.forEach((edge) => {
-      [edge.from, edge.to].forEach((id) => {
-        incidentCounts.set(id, (incidentCounts.get(id) || 0) + 1);
-        nodeUSD.set(id, (nodeUSD.get(id) || 0) + Number(edge.usd_spot || 0));
-      });
-    });
+    const filteredRawEdges = [];
 
     // Build sets for blocklist and asgard vault annotations
     const blocklistedAddresses = new Set(state.blocklist.map((b) => String(b.normalized_address || "").toLowerCase()));
@@ -1716,6 +2277,42 @@ function bindActorTracker(activateTab, actionLookup) {
       const addr = String((node.metrics && node.metrics.address) || "").trim().toLowerCase();
       return addr && hiddenAddresses.has(addr);
     }
+
+    rawEdges.forEach((rawEdge) => {
+      if (String(rawEdge.action_class || "").trim().toLowerCase() === "ownership") {
+        return;
+      }
+      const sourceNode = rawNodeByID.get(rawEdge.from);
+      const targetNode = rawNodeByID.get(rawEdge.to);
+      if (!sourceNode || !targetNode) {
+        return;
+      }
+      const chainSet = graphItemChainSet(sourceNode, targetNode);
+      if (!graphTxnTypeAllowed(rawEdge.action_class, rawEdge.action_key, rawEdge.action_label, filterState)) {
+        return;
+      }
+      if (!graphChainsAllowed(chainSet, filterState)) {
+        return;
+      }
+      const filteredTransactions = filterTransactionsByTime(normalizeEdgeTransactions(rawEdge), filterState);
+      if (!filteredTransactions.length) {
+        return;
+      }
+      const summary = summarizeTransactions(filteredTransactions);
+      filteredRawEdges.push({
+        ...rawEdge,
+        chainSet,
+        transactions: filteredTransactions,
+        tx_ids: summary.tx_ids,
+        heights: summary.heights,
+        assets: summary.assets,
+        usd_spot: summary.usd_spot,
+      });
+      [rawEdge.from, rawEdge.to].forEach((id) => {
+        incidentCounts.set(id, (incidentCounts.get(id) || 0) + 1);
+        nodeUSD.set(id, (nodeUSD.get(id) || 0) + Number(summary.usd_spot || 0));
+      });
+    });
 
     const visibleNodes = new Map();
     const visibleEdges = new Map();
@@ -1835,15 +2432,13 @@ function bindActorTracker(activateTab, actionLookup) {
       }
     }
 
-    rawNodes.forEach((rawNode) => ensureVisibleNode(rawNode, mapNodeID(rawNode)));
-
-    rawEdges.forEach((rawEdge) => {
+    function addVisibleEdge(rawEdge) {
       const sourceNode = rawNodeByID.get(rawEdge.from);
       const targetNode = rawNodeByID.get(rawEdge.to);
       const from = mapNodeID(sourceNode);
       const to = mapNodeID(targetNode);
       if (!from || !to || from === to) {
-        return;
+        return false;
       }
       ensureVisibleNode(sourceNode, from);
       ensureVisibleNode(targetNode, to);
@@ -1870,6 +2465,8 @@ function bindActorTracker(activateTab, actionLookup) {
         txCount: 0,
         txIDs: [],
         assetTotals: {},
+        transactions: [],
+        chainSet: [],
         inspect: {
           action_class: rawEdge.action_class,
           action_key: rawEdge.action_key || rawEdge.action_class,
@@ -1878,36 +2475,66 @@ function bindActorTracker(activateTab, actionLookup) {
           contract_protocol: rawEdge.contract_protocol || "",
           validator_address: rawEdge.validator_address || "",
           validator_label: rawEdge.validator_label || "",
+          chain_set: [],
           edges: [],
         },
       };
-      existing.usdSpot += Number(rawEdge.usd_spot || 0);
       existing.actorIds = uniqueNumbers(existing.actorIds.concat(rawEdge.actor_ids || []));
-      existing.rawEdgeIDs.push(rawEdge.id);
-      existing.txIDs = uniqueStrings(existing.txIDs.concat(rawEdge.tx_ids || []));
-      existing.txCount = existing.txIDs.length;
+      existing.rawEdgeIDs = uniqueStrings(existing.rawEdgeIDs.concat(rawEdge.id));
       if (!existing.validatorAddress) {
         existing.validatorAddress = rawEdge.validator_address || "";
       }
       if (!existing.validatorLabel) {
         existing.validatorLabel = rawEdge.validator_label || "";
       }
-      (rawEdge.assets || []).forEach((assetValue) => {
+      existing.transactions = mergeEdgeTransactions(existing.transactions, rawEdge.transactions || []);
+      const summary = summarizeTransactions(existing.transactions);
+      existing.usdSpot = summary.usd_spot;
+      existing.txIDs = summary.tx_ids;
+      existing.txCount = existing.txIDs.length;
+      existing.chainSet = uniqueStrings(existing.chainSet.concat(rawEdge.chainSet || []));
+      existing.inspect.chain_set = existing.chainSet;
+      existing.assetTotals = {};
+      summary.assets.forEach((assetValue) => {
         const asset = assetValue.asset || "THOR.RUNE";
-        const amountRaw = String(assetValue.amount_raw || "0");
         const direction = String(assetValue.direction || "").toLowerCase();
-        const bucketKey = `${asset}|${direction}`;
-        const bucket = existing.assetTotals[bucketKey] || { asset, direction, amountRaw: "0", usdSpot: 0, tokenSymbol: "" };
-        bucket.amountRaw = addRawAmountStrings(bucket.amountRaw, amountRaw);
-        bucket.usdSpot += Number(assetValue.usd_spot || 0);
-        if (!bucket.tokenSymbol && assetValue.token_symbol) {
-          bucket.tokenSymbol = assetValue.token_symbol;
-        }
-        existing.assetTotals[bucketKey] = bucket;
+        existing.assetTotals[`${asset}|${direction}`] = {
+          asset,
+          direction,
+          amountRaw: String(assetValue.amount_raw || "0"),
+          usdSpot: Number(assetValue.usd_spot || 0),
+          tokenSymbol: String(assetValue.token_symbol || ""),
+        };
       });
       existing.inspect.edges.push(rawEdge);
       existing.width = edgeWidth(existing.usdSpot);
       visibleEdges.set(edgeID, existing);
+      return true;
+    }
+
+    filteredRawEdges.forEach((rawEdge) => {
+      addVisibleEdge(rawEdge);
+    });
+
+    rawEdges.forEach((rawEdge) => {
+      if (String(rawEdge.action_class || "").trim().toLowerCase() !== "ownership") {
+        return;
+      }
+      const sourceNode = rawNodeByID.get(rawEdge.from);
+      const targetNode = rawNodeByID.get(rawEdge.to);
+      const from = mapNodeID(sourceNode);
+      const to = mapNodeID(targetNode);
+      if (!from || !to || from === to) {
+        return;
+      }
+      if (!visibleNodes.has(from) || !visibleNodes.has(to)) {
+        return;
+      }
+      addVisibleEdge({
+        ...rawEdge,
+        chainSet: graphItemChainSet(sourceNode, targetNode),
+        transactions: normalizeEdgeTransactions(rawEdge),
+      });
     });
 
     const nodes = Array.from(visibleNodes.values()).map((node) => decorateVisibleNode(node, actorByIDMap, labelAnnotations));
@@ -1952,6 +2579,8 @@ function bindActorTracker(activateTab, actionLookup) {
           usd_spot: edge.usdSpot,
           tx_ids: edge.txIDs,
           raw_edge_ids: edge.rawEdgeIDs,
+          transactions: edge.transactions,
+          chain_set: edge.chainSet,
           aggregated_assets: aggregatedAssets,
         },
       };
@@ -2228,6 +2857,7 @@ function bindActorTracker(activateTab, actionLookup) {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       hideContextMenu();
+      hideGraphFilterPopover();
       if (graphCard && graphCard.classList.contains("fullscreen")) toggleFullscreen();
       return;
     }
@@ -2262,7 +2892,12 @@ function bindActorTracker(activateTab, actionLookup) {
   if (graphToolbar) {
     graphToolbar.addEventListener("click", (e) => {
       const button = e.target instanceof Element ? e.target.closest("button[data-graph-action]") : null;
-      if (!button || !state.cy) return;
+      if (!button) return;
+      if (button.dataset.graphAction === "filters") {
+        toggleGraphFilterPopover();
+        return;
+      }
+      if (!state.cy) return;
       switch (button.dataset.graphAction) {
         case "zoom-in":
           state.cy.zoom({ level: state.cy.zoom() * 1.3, renderedPosition: { x: graphContainer.clientWidth / 2, y: graphContainer.clientHeight / 2 } });
@@ -2327,7 +2962,7 @@ function bindActorTracker(activateTab, actionLookup) {
             });
             await refreshSharedAnnotations();
             if (state.cy) state.viewport = { zoom: state.cy.zoom(), pan: state.cy.pan() };
-            renderGraph();
+            renderGraphResponse();
           } catch (err) {
             inspector.textContent = `Label failed: ${String(err)}`;
           }
@@ -2343,7 +2978,7 @@ function bindActorTracker(activateTab, actionLookup) {
             });
             await refreshSharedAnnotations();
             if (state.cy) state.viewport = { zoom: state.cy.zoom(), pan: state.cy.pan() };
-            renderGraph();
+            renderGraphResponse();
           } catch (err) {
             inspector.textContent = `Mark Asgard failed: ${String(err)}`;
           }
@@ -2359,7 +2994,7 @@ function bindActorTracker(activateTab, actionLookup) {
             });
             await refreshSharedAnnotations();
             if (state.cy) state.viewport = { zoom: state.cy.zoom(), pan: state.cy.pan() };
-            renderGraph();
+            renderGraphResponse();
           } catch (err) {
             inspector.textContent = `Remove failed: ${String(err)}`;
           }
@@ -2451,6 +3086,9 @@ function bindActorTracker(activateTab, actionLookup) {
       state.expandedHopAddressMap = new Map();
       state.expansionInFlight = false;
       state.viewport = null;
+      state.actorGraphFilters.isOpen = false;
+      syncGraphFilterStateWithResponse(state.actorGraphFilters, response, { reset: true });
+      renderGraphFilterPopover();
       renderGraphResponse();
     } catch (err) {
       graphWarnings.innerHTML = `<span class="warning-chip">${escapeHTML(String(err))}</span>`;
@@ -2502,6 +3140,7 @@ function bindActorTracker(activateTab, actionLookup) {
     });
   }
 
+  renderGraphFilterPopover();
   refreshSharedAnnotations();
   refreshActors().catch((err) => {
     actorStatus.textContent = String(err);
@@ -2866,6 +3505,7 @@ function bindAddressExplorer(activateTab) {
   const graphContainer = document.getElementById("explorer-graph");
   const contextMenu = document.getElementById("graph-context-menu");
   const graphToolbar = document.getElementById("explorer-graph-toolbar");
+  const graphFilterPopover = document.getElementById("explorer-graph-filter-popover");
   const graphCard = graphContainer ? graphContainer.closest(".graph-card") : null;
   const directionChooser = document.getElementById("explorer-direction-chooser");
   const directionMessage = directionChooser ? directionChooser.querySelector("p") : null;
@@ -2887,6 +3527,7 @@ function bindAddressExplorer(activateTab) {
       actionsBody,
       graphContainer,
       contextMenu,
+      graphFilterPopover,
       directionChooser,
       directionMessage,
       paginationBar,
@@ -2915,6 +3556,7 @@ function bindAddressExplorer(activateTab) {
   state.selectedExplorerRunID = null;
   state.explorerGraphRequest = null;
   state.explorerRawAddress = "";
+  state.explorerGraphFilters = createGraphFilterState();
 
   let explorerLabelLayer = null;
   let explorerLabelFrame = 0;
@@ -2948,6 +3590,98 @@ function bindAddressExplorer(activateTab) {
     const activeChains = Array.isArray(meta?.active_chains) ? meta.active_chains : [];
     return activeChains.map((chain) => metaChip(chain));
   }
+
+  function renderExplorerFilterPopover() {
+    graphFilterPopover.innerHTML = graphFilterPopoverMarkup(state.explorerGraphFilters);
+    graphFilterPopover.hidden = !state.explorerGraphFilters.isOpen;
+    updateGraphFilterButtonState(graphToolbar, state.explorerGraphFilters);
+  }
+
+  function hideExplorerFilterPopover() {
+    if (!state.explorerGraphFilters.isOpen) {
+      updateGraphFilterButtonState(graphToolbar, state.explorerGraphFilters);
+      return;
+    }
+    state.explorerGraphFilters.isOpen = false;
+    renderExplorerFilterPopover();
+  }
+
+  function toggleExplorerFilterPopover() {
+    if (!state.explorerGraph) {
+      return;
+    }
+    state.explorerGraphFilters.isOpen = !state.explorerGraphFilters.isOpen;
+    renderExplorerFilterPopover();
+  }
+
+  graphFilterPopover.addEventListener("change", (e) => {
+    const target = e.target instanceof HTMLInputElement ? e.target : null;
+    if (!target) {
+      return;
+    }
+    if (target.dataset.filterTxn) {
+      state.explorerGraphFilters.txnTypes[target.dataset.filterTxn] = target.checked;
+      renderExplorerFilterPopover();
+      renderExplorerGraphResponse();
+      return;
+    }
+    if (target.dataset.filterChain) {
+      const chain = String(target.dataset.filterChain || "");
+      const selected = new Set(state.explorerGraphFilters.selectedChains || []);
+      if (target.checked) {
+        selected.add(chain);
+      } else {
+        selected.delete(chain);
+      }
+      state.explorerGraphFilters.selectedChains = Array.from(selected).sort();
+      renderExplorerFilterPopover();
+      renderExplorerGraphResponse();
+      return;
+    }
+    if (target.dataset.filterTime === "start") {
+      setGraphFilterDateValue(state.explorerGraphFilters, "startTime", target.value);
+      renderExplorerFilterPopover();
+      renderExplorerGraphResponse();
+      return;
+    }
+    if (target.dataset.filterTime === "end") {
+      setGraphFilterDateValue(state.explorerGraphFilters, "endTime", target.value);
+      renderExplorerFilterPopover();
+      renderExplorerGraphResponse();
+    }
+  });
+
+  graphFilterPopover.addEventListener("click", (e) => {
+    const target = e.target instanceof Element ? e.target.closest("[data-filter-reset]") : null;
+    if (!target) {
+      return;
+    }
+    resetGraphFilters(state.explorerGraphFilters);
+    renderExplorerFilterPopover();
+    renderExplorerGraphResponse();
+  });
+
+  graphContainer.addEventListener("click", (e) => {
+    const target = e.target instanceof Element ? e.target.closest("[data-graph-reset-filters='explorer']") : null;
+    if (!target) {
+      return;
+    }
+    resetGraphFilters(state.explorerGraphFilters);
+    renderExplorerFilterPopover();
+    renderExplorerGraphResponse();
+  });
+
+  document.addEventListener("mousedown", (e) => {
+    if (!state.explorerGraphFilters.isOpen) {
+      return;
+    }
+    const target = e.target instanceof Node ? e.target : null;
+    const filterButton = graphToolbar?.querySelector('[data-graph-action="filters"]');
+    if ((target && graphFilterPopover.contains(target)) || (filterButton && target && filterButton.contains(target))) {
+      return;
+    }
+    hideExplorerFilterPopover();
+  });
 
   graphContainer.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -3032,7 +3766,7 @@ function bindAddressExplorer(activateTab) {
     `;
   }
 
-  function renderExplorerMeta() {
+  function renderExplorerMeta(visible, filteredActions) {
     const meta = explorerCurrentMeta();
     if (!meta) {
       graphSummary.innerHTML = "";
@@ -3051,6 +3785,9 @@ function bindAddressExplorer(activateTab) {
     if (state.explorerExpandedHopAddressMap.size > 0) {
       chips.push(metaChip(`+${state.explorerExpandedHopAddressMap.size} expanded edges`));
     }
+    if (state.explorerGraph && graphFiltersAreActive(state.explorerGraphFilters)) {
+      chips.push(metaChip("Filters active"));
+    }
     graphSummary.innerHTML = chips.join("");
 
     const warnings = Array.isArray(meta.warnings) ? meta.warnings : [];
@@ -3059,10 +3796,16 @@ function bindAddressExplorer(activateTab) {
       : "";
 
     if (state.explorerGraph) {
+      const filteredNodeCount = Array.isArray(visible?.nodes) ? visible.nodes.length : 0;
+      const filteredEdgeCount = Array.isArray(visible?.edges) ? visible.edges.length : 0;
+      const filteredActionCount = Array.isArray(filteredActions) ? filteredActions.length : 0;
+      const totalNodeCount = Number((state.explorerGraph.stats || {}).node_count || 0);
+      const totalEdgeCount = Number((state.explorerGraph.stats || {}).edge_count || 0);
+      const totalActionCount = Number((state.explorerGraph.stats || {}).supporting_action_count || 0);
       graphStats.innerHTML = [
-        metaChip(`${(state.explorerGraph.stats || {}).node_count || 0} nodes`),
-        metaChip(`${(state.explorerGraph.stats || {}).edge_count || 0} edges`),
-        metaChip(`${(state.explorerGraph.stats || {}).supporting_action_count || 0} actions`),
+        metaChip(graphFiltersAreActive(state.explorerGraphFilters) ? `${filteredNodeCount} / ${totalNodeCount} nodes` : `${totalNodeCount} nodes`),
+        metaChip(graphFiltersAreActive(state.explorerGraphFilters) ? `${filteredEdgeCount} / ${totalEdgeCount} edges` : `${totalEdgeCount} edges`),
+        metaChip(graphFiltersAreActive(state.explorerGraphFilters) ? `${filteredActionCount} / ${totalActionCount} actions` : `${totalActionCount} actions`),
       ].join("");
       return;
     }
@@ -3121,8 +3864,11 @@ function bindAddressExplorer(activateTab) {
       state.explorerBaseGraph = resp;
       state.explorerLoadedActions = resp.loaded_actions || 0;
       state.explorerExpandedHopAddressMap = new Map();
+      state.explorerGraphFilters.isOpen = false;
+      syncGraphFilterStateWithResponse(state.explorerGraphFilters, resp, { reset: true });
     }
 
+    renderExplorerFilterPopover();
     renderExplorerGraphResponse();
     updatePaginationBar();
     setExplorerFormStatus("");
@@ -3152,6 +3898,7 @@ function bindAddressExplorer(activateTab) {
     state.explorerLoadedActions = 0;
     state.explorerExpandedHopAddressMap = new Map();
     state.explorerViewport = null;
+    state.explorerGraphFilters.isOpen = false;
     directionChooser.style.display = "none";
     paginationBar.style.display = "none";
     clearExplorerTables();
@@ -3159,6 +3906,7 @@ function bindAddressExplorer(activateTab) {
     graphSummary.innerHTML = "";
     graphWarnings.innerHTML = "";
     graphStats.innerHTML = "";
+    renderExplorerFilterPopover();
     inspector.textContent = "Checking address activity…";
     setExplorerFormStatus("Checking address activity…");
 
@@ -3360,39 +4108,37 @@ function bindAddressExplorer(activateTab) {
     (base.nodes || []).forEach(mergeNode);
     (expansion.nodes || []).forEach(mergeNode);
 
+    function cloneMergedEdge(edge, canonicalID) {
+      const transactions = mergeEdgeTransactions([], normalizeEdgeTransactions(edge));
+      const summary = summarizeTransactions(transactions);
+      return {
+        ...edge,
+        id: canonicalID,
+        from: nodeAlias.get(edge.from) || edge.from,
+        to: nodeAlias.get(edge.to) || edge.to,
+        transactions,
+        tx_ids: summary.tx_ids,
+        heights: summary.heights,
+        assets: summary.assets,
+        usd_spot: summary.usd_spot,
+      };
+    }
+
     const edgeMap = new Map();
     function addEdge(edge) {
       const canonicalID = edgeMergeKey(edge, nodeAlias);
       const existing = edgeMap.get(canonicalID);
       if (!existing) {
-        edgeMap.set(canonicalID, {
-          ...edge,
-          id: canonicalID,
-          from: nodeAlias.get(edge.from) || edge.from,
-          to: nodeAlias.get(edge.to) || edge.to,
-          tx_ids: [...(edge.tx_ids || [])],
-          heights: [...(edge.heights || [])],
-          assets: (edge.assets || []).map((a) => ({ ...a })),
-        });
+        edgeMap.set(canonicalID, cloneMergedEdge(edge, canonicalID));
         return;
       }
-      const knownTxIDs = new Set(existing.tx_ids || []);
-      const hasNovel = (edge.tx_ids || []).some((t) => !knownTxIDs.has(t));
-      existing.tx_ids = uniqueStrings((existing.tx_ids || []).concat(edge.tx_ids || []));
-      existing.heights = uniqueNumbers((existing.heights || []).concat(edge.heights || [])).sort((a, b) => a - b);
       existing.confidence = Math.max(Number(existing.confidence || 0), Number(edge.confidence || 0));
-      if (!hasNovel) return;
-      existing.usd_spot = Number(existing.usd_spot || 0) + Number(edge.usd_spot || 0);
-      const assetMap = new Map((existing.assets || []).map((a) => [`${a.asset}|${String(a.direction || "").toLowerCase()}`, { ...a }]));
-      (edge.assets || []).forEach((incoming) => {
-        const key = `${incoming.asset}|${String(incoming.direction || "").toLowerCase()}`;
-        const prior = assetMap.get(key);
-        if (!prior) { assetMap.set(key, { ...incoming }); return; }
-        prior.amount_raw = addRawAmountStrings(prior.amount_raw, incoming.amount_raw);
-        prior.usd_spot = Number(prior.usd_spot || 0) + Number(incoming.usd_spot || 0);
-        assetMap.set(key, prior);
-      });
-      existing.assets = Array.from(assetMap.values());
+      existing.transactions = mergeEdgeTransactions(existing.transactions, normalizeEdgeTransactions(edge));
+      const summary = summarizeTransactions(existing.transactions);
+      existing.tx_ids = summary.tx_ids;
+      existing.heights = summary.heights;
+      existing.assets = summary.assets;
+      existing.usd_spot = summary.usd_spot;
     }
     (base.edges || []).forEach(addEdge);
     (expansion.edges || []).forEach(addEdge);
@@ -3443,14 +4189,20 @@ function bindAddressExplorer(activateTab) {
 
   function renderExplorerGraphResponse() {
     if (!state.explorerGraph) {
+      state.explorerGraphFilters.isOpen = false;
+      renderExplorerFilterPopover();
       renderExplorerMeta();
       clearExplorerGraphSurface();
       clearExplorerTables();
       return;
     }
-    renderExplorerMeta();
-    renderExplorerActions();
-    renderExplorerGraph();
+    syncGraphFilterStateWithResponse(state.explorerGraphFilters, state.explorerGraph);
+    const visible = explorerDeriveVisibleGraph(state.explorerGraph);
+    const filteredActions = filterSupportingActions(state.explorerGraph.supporting_actions || [], state.explorerGraph, state.explorerGraphFilters);
+    renderExplorerFilterPopover();
+    renderExplorerMeta(visible, filteredActions);
+    renderExplorerActions(filteredActions);
+    renderExplorerGraph(visible);
   }
 
   function renderExplorerSummary() {
@@ -3477,8 +4229,7 @@ function bindAddressExplorer(activateTab) {
       : "";
   }
 
-  function renderExplorerActions() {
-    const actions = state.explorerGraph.supporting_actions || [];
+  function renderExplorerActions(actions) {
     if (!actions.length) {
       actionsBody.innerHTML = `<tr><td colspan="6" class="empty-state">No supporting actions.</td></tr>`;
       return;
@@ -3502,14 +4253,8 @@ function bindAddressExplorer(activateTab) {
     const rawNodes = response.nodes || [];
     const rawEdges = response.edges || [];
     const rawNodeByID = new Map(rawNodes.map((n) => [n.id, n]));
-    const incidentCounts = new Map();
-    const nodeUSD = new Map();
-    rawEdges.forEach((edge) => {
-      [edge.from, edge.to].forEach((id) => {
-        incidentCounts.set(id, (incidentCounts.get(id) || 0) + 1);
-        nodeUSD.set(id, (nodeUSD.get(id) || 0) + Number(edge.usd_spot || 0));
-      });
-    });
+    const filterState = state.explorerGraphFilters || createGraphFilterState();
+    const filteredRawEdges = [];
 
     const blocklistedAddresses = new Set(state.blocklist.map((b) => String(b.normalized_address || "").toLowerCase()));
     const asgardAddresses = new Set(
@@ -3526,6 +4271,38 @@ function bindAddressExplorer(activateTab) {
       const addr = String((node.metrics && node.metrics.address) || "").trim().toLowerCase();
       return addr && hiddenAddresses.has(addr);
     }
+
+    rawEdges.forEach((rawEdge) => {
+      if (String(rawEdge.action_class || "").trim().toLowerCase() === "ownership") {
+        return;
+      }
+      const sourceNode = rawNodeByID.get(rawEdge.from);
+      const targetNode = rawNodeByID.get(rawEdge.to);
+      if (!sourceNode || !targetNode) {
+        return;
+      }
+      const chainSet = graphItemChainSet(sourceNode, targetNode);
+      if (!graphTxnTypeAllowed(rawEdge.action_class, rawEdge.action_key, rawEdge.action_label, filterState)) {
+        return;
+      }
+      if (!graphChainsAllowed(chainSet, filterState)) {
+        return;
+      }
+      const filteredTransactions = filterTransactionsByTime(normalizeEdgeTransactions(rawEdge), filterState);
+      if (!filteredTransactions.length) {
+        return;
+      }
+      const summary = summarizeTransactions(filteredTransactions);
+      filteredRawEdges.push({
+        ...rawEdge,
+        chainSet,
+        transactions: filteredTransactions,
+        tx_ids: summary.tx_ids,
+        heights: summary.heights,
+        assets: summary.assets,
+        usd_spot: summary.usd_spot,
+      });
+    });
 
     const visibleNodes = new Map();
     const visibleEdges = new Map();
@@ -3567,14 +4344,12 @@ function bindAddressExplorer(activateTab) {
       visibleNodes.set(mappedID, existing);
     }
 
-    rawNodes.forEach((n) => ensureVisibleNode(n, mapNodeID(n)));
-
-    rawEdges.forEach((rawEdge) => {
+    function addVisibleEdge(rawEdge) {
       const sourceNode = rawNodeByID.get(rawEdge.from);
       const targetNode = rawNodeByID.get(rawEdge.to);
       const from = mapNodeID(sourceNode);
       const to = mapNodeID(targetNode);
-      if (!from || !to || from === to) return;
+      if (!from || !to || from === to) return false;
       ensureVisibleNode(sourceNode, from);
       ensureVisibleNode(targetNode, to);
 
@@ -3600,6 +4375,8 @@ function bindAddressExplorer(activateTab) {
         txCount: 0,
         txIDs: [],
         assetTotals: {},
+        transactions: [],
+        chainSet: [],
         inspect: {
           action_class: rawEdge.action_class,
           action_key: rawEdge.action_key || rawEdge.action_class,
@@ -3608,26 +4385,61 @@ function bindAddressExplorer(activateTab) {
           contract_protocol: rawEdge.contract_protocol || "",
           validator_address: rawEdge.validator_address || "",
           validator_label: rawEdge.validator_label || "",
+          chain_set: [],
           edges: [],
         },
       };
-      existing.usdSpot += Number(rawEdge.usd_spot || 0);
-      existing.rawEdgeIDs.push(rawEdge.id);
-      existing.txIDs = uniqueStrings(existing.txIDs.concat(rawEdge.tx_ids || []));
-      existing.txCount = existing.txIDs.length;
+      existing.rawEdgeIDs = uniqueStrings(existing.rawEdgeIDs.concat(rawEdge.id));
       if (!existing.validatorAddress) existing.validatorAddress = rawEdge.validator_address || "";
       if (!existing.validatorLabel) existing.validatorLabel = rawEdge.validator_label || "";
-      (rawEdge.assets || []).forEach((av) => {
-        const bucketKey = `${av.asset || "THOR.RUNE"}|${String(av.direction || "").toLowerCase()}`;
-        const bucket = existing.assetTotals[bucketKey] || { asset: av.asset || "THOR.RUNE", direction: String(av.direction || "").toLowerCase(), amountRaw: "0", usdSpot: 0, tokenSymbol: "" };
-        bucket.amountRaw = addRawAmountStrings(bucket.amountRaw, String(av.amount_raw || "0"));
-        bucket.usdSpot += Number(av.usd_spot || 0);
-        if (!bucket.tokenSymbol && av.token_symbol) bucket.tokenSymbol = av.token_symbol;
-        existing.assetTotals[bucketKey] = bucket;
+      existing.transactions = mergeEdgeTransactions(existing.transactions, rawEdge.transactions || []);
+      const summary = summarizeTransactions(existing.transactions);
+      existing.usdSpot = summary.usd_spot;
+      existing.txIDs = summary.tx_ids;
+      existing.txCount = existing.txIDs.length;
+      existing.chainSet = uniqueStrings(existing.chainSet.concat(rawEdge.chainSet || []));
+      existing.inspect.chain_set = existing.chainSet;
+      existing.assetTotals = {};
+      summary.assets.forEach((assetValue) => {
+        const asset = assetValue.asset || "THOR.RUNE";
+        const direction = String(assetValue.direction || "").toLowerCase();
+        existing.assetTotals[`${asset}|${direction}`] = {
+          asset,
+          direction,
+          amountRaw: String(assetValue.amount_raw || "0"),
+          usdSpot: Number(assetValue.usd_spot || 0),
+          tokenSymbol: String(assetValue.token_symbol || ""),
+        };
       });
       existing.inspect.edges.push(rawEdge);
       existing.width = edgeWidth(existing.usdSpot);
       visibleEdges.set(edgeID, existing);
+      return true;
+    }
+
+    filteredRawEdges.forEach((rawEdge) => {
+      addVisibleEdge(rawEdge);
+    });
+
+    rawEdges.forEach((rawEdge) => {
+      if (String(rawEdge.action_class || "").trim().toLowerCase() !== "ownership") {
+        return;
+      }
+      const sourceNode = rawNodeByID.get(rawEdge.from);
+      const targetNode = rawNodeByID.get(rawEdge.to);
+      const from = mapNodeID(sourceNode);
+      const to = mapNodeID(targetNode);
+      if (!from || !to || from === to) {
+        return;
+      }
+      if (!visibleNodes.has(from) || !visibleNodes.has(to)) {
+        return;
+      }
+      addVisibleEdge({
+        ...rawEdge,
+        chainSet: graphItemChainSet(sourceNode, targetNode),
+        transactions: normalizeEdgeTransactions(rawEdge),
+      });
     });
 
     const emptyActorMap = new Map();
@@ -3660,6 +4472,8 @@ function bindAddressExplorer(activateTab) {
           usd_spot: edge.usdSpot,
           tx_ids: edge.txIDs,
           raw_edge_ids: edge.rawEdgeIDs,
+          transactions: edge.transactions,
+          chain_set: edge.chainSet,
           aggregated_assets: aggregatedAssets,
         },
       };
@@ -3840,11 +4654,12 @@ function bindAddressExplorer(activateTab) {
   }
 
   // --- Render graph ---
-  function renderExplorerGraph() {
-    const visible = explorerDeriveVisibleGraph(state.explorerGraph);
+  function renderExplorerGraph(visible) {
     if (!visible.nodes.length) {
       clearExplorerGraphSurface();
-      graphContainer.innerHTML = `<div class="empty-state">No graphable flows found for this address.</div>`;
+      graphContainer.innerHTML = graphFiltersAreActive(state.explorerGraphFilters)
+        ? `<div class="empty-state">No graph elements match the current filters. <button type="button" class="secondary" data-graph-reset-filters="explorer">Reset filters</button></div>`
+        : `<div class="empty-state">No graphable flows found for this address.</div>`;
       return;
     }
 
@@ -4166,7 +4981,7 @@ function bindAddressExplorer(activateTab) {
             await callAPI("/api/address-annotations", { method: "PUT", body: { address, kind: "label", value: label } });
             await refreshSharedAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
-            renderExplorerGraph();
+            renderExplorerGraphResponse();
           } catch (err) { inspector.textContent = `Label failed: ${String(err)}`; }
         }
         break;
@@ -4177,7 +4992,7 @@ function bindAddressExplorer(activateTab) {
             await callAPI("/api/address-annotations", { method: "PUT", body: { address, kind: "asgard_vault", value: "true" } });
             await refreshSharedAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
-            renderExplorerGraph();
+            renderExplorerGraphResponse();
           } catch (err) { inspector.textContent = `Mark Asgard failed: ${String(err)}`; }
         }
         break;
@@ -4187,7 +5002,7 @@ function bindAddressExplorer(activateTab) {
             await callAPI("/api/address-blocklist", { method: "POST", body: { address, reason: "Removed from graph" } });
             await refreshSharedAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
-            renderExplorerGraph();
+            renderExplorerGraphResponse();
           } catch (err) { inspector.textContent = `Remove failed: ${String(err)}`; }
         }
         break;
@@ -4199,6 +5014,9 @@ function bindAddressExplorer(activateTab) {
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (!document.querySelector('[data-panel="address-explorer"].active')) return;
+    if (e.key === "Escape") {
+      hideExplorerFilterPopover();
+    }
     if (!state.explorerCy) return;
     switch (e.key) {
       case "+": case "=":
@@ -4228,7 +5046,12 @@ function bindAddressExplorer(activateTab) {
   if (graphToolbar) {
     graphToolbar.addEventListener("click", (e) => {
       const button = e.target instanceof Element ? e.target.closest("button[data-graph-action]") : null;
-      if (!button || !state.explorerCy) return;
+      if (!button) return;
+      if (button.dataset.graphAction === "filters") {
+        toggleExplorerFilterPopover();
+        return;
+      }
+      if (!state.explorerCy) return;
       switch (button.dataset.graphAction) {
         case "zoom-in":
           state.explorerCy.zoom({ level: state.explorerCy.zoom() * 1.3, renderedPosition: { x: graphContainer.clientWidth / 2, y: graphContainer.clientHeight / 2 } });
@@ -4250,6 +5073,7 @@ function bindAddressExplorer(activateTab) {
     });
   }
 
+  renderExplorerFilterPopover();
   renderExplorerMeta();
   updatePaginationBar();
   showExplorerPlaceholder("Enter a wallet address to explore.");

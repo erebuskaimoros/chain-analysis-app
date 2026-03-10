@@ -2904,10 +2904,7 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 		}
 		b.edges[edgeKey] = edge
 	}
-	edge.USDSpot += seg.USDSpot
 	edge.ActorIDs = mergeInt64s(edge.ActorIDs, seg.ActorIDs)
-	edge.TxIDs = appendUniqueString(edge.TxIDs, seg.TxID)
-	edge.Heights = appendUniqueInt64(edge.Heights, seg.Height)
 	if edge.ActionLabel == "" {
 		edge.ActionLabel = firstNonEmpty(seg.ActionLabel, edge.ActionLabel)
 	}
@@ -2935,20 +2932,21 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 
 		if inAsset != "" && hasGraphableLiquidity(inAmount) {
 			inMeta := assetMetadataFromAsset(inAsset)
-			mergeEdgeAsset(edge, inAsset, inAmount, b.prices.usdFor(inAsset, inAmount), inMeta, "in")
+			mergeEdgeTransactionAsset(edge, seg.TxID, seg.Height, seg.Time, inAsset, inAmount, b.prices.usdFor(inAsset, inAmount), inMeta, "in")
 			added = true
 		}
 		if outAsset != "" && hasGraphableLiquidity(outAmount) {
 			outMeta := assetMetadataFromAsset(outAsset)
-			mergeEdgeAsset(edge, outAsset, outAmount, b.prices.usdFor(outAsset, outAmount), outMeta, "out")
+			mergeEdgeTransactionAsset(edge, seg.TxID, seg.Height, seg.Time, outAsset, outAmount, b.prices.usdFor(outAsset, outAmount), outMeta, "out")
 			added = true
 		}
 		if !added {
-			mergeEdgeAsset(edge, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
+			mergeEdgeTransactionAsset(edge, seg.TxID, seg.Height, seg.Time, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
 		}
 	} else {
-		mergeEdgeAsset(edge, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
+		mergeEdgeTransactionAsset(edge, seg.TxID, seg.Height, seg.Time, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
 	}
+	recomputeEdgeAggregate(edge)
 
 	source.Metrics["out_edges"] = intMetric(source.Metrics["out_edges"]) + 1
 	target.Metrics["in_edges"] = intMetric(target.Metrics["in_edges"]) + 1
@@ -3444,7 +3442,25 @@ func (b *graphBuilder) edgeList() []FlowEdge {
 	out := make([]FlowEdge, 0, len(b.edges))
 	for _, edge := range b.edges {
 		edge.ActorIDs = uniqueInt64s(edge.ActorIDs)
+		recomputeEdgeAggregate(edge)
 		sort.Slice(edge.Assets, func(i, j int) bool { return edge.Assets[i].USDSpot > edge.Assets[j].USDSpot })
+		for i := range edge.Transactions {
+			sort.Slice(edge.Transactions[i].Assets, func(a, b int) bool {
+				return edge.Transactions[i].Assets[a].USDSpot > edge.Transactions[i].Assets[b].USDSpot
+			})
+		}
+		sort.Slice(edge.Transactions, func(i, j int) bool {
+			if edge.Transactions[i].Time.Equal(edge.Transactions[j].Time) {
+				return edge.Transactions[i].TxID < edge.Transactions[j].TxID
+			}
+			if edge.Transactions[i].Time.IsZero() {
+				return false
+			}
+			if edge.Transactions[j].Time.IsZero() {
+				return true
+			}
+			return edge.Transactions[i].Time.Before(edge.Transactions[j].Time)
+		})
 		sort.Strings(edge.TxIDs)
 		sort.Slice(edge.Heights, func(i, j int) bool { return edge.Heights[i] < edge.Heights[j] })
 		out = append(out, *edge)
@@ -4643,7 +4659,18 @@ func isStableAsset(asset string) bool {
 	return false
 }
 
-func mergeEdgeAsset(edge *FlowEdge, asset, amountRaw string, usd float64, meta assetMetadata, direction string) {
+func assetMetadataFromFlowAssetValue(asset FlowAssetValue) assetMetadata {
+	return assetMetadata{
+		AssetKind:     asset.AssetKind,
+		TokenStandard: asset.TokenStandard,
+		TokenAddress:  asset.TokenAddress,
+		TokenSymbol:   asset.TokenSymbol,
+		TokenName:     asset.TokenName,
+		TokenDecimals: asset.TokenDecimals,
+	}
+}
+
+func mergeAssetValues(values *[]FlowAssetValue, asset, amountRaw string, usd float64, meta assetMetadata, direction string) {
 	asset = normalizeAsset(asset)
 	if asset == "" {
 		asset = "THOR.RUNE"
@@ -4655,32 +4682,32 @@ func mergeEdgeAsset(edge *FlowEdge, asset, amountRaw string, usd float64, meta a
 		direction = ""
 	}
 	meta = mergeAssetMetadata(meta, assetMetadataFromAsset(asset))
-	for i := range edge.Assets {
-		if edge.Assets[i].Asset == asset && edge.Assets[i].Direction == direction {
-			edge.Assets[i].AmountRaw = addRawAmounts(edge.Assets[i].AmountRaw, amountRaw)
-			edge.Assets[i].USDSpot += usd
-			if edge.Assets[i].AssetKind == "" {
-				edge.Assets[i].AssetKind = meta.AssetKind
+	for i := range *values {
+		if (*values)[i].Asset == asset && (*values)[i].Direction == direction {
+			(*values)[i].AmountRaw = addRawAmounts((*values)[i].AmountRaw, amountRaw)
+			(*values)[i].USDSpot += usd
+			if (*values)[i].AssetKind == "" {
+				(*values)[i].AssetKind = meta.AssetKind
 			}
-			if edge.Assets[i].TokenStandard == "" {
-				edge.Assets[i].TokenStandard = meta.TokenStandard
+			if (*values)[i].TokenStandard == "" {
+				(*values)[i].TokenStandard = meta.TokenStandard
 			}
-			if edge.Assets[i].TokenAddress == "" {
-				edge.Assets[i].TokenAddress = meta.TokenAddress
+			if (*values)[i].TokenAddress == "" {
+				(*values)[i].TokenAddress = meta.TokenAddress
 			}
-			if edge.Assets[i].TokenSymbol == "" {
-				edge.Assets[i].TokenSymbol = meta.TokenSymbol
+			if (*values)[i].TokenSymbol == "" {
+				(*values)[i].TokenSymbol = meta.TokenSymbol
 			}
-			if edge.Assets[i].TokenName == "" {
-				edge.Assets[i].TokenName = meta.TokenName
+			if (*values)[i].TokenName == "" {
+				(*values)[i].TokenName = meta.TokenName
 			}
-			if edge.Assets[i].TokenDecimals == 0 {
-				edge.Assets[i].TokenDecimals = meta.TokenDecimals
+			if (*values)[i].TokenDecimals == 0 {
+				(*values)[i].TokenDecimals = meta.TokenDecimals
 			}
 			return
 		}
 	}
-	edge.Assets = append(edge.Assets, FlowAssetValue{
+	*values = append(*values, FlowAssetValue{
 		Asset:         asset,
 		AmountRaw:     firstNonEmpty(amountRaw, "0"),
 		USDSpot:       usd,
@@ -4692,6 +4719,56 @@ func mergeEdgeAsset(edge *FlowEdge, asset, amountRaw string, usd float64, meta a
 		TokenName:     meta.TokenName,
 		TokenDecimals: meta.TokenDecimals,
 	})
+}
+
+func mergeEdgeAsset(edge *FlowEdge, asset, amountRaw string, usd float64, meta assetMetadata, direction string) {
+	mergeAssetValues(&edge.Assets, asset, amountRaw, usd, meta, direction)
+}
+
+func mergeEdgeTransactionAsset(edge *FlowEdge, txID string, height int64, when time.Time, asset, amountRaw string, usd float64, meta assetMetadata, direction string) {
+	txID = strings.TrimSpace(txID)
+	for i := range edge.Transactions {
+		tx := &edge.Transactions[i]
+		if tx.TxID != txID {
+			continue
+		}
+		if tx.Height == 0 || (height > 0 && height < tx.Height) {
+			tx.Height = height
+		}
+		if tx.Time.IsZero() || (!when.IsZero() && when.Before(tx.Time)) {
+			tx.Time = when
+		}
+		tx.USDSpot += usd
+		mergeAssetValues(&tx.Assets, asset, amountRaw, usd, meta, direction)
+		return
+	}
+	tx := FlowEdgeTransaction{
+		TxID:    txID,
+		Height:  height,
+		Time:    when,
+		USDSpot: usd,
+		Assets:  []FlowAssetValue{},
+	}
+	mergeAssetValues(&tx.Assets, asset, amountRaw, usd, meta, direction)
+	edge.Transactions = append(edge.Transactions, tx)
+}
+
+func recomputeEdgeAggregate(edge *FlowEdge) {
+	if edge == nil {
+		return
+	}
+	edge.Assets = nil
+	edge.USDSpot = 0
+	edge.TxIDs = nil
+	edge.Heights = nil
+	for _, tx := range edge.Transactions {
+		edge.USDSpot += tx.USDSpot
+		edge.TxIDs = appendUniqueString(edge.TxIDs, tx.TxID)
+		edge.Heights = appendUniqueInt64(edge.Heights, tx.Height)
+		for _, asset := range tx.Assets {
+			mergeEdgeAsset(edge, asset.Asset, asset.AmountRaw, asset.USDSpot, assetMetadataFromFlowAssetValue(asset), asset.Direction)
+		}
+	}
 }
 
 func addRawAmounts(a, b string) string {

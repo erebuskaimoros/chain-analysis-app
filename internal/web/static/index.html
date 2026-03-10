@@ -124,6 +124,11 @@
               <div class="graph-container">
                 <div id="actor-graph" class="graph-surface"></div>
                 <div class="graph-toolbar" id="graph-toolbar">
+                  <button type="button" data-graph-action="filters" title="Filters">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M2 3h12l-4.5 5v4l-3-1.8V8L2 3z"/>
+                    </svg>
+                  </button>
                   <button type="button" data-graph-action="zoom-in" title="Zoom in (+)">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/>
@@ -145,6 +150,7 @@
                     </svg>
                   </button>
                 </div>
+                <div class="graph-filter-popover" id="graph-filter-popover" hidden></div>
                 <div class="graph-help">Wheel to zoom &middot; Left-drag to box-select &middot; Middle-drag to pan &middot; Right-click for actions &middot; Double-click to expand</div>
               </div>
             </section>
@@ -241,6 +247,11 @@
           <div class="graph-container">
             <div id="explorer-graph" class="graph-surface"></div>
             <div class="graph-toolbar" id="explorer-graph-toolbar">
+              <button type="button" data-graph-action="filters" title="Filters">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2 3h12l-4.5 5v4l-3-1.8V8L2 3z"/>
+                </svg>
+              </button>
               <button type="button" data-graph-action="zoom-in" title="Zoom in (+)">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/>
@@ -262,6 +273,7 @@
                 </svg>
               </button>
             </div>
+            <div class="graph-filter-popover" id="explorer-graph-filter-popover" hidden></div>
             <div class="graph-help">Wheel to zoom &middot; Left-drag to box-select &middot; Middle-drag to pan &middot; Right-click for actions &middot; Double-click to expand one edge</div>
           </div>
         </section>
