@@ -1155,10 +1155,34 @@ function bindTabs() {
   function activate(tabName) {
     tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === tabName));
     panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === tabName));
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    params.set("tab", tabName);
+    window.history.replaceState(null, "", `#${params.toString()}`);
+  }
+
+  function tabFromHash() {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const candidate = String(params.get("tab") || "").trim();
+    if (!candidate) {
+      return "";
+    }
+    return tabs.some((tab) => tab.dataset.tab === candidate) ? candidate : "";
   }
 
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => activate(tab.dataset.tab));
+  });
+
+  const initialTab = tabFromHash();
+  if (initialTab) {
+    activate(initialTab);
+  }
+
+  window.addEventListener("hashchange", () => {
+    const nextTab = tabFromHash();
+    if (nextTab) {
+      activate(nextTab);
+    }
   });
 
   return activate;
@@ -2598,7 +2622,7 @@ function bindActorTracker(activateTab, actionLookup) {
       if ((incidentCounts.get(node.id) || 0) > 1) {
         return false;
       }
-      const threshold = Math.max(10000, Number(response.query.min_usd || 0));
+      const threshold = Math.max(0, Number(response.query.min_usd || 0));
       return (nodeUSD.get(node.id) || 0) < threshold;
     }
 

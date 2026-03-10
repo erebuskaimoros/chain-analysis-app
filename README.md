@@ -4,6 +4,8 @@ Production-oriented local app for THORChain analysis with **on-demand ingestion*
 
 It does not backfill the entire chain by default. It ingests blocks only when needed by a query, caches them in SQLite, and reuses the cached data for later requests.
 
+The root UI is now a React/TypeScript shell served by the Go app. The full legacy workspace remains available at `/legacy/` while feature migration continues.
+
 ## Features
 
 - Live THORNode data integration with endpoint failover.
@@ -19,6 +21,8 @@ It does not backfill the entire chain by default. It ingests blocks only when ne
 
 ## API
 
+### Legacy API
+
 - `GET /api/health`
 - `GET|POST /api/ingest/recent`
 - `GET /api/overview`
@@ -33,16 +37,38 @@ It does not backfill the entire chain by default. It ingests blocks only when ne
 - `DELETE /api/actors/{id}`
 - `POST /api/actor-tracker/graph`
 
+### V1 API
+
+- `GET /api/v1/health`
+- `GET /api/v1/actions/{txid}`
+- `GET|POST /api/v1/actors`
+- `PUT|DELETE /api/v1/actors/{id}`
+- `GET|PUT|DELETE /api/v1/annotations`
+- `GET|POST /api/v1/blocklist`
+- `DELETE /api/v1/blocklist/{address}`
+- `POST /api/v1/analysis/actor-graph`
+- `POST /api/v1/analysis/actor-graph/expand`
+- `POST /api/v1/analysis/actor-graph/live-holdings`
+- `POST /api/v1/analysis/address-explorer`
+- `GET /api/v1/runs/actor-graph`
+- `DELETE /api/v1/runs/actor-graph/{id}`
+- `GET /api/v1/runs/address-explorer`
+- `DELETE /api/v1/runs/address-explorer/{id}`
+
 ## Run
 
 From `chain-analysis-app/`:
 
 ```bash
 go mod tidy
+npm --prefix frontend install
+npm --prefix frontend run build
 go run ./cmd/server
 ```
 
 Open [http://localhost:8090](http://localhost:8090).
+
+Open [http://localhost:8090/legacy/](http://localhost:8090/legacy/) for the legacy workspace.
 
 For deterministic restarts that always pick up latest code:
 
@@ -53,6 +79,7 @@ make restart-server
 This script:
 - stops using PID file first (`data/run/server.pid`)
 - force-kills any leftover listener on the configured port
+- builds the React/TypeScript UI bundle in `internal/web/ui/dist`
 - rebuilds `data/bin/chain-analysis-server` with embedded build metadata
 - starts fresh and verifies `/api/health`
 
@@ -63,6 +90,7 @@ Use `make stop-server` to stop and `make build-server` to build without restarti
 - `CHAIN_ANALYSIS_ADDR` (default `:8090`)
 - `CHAIN_ANALYSIS_DB` (default `data/chain-analysis.db`)
 - `CHAIN_ANALYSIS_STATIC_DIR` (default `internal/web/static`)
+- `CHAIN_ANALYSIS_UI_BUILD_DIR` (default `internal/web/ui/dist`)
 - `CHAIN_ANALYSIS_TIMEOUT_SECONDS` (default `20`)
 - `CHAIN_ANALYSIS_DEFAULT_SCAN_BLOCKS` (default `120`)
 - `CHAIN_ANALYSIS_MAX_SCAN_BLOCKS` (default `3000`)

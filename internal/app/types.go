@@ -278,3 +278,11 @@ type FlowSegment struct {
 	ActorIDs    []int64
 	Stage       string
 }
+
+type MidgardAction = midgardAction
+type MidgardActionLeg = midgardActionLeg
+type MidgardActionCoin = midgardActionCoin
+type MidgardActionMetadata = midgardActionMetadata
+type MidgardBondMetadata = midgardBondMetadata
+type MidgardRebondMetadata = midgardRebondMetadata
+type MidgardContractMetadata = midgardContractMetadata

@@ -14,6 +14,8 @@ type Config struct {
 	BindAddr               string
 	DBPath                 string
 	StaticDir              string
+	UIBuildDir             string
+	UIBuildDirOverride     bool
 	LastRunLogPath         string
 	BuildVersion           string
 	BuildCommit            string
@@ -78,11 +80,13 @@ func LoadConfigFromEnv() Config {
 	cwd, _ := os.Getwd()
 	defaultDB := "data/chain-analysis.db"
 	defaultStatic := "internal/web/static"
+	defaultUIBuild := "internal/web/ui/dist"
 	defaultLastRunLog := "data/logs/actor-tracker-last-run.log"
 	if strings.HasSuffix(filepath.ToSlash(cwd), "/THORChain") {
 		loadDotEnv("chain-analysis-app/.env")
 		defaultDB = "chain-analysis-app/data/chain-analysis.db"
 		defaultStatic = "chain-analysis-app/internal/web/static"
+		defaultUIBuild = "chain-analysis-app/internal/web/ui/dist"
 		defaultLastRunLog = "chain-analysis-app/data/logs/actor-tracker-last-run.log"
 	} else {
 		loadDotEnv(".env")
@@ -92,6 +96,7 @@ func LoadConfigFromEnv() Config {
 		BindAddr:               getEnv("CHAIN_ANALYSIS_ADDR", ":8090"),
 		DBPath:                 getEnv("CHAIN_ANALYSIS_DB", defaultDB),
 		StaticDir:              getEnv("CHAIN_ANALYSIS_STATIC_DIR", defaultStatic),
+		UIBuildDir:             getEnv("CHAIN_ANALYSIS_UI_BUILD_DIR", defaultUIBuild),
 		LastRunLogPath:         getEnv("CHAIN_ANALYSIS_LAST_RUN_LOG", defaultLastRunLog),
 		BuildVersion:           getEnv("CHAIN_ANALYSIS_BUILD_VERSION", "dev"),
 		BuildCommit:            getEnv("CHAIN_ANALYSIS_BUILD_COMMIT", "unknown"),
@@ -117,6 +122,9 @@ func LoadConfigFromEnv() Config {
 		XRPRPCURL:              strings.TrimRight(getEnv("CHAIN_ANALYSIS_XRP_RPC_URL", "https://s1.ripple.com:51234|https://s2.ripple.com:51234|https://xrplcluster.com"), "/"),
 		RequestTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_TIMEOUT_SECONDS", 20)) * time.Second,
 		MidgardTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_MIDGARD_TIMEOUT_SECONDS", 10)) * time.Second,
+	}
+	if raw, ok := os.LookupEnv("CHAIN_ANALYSIS_UI_BUILD_DIR"); ok && strings.TrimSpace(raw) != "" {
+		cfg.UIBuildDirOverride = true
 	}
 
 	thornodeEndpoints := getEnv("THORNODE_ENDPOINTS", "https://thornode.ninerealms.com,https://thornode.thorchain.liquify.com")

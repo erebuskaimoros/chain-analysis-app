@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	infraSQLite "chain-analysis-app/internal/infra/sqlite"
 )
 
 const schemaSQL = `
@@ -111,13 +113,7 @@ CREATE TABLE IF NOT EXISTS address_blocklist (
 `
 
 func initSchema(ctx context.Context, db *sql.DB) error {
-	if _, err := db.ExecContext(ctx, schemaSQL); err != nil {
-		return err
-	}
-	if err := ensureGraphRunsSchema(ctx, db); err != nil {
-		return err
-	}
-	return nil
+	return infraSQLite.Migrate(ctx, db)
 }
 
 func ensureGraphRunsSchema(ctx context.Context, db *sql.DB) error {

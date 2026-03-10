@@ -14,15 +14,25 @@ import (
 )
 
 func (a *App) RegisterRoutes(mux *http.ServeMux) {
+	a.RegisterLegacyStaticRoutes(mux)
 	handle := func(pattern string, fn http.HandlerFunc) {
 		mux.HandleFunc(pattern, a.withRequestLoggingFunc(fn))
 	}
+	handle("GET /{$}", a.handleIndex)
+	a.RegisterLegacyAPIRoutes(mux)
+}
 
+func (a *App) RegisterLegacyStaticRoutes(mux *http.ServeMux) {
 	if stat, err := os.Stat(a.cfg.StaticDir); err == nil && stat.IsDir() {
 		static := http.StripPrefix("/static/", http.FileServer(http.Dir(a.cfg.StaticDir)))
 		mux.Handle("/static/", a.withRequestLogging(static))
 	}
-	handle("GET /{$}", a.handleIndex)
+}
+
+func (a *App) RegisterLegacyAPIRoutes(mux *http.ServeMux) {
+	handle := func(pattern string, fn http.HandlerFunc) {
+		mux.HandleFunc(pattern, a.withRequestLoggingFunc(fn))
+	}
 	handle("GET /api/health", a.handleHealth)
 	handle("GET /api/actions/{txid}", a.handleActionByTxID)
 	handle("GET /api/wallets/{address}/liquidity", a.handleWalletLiquidity)
