@@ -102,6 +102,16 @@ func TestMakeAddressRefUsesKnownRujiraLabels(t *testing.T) {
 		t.Fatalf("unexpected treasury ETH label: %q", treasuryETH.Label)
 	}
 
+	scheduler := builder.makeAddressRef("thor15q46zcln5qkmyt7azje3qyvlrfxzl8j2v9k6rw", "THOR", 1)
+	if scheduler.Label != "Scheduler Module" {
+		t.Fatalf("unexpected scheduler label: %q", scheduler.Label)
+	}
+
+	rujiraDeployer := builder.makeAddressRef("thor1e0lmk5juawc46jwjwd0xfz587njej7ay5fh6cd", "THOR", 1)
+	if rujiraDeployer.Label != "Rujira Contract Deployer" {
+		t.Fatalf("unexpected rujira deployer label: %q", rujiraDeployer.Label)
+	}
+
 	asgard := builder.makeAddressRef("thor1g98cy3n9mmjrpn0sxmn63lztelera37n8n67c0", "THOR", 1)
 	if asgard.ID != "" {
 		t.Fatalf("expected Asgard module to be fully excluded, got node %#v", asgard)
@@ -2806,6 +2816,15 @@ func TestMidgardActionClassForContracts(t *testing.T) {
 	}
 	if got := midgardActionClass(liquidityAction); got != "liquidity" {
 		t.Fatalf("expected liquidity for manager update, got %s", got)
+	}
+}
+
+func TestTHORDenomNormalizationSupportsModuleAssets(t *testing.T) {
+	if got := thorDenomToAsset("x/ruji"); got != "THOR.RUJI" {
+		t.Fatalf("expected x/ruji bank denom to normalize to THOR.RUJI, got %q", got)
+	}
+	if got := normalizeContractDenom("x/ruji"); got != "THOR.RUJI" {
+		t.Fatalf("expected x/ruji contract denom to normalize to THOR.RUJI, got %q", got)
 	}
 }
 

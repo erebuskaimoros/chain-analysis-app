@@ -1,15 +1,41 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addToBlocklist,
   buildAddressExplorer,
   deleteAddressExplorerRun,
+  expandActorGraph,
   listAddressExplorerRuns,
+  listAnnotations,
+  listBlocklist,
   lookupAction,
+  refreshLiveHoldings,
+  upsertAnnotation,
 } from "../../lib/api";
-import { DEFAULT_FLOW_TYPES } from "../../lib/constants";
-import { formatShortDateTime, formatUSD } from "../../lib/format";
-import { mergeAddressExplorerResponse, type GraphSelection } from "../../lib/graph";
+import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES } from "../../lib/constants";
+import { formatShortDateTime, formatUSD, shortHash } from "../../lib/format";
+import {
+  cloneGraphFilterState,
+  createGraphFilterState,
+  deriveExplorerVisibleGraph,
+  explorerExpansionSeeds,
+  explorerURLForAddress,
+  filterSupportingActions,
+  graphFiltersAreActive,
+  mergeAddressExplorerResponse,
+  mergeExplorerExpansionResponse,
+  nodeAddressForActions,
+  rawNodesForVisibleNode,
+  resetGraphFilters,
+  setGraphFilterDateValue,
+  setGraphFilterNumberValue,
+  syncGraphFilterStateWithResponse,
+  unavailableRawNodes,
+  type GraphSelection,
+  type GraphTxnBucket,
+} from "../../lib/graph";
 import type { ActionLookupResponse, AddressExplorerRequest, AddressExplorerResponse } from "../../lib/types";
+import { GraphFilterPopover } from "../shared/GraphFilterPopover";
 import { GraphCanvas } from "../shared/GraphCanvas";
 import { SelectionInspector } from "../shared/SelectionInspector";
 import { ActionLookupPanel } from "../shared/ActionLookupPanel";
@@ -39,11 +65,29 @@ function explorerRequest(
   };
 }
 
+function nextFilterState(
+  current: ReturnType<typeof createGraphFilterState>,
+  graph: AddressExplorerResponse,
+  reset = false
+) {
+  const next = reset ? createGraphFilterState() : cloneGraphFilterState(current);
+  syncGraphFilterStateWithResponse(next, graph, { reset });
+  return next;
+}
+
 export function ExplorerPage() {
   const queryClient = useQueryClient();
   const runsQuery = useQuery({
     queryKey: ["address-explorer-runs"],
     queryFn: listAddressExplorerRuns,
+  });
+  const annotationsQuery = useQuery({
+    queryKey: ["annotations"],
+    queryFn: listAnnotations,
+  });
+  const blocklistQuery = useQuery({
+    queryKey: ["blocklist"],
+    queryFn: listBlocklist,
   });
 
   const [form, setForm] = useState<ExplorerFormState>({
@@ -58,6 +102,9 @@ export function ExplorerPage() {
   const [statusText, setStatusText] = useState("Enter an address to preview address activity.");
   const [lookupResult, setLookupResult] = useState<ActionLookupResponse | null>(null);
   const [lookupError, setLookupError] = useState("");
+  const [graphFilters, setGraphFilters] = useState(createGraphFilterState);
+  const [expandedHopSeeds, setExpandedHopSeeds] = useState<string[]>([]);
+  const [graphResetKey, setGraphResetKey] = useState(0);
 
   const previewMutation = useMutation({
     mutationFn: buildAddressExplorer,
@@ -67,6 +114,8 @@ export function ExplorerPage() {
       setSelection(null);
       setLookupResult(null);
       setLookupError("");
+      setExpandedHopSeeds([]);
+      setGraphFilters(createGraphFilterState());
       setStatusText(
         response.direction_required
           ? "Choose newest or oldest to load the first graph batch."
@@ -82,8 +131,16 @@ export function ExplorerPage() {
     mutationFn: buildAddressExplorer,
     onSuccess: async (response, request) => {
       setPreview(response);
-      setGraph((current) => (request.offset > 0 ? mergeAddressExplorerResponse(current, response) : response));
-      setSelection(null);
+      setGraph((current) => {
+        const next = request.offset > 0 ? mergeAddressExplorerResponse(current, response) : response;
+        setGraphFilters((filters) => nextFilterState(filters, next, request.offset === 0));
+        return next;
+      });
+      if (request.offset === 0) {
+        setGraphResetKey((value) => value + 1);
+        setExpandedHopSeeds([]);
+        setSelection(null);
+      }
       setStatusText(
         request.offset > 0
           ? `Loaded additional actions. ${response.has_more ? "More actions remain." : "No more actions remain."}`
@@ -121,6 +178,80 @@ export function ExplorerPage() {
     [runsQuery.data, selectedRunID]
   );
 
+  const graphMetadata = useMemo(
+    () => ({
+      annotations: annotationsQuery.data ?? [],
+      blocklist: blocklistQuery.data ?? [],
+    }),
+    [annotationsQuery.data, blocklistQuery.data]
+  );
+
+  const visibleGraph = useMemo(
+    () => (graph ? deriveExplorerVisibleGraph(graph, graphFilters, graphMetadata) : null),
+    [graph, graphFilters, graphMetadata]
+  );
+
+  const filteredActions = useMemo(
+    () => (graph ? filterSupportingActions(graph.supporting_actions, graph, graphFilters) : []),
+    [graph, graphFilters]
+  );
+
+  useEffect(() => {
+    if (!visibleGraph || !selection) {
+      return;
+    }
+    const exists =
+      selection.kind === "node"
+        ? visibleGraph.nodes.some((node) => node.id === selection.node.id)
+        : visibleGraph.edges.some((edge) => edge.id === selection.edge.id);
+    if (!exists) {
+      setSelection(null);
+    }
+  }, [selection, visibleGraph]);
+
+  function toggleFilterTxnType(bucket: GraphTxnBucket, checked: boolean) {
+    setGraphFilters((current) => ({
+      ...current,
+      txnTypes: {
+        ...current.txnTypes,
+        [bucket]: checked,
+      },
+    }));
+  }
+
+  function toggleFilterChain(chain: string, checked: boolean) {
+    setGraphFilters((current) => ({
+      ...current,
+      selectedChains: checked
+        ? [...new Set([...current.selectedChains, chain])].sort()
+        : current.selectedChains.filter((item) => item !== chain),
+    }));
+  }
+
+  function updateFilterDate(field: "startTime" | "endTime", value: string) {
+    setGraphFilters((current) => {
+      const next = cloneGraphFilterState(current);
+      setGraphFilterDateValue(next, field, value);
+      return next;
+    });
+  }
+
+  function updateFilterNumber(field: "minTxnUSD" | "maxTxnUSD", value: string) {
+    setGraphFilters((current) => {
+      const next = cloneGraphFilterState(current);
+      setGraphFilterNumberValue(next, field, value);
+      return next;
+    });
+  }
+
+  function handleResetFilters() {
+    setGraphFilters((current) => {
+      const next = cloneGraphFilterState(current);
+      resetGraphFilters(next);
+      return next;
+    });
+  }
+
   async function loadGraph(direction: "newest" | "oldest", offset = 0) {
     const request = explorerRequest(form, "graph", direction, offset);
     setStatusText(offset > 0 ? "Loading more actions..." : "Loading explorer graph...");
@@ -133,7 +264,6 @@ export function ExplorerPage() {
       setStatusText("Address is required.");
       return;
     }
-
     const response = await previewMutation.mutateAsync(request);
     if (!response.direction_required) {
       await loadGraph("newest", 0);
@@ -144,7 +274,6 @@ export function ExplorerPage() {
     if (!selectedRun) {
       return;
     }
-
     setForm({
       address: selectedRun.request.address,
       min_usd: String(selectedRun.request.min_usd ?? 0),
@@ -165,7 +294,204 @@ export function ExplorerPage() {
     await deleteRunMutation.mutateAsync(selectedRun.id);
   }
 
+  async function handleExpandNode(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
+    if (!graph) {
+      return;
+    }
+    const seeds = explorerExpansionSeeds(node, graph);
+    if (!seeds.length) {
+      setStatusText("Selected node has no address context to expand.");
+      return;
+    }
+    const nextSeedSet = [...new Set([...expandedHopSeeds, ...seeds.map((seed) => seed.encoded)])];
+    if (nextSeedSet.length === expandedHopSeeds.length) {
+      setStatusText("Already expanded from this node.");
+      return;
+    }
+    setStatusText(`Expanding one edge from ${seeds.length} address(es)…`);
+    try {
+      const expansion = await expandActorGraph({
+        actor_ids: [],
+        addresses: nextSeedSet,
+        start_time: new Date(0).toISOString(),
+        end_time: new Date().toISOString(),
+        flow_types: [...DEFAULT_FLOW_TYPES],
+        min_usd: Number(form.min_usd || 0),
+        collapse_external: false,
+        display_mode: DEFAULT_DISPLAY_MODE,
+      });
+      setExpandedHopSeeds(nextSeedSet);
+      setGraph((current) => {
+        const next = mergeExplorerExpansionResponse(current, expansion);
+        setGraphFilters((filters) => nextFilterState(filters, next, false));
+        return next;
+      });
+      setStatusText(`Expanded from ${nextSeedSet.length} address seed(s).`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Edge expansion failed.");
+    }
+  }
+
+  async function handleRefreshNodeLiveValue(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
+    if (!graph) {
+      return;
+    }
+    const rawNodes = rawNodesForVisibleNode(node, graph);
+    if (!rawNodes.length) {
+      setStatusText("Selected node has no live value context.");
+      return;
+    }
+    try {
+      const response = await refreshLiveHoldings(rawNodes);
+      setGraph((current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          nodes: current.nodes.map((rawNode) => {
+            const refreshed = response.nodes.find((candidate) => candidate.id === rawNode.id);
+            return refreshed
+              ? {
+                  ...rawNode,
+                  metrics: {
+                    ...(rawNode.metrics ?? {}),
+                    ...(refreshed.metrics ?? {}),
+                  },
+                }
+              : rawNode;
+          }),
+          warnings: Array.from(new Set([...current.warnings, ...response.warnings])),
+        };
+      });
+      setStatusText(`Refreshed live value for ${rawNodes.length} node(s).`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Live value refresh failed.");
+    }
+  }
+
+  async function handleRefreshUnavailableNodes() {
+    if (!graph) {
+      return;
+    }
+    const rawNodes = unavailableRawNodes(graph);
+    if (!rawNodes.length) {
+      setStatusText("No unavailable nodes.");
+      return;
+    }
+    try {
+      const response = await refreshLiveHoldings(rawNodes);
+      setGraph((current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          nodes: current.nodes.map((rawNode) => {
+            const refreshed = response.nodes.find((candidate) => candidate.id === rawNode.id);
+            return refreshed
+              ? {
+                  ...rawNode,
+                  metrics: {
+                    ...(rawNode.metrics ?? {}),
+                    ...(refreshed.metrics ?? {}),
+                  },
+                }
+              : rawNode;
+          }),
+          warnings: Array.from(new Set([...current.warnings, ...response.warnings])),
+        };
+      });
+      setStatusText(`Checked ${rawNodes.length} unavailable node(s); refreshed ${response.nodes.length}.`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Unavailable check failed.");
+    }
+  }
+
+  async function handleOpenExplorer(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
+    if (!graph) {
+      return;
+    }
+    const address = nodeAddressForActions(node, graph);
+    const url = explorerURLForAddress(address, node.chain);
+    if (!url) {
+      setStatusText("Selected node does not resolve to a single explorer address.");
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleCopyAddress(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
+    if (!graph) {
+      return;
+    }
+    const address = nodeAddressForActions(node, graph);
+    if (!address) {
+      setStatusText("Selected node does not resolve to a single address.");
+      return;
+    }
+    await navigator.clipboard.writeText(address);
+    setStatusText(`Copied: ${address}`);
+  }
+
+  async function handleLabelNode(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
+    if (!graph) {
+      return;
+    }
+    const address = nodeAddressForActions(node, graph);
+    if (!address) {
+      setStatusText("Selected node does not resolve to a single address.");
+      return;
+    }
+    const label = window.prompt("Enter label for this node:", "");
+    if (label === null) {
+      return;
+    }
+    await upsertAnnotation({ address, kind: "label", value: label });
+    await queryClient.invalidateQueries({ queryKey: ["annotations"] });
+    setStatusText(`Saved label for ${address}.`);
+  }
+
+  async function handleMarkAsgard(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
+    if (!graph) {
+      return;
+    }
+    const address = nodeAddressForActions(node, graph);
+    if (!address) {
+      setStatusText("Selected node does not resolve to a single address.");
+      return;
+    }
+    await upsertAnnotation({ address, kind: "asgard_vault", value: "true" });
+    await queryClient.invalidateQueries({ queryKey: ["annotations"] });
+    setStatusText(`Marked ${address} as Asgard.`);
+  }
+
+  async function handleRemoveNode(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
+    if (!graph) {
+      return;
+    }
+    const address = nodeAddressForActions(node, graph);
+    if (!address) {
+      setStatusText("Selected node does not resolve to a single address.");
+      return;
+    }
+    await addToBlocklist({ address, reason: "Removed from graph" });
+    await queryClient.invalidateQueries({ queryKey: ["blocklist"] });
+    setStatusText(`Removed ${address} from graph.`);
+  }
+
   const currentGraph = graph;
+  const filtersActive = graphFiltersAreActive(graphFilters);
+  const visibleNodeCount = visibleGraph?.nodes.length ?? 0;
+  const visibleEdgeCount = visibleGraph?.edges.length ?? 0;
+  const totalNodeCount = Number(currentGraph?.stats?.node_count || currentGraph?.nodes.length || 0);
+  const totalEdgeCount = Number(currentGraph?.stats?.edge_count || currentGraph?.edges.length || 0);
+  const totalActionCount = Number(
+    currentGraph?.stats?.supporting_action_count || currentGraph?.supporting_actions.length || 0
+  );
+  const showNodeFraction = filtersActive || visibleNodeCount !== totalNodeCount;
+  const showEdgeFraction = filtersActive || visibleEdgeCount !== totalEdgeCount;
+  const showActionFraction = filtersActive || filteredActions.length !== totalActionCount;
 
   return (
     <div className="page-grid graph-layout">
@@ -247,7 +573,9 @@ export function ExplorerPage() {
           {preview ? (
             <div className="chip-list">
               <span className="meta-chip">{preview.active_chains.length} active chains</span>
-              <span className="meta-chip">{preview.total_estimate >= 0 ? `${preview.total_estimate} est. actions` : "Total unknown"}</span>
+              <span className="meta-chip">
+                {preview.total_estimate >= 0 ? `${preview.total_estimate} est. actions` : "Total unknown"}
+              </span>
               <span className="meta-chip">{formatUSD(preview.query.min_usd)} min</span>
             </div>
           ) : null}
@@ -289,21 +617,40 @@ export function ExplorerPage() {
       </div>
 
       <div className="page-stack">
-        <section className="panel page-panel">
-          <div className="panel-head">
+        <section className="panel page-panel graph-card-shell">
+          <div className="panel-head graph-head">
             <div>
               <span className="eyebrow">Graph</span>
               <h2>{currentGraph ? "Explorer Graph" : "No Graph Loaded"}</h2>
+              {currentGraph ? (
+                <p>Double-click to expand one edge from the selected node. Right-click nodes for more graph actions.</p>
+              ) : null}
             </div>
-            {currentGraph ? <span className="status-pill ok">{currentGraph.loaded_actions} actions</span> : null}
+            {currentGraph ? (
+              <div className="graph-stats">
+                <span className="meta-chip">
+                  {showNodeFraction ? `${visibleNodeCount} / ${totalNodeCount} nodes` : `${totalNodeCount} nodes`}
+                </span>
+                <span className="meta-chip">
+                  {showEdgeFraction ? `${visibleEdgeCount} / ${totalEdgeCount} edges` : `${totalEdgeCount} edges`}
+                </span>
+                <span className="meta-chip">
+                  {showActionFraction ? `${filteredActions.length} / ${totalActionCount} actions` : `${totalActionCount} actions`}
+                </span>
+              </div>
+            ) : null}
           </div>
+
           {currentGraph ? (
             <>
               <div className="chip-list">
-                <span className="meta-chip">{currentGraph.nodes.length} nodes</span>
-                <span className="meta-chip">{currentGraph.edges.length} edges</span>
+                <span className="meta-chip">{shortHash(currentGraph.address)}</span>
                 <span className="meta-chip">{currentGraph.query.direction || "newest"} direction</span>
+                {expandedHopSeeds.length ? <span className="meta-chip">+{expandedHopSeeds.length} expanded edges</span> : null}
+                {filtersActive ? <span className="meta-chip">Filters active</span> : null}
+                <span className="meta-chip">{currentGraph.loaded_actions} loaded actions</span>
               </div>
+
               {currentGraph.warnings.length ? (
                 <div className="warning-list">
                   {currentGraph.warnings.map((warning) => (
@@ -313,12 +660,74 @@ export function ExplorerPage() {
                   ))}
                 </div>
               ) : null}
-              <GraphCanvas
-                nodes={currentGraph.nodes}
-                edges={currentGraph.edges}
-                selection={selection}
-                onSelectionChange={setSelection}
-              />
+
+              {visibleGraph && visibleGraph.nodes.length ? (
+                <GraphCanvas
+                  mode="explorer"
+                  nodes={visibleGraph.nodes}
+                  edges={visibleGraph.edges}
+                  selection={selection}
+                  onSelectionChange={setSelection}
+                  onNodeDoubleActivate={(node) => {
+                    void handleExpandNode(node);
+                  }}
+                  doubleActivateLabel="Expand one edge"
+                  graphResetKey={graphResetKey}
+                  filterUI={{
+                    isOpen: graphFilters.isOpen,
+                    isActive: filtersActive,
+                    onToggle: () => setGraphFilters((current) => ({ ...current, isOpen: !current.isOpen })),
+                    onClose: () => setGraphFilters((current) => ({ ...current, isOpen: false })),
+                    popover: (
+                      <GraphFilterPopover
+                        filterState={graphFilters}
+                        onToggleTxnType={toggleFilterTxnType}
+                        onToggleChain={toggleFilterChain}
+                        onStartTimeChange={(value) => updateFilterDate("startTime", value)}
+                        onEndTimeChange={(value) => updateFilterDate("endTime", value)}
+                        onMinUSDChange={(value) => updateFilterNumber("minTxnUSD", value)}
+                        onMaxUSDChange={(value) => updateFilterNumber("maxTxnUSD", value)}
+                        onReset={handleResetFilters}
+                      />
+                    ),
+                  }}
+                  onOpenExplorer={(node) => {
+                    void handleOpenExplorer(node);
+                  }}
+                  onCopyAddress={(node) => {
+                    void handleCopyAddress(node);
+                  }}
+                  onRefreshLiveValue={(node) => {
+                    void handleRefreshNodeLiveValue(node);
+                  }}
+                  onLabelNode={(node) => {
+                    void handleLabelNode(node);
+                  }}
+                  onMarkAsgard={(node) => {
+                    void handleMarkAsgard(node);
+                  }}
+                  onRemoveNode={(node) => {
+                    void handleRemoveNode(node);
+                  }}
+                  onCheckUnavailable={() => {
+                    void handleRefreshUnavailableNodes();
+                  }}
+                />
+              ) : (
+                <div className="empty-state">
+                  {filtersActive ? (
+                    <>
+                      No graph elements match the current filters.{" "}
+                      <button type="button" className="button secondary slim" onClick={handleResetFilters}>
+                        Reset filters
+                      </button>
+                    </>
+                  ) : (
+                    "No graphable flows found for the selected address."
+                  )}
+                </div>
+              )}
+
               {currentGraph.has_more ? (
                 <div className="button-row">
                   <button
@@ -326,7 +735,10 @@ export function ExplorerPage() {
                     className="button secondary"
                     disabled={graphMutation.isPending}
                     onClick={() => {
-                      void loadGraph((currentGraph.query.direction || "newest") as "newest" | "oldest", currentGraph.next_offset);
+                      void loadGraph(
+                        (currentGraph.query.direction || "newest") as "newest" | "oldest",
+                        currentGraph.next_offset
+                      );
                     }}
                   >
                     {graphMutation.isPending ? "Loading..." : "Load Next Batch"}
@@ -348,7 +760,7 @@ export function ExplorerPage() {
               </div>
             </div>
             <SupportingActionsTable
-              actions={currentGraph?.supporting_actions ?? []}
+              actions={filteredActions}
               onLookup={(txID) => lookupMutation.mutate(txID)}
             />
           </section>
@@ -374,11 +786,7 @@ export function ExplorerPage() {
                 <h2>Action Detail</h2>
               </div>
             </div>
-            <ActionLookupPanel
-              result={lookupResult}
-              isLoading={lookupMutation.isPending}
-              error={lookupError}
-            />
+            <ActionLookupPanel result={lookupResult} isLoading={lookupMutation.isPending} error={lookupError} />
           </section>
         </div>
       </div>

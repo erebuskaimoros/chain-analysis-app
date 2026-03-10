@@ -523,6 +523,7 @@ func TestFetchAddressLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 				"balances": []map[string]any{
 					{"denom": "rune", "amount": "100000000"},
 					{"denom": "btc-btc", "amount": "50000000"},
+					{"denom": "x/ruji", "amount": "800000000"},
 				},
 			})
 		case "/thorchain/nodes":
@@ -557,6 +558,7 @@ func TestFetchAddressLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 	prices := priceBook{
 		AssetUSD: map[string]float64{
 			"THOR.RUNE": 2,
+			"THOR.RUJI": 0.25,
 			"BTC.BTC":   10000,
 			"BASE.ETH":  1000,
 		},
@@ -578,8 +580,8 @@ func TestFetchAddressLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetch THOR live holdings: %v", err)
 	}
-	if len(holdings) != 3 {
-		t.Fatalf("expected 3 compacted holdings, got %#v", holdings)
+	if len(holdings) != 4 {
+		t.Fatalf("expected 4 compacted holdings, got %#v", holdings)
 	}
 
 	byAsset := map[string]liveHoldingValue{}
@@ -596,13 +598,16 @@ func TestFetchAddressLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 	if got := byAsset["BTC.BTC"].AmountRaw; got != "50000000" {
 		t.Fatalf("expected BTC bank balance 50000000, got %q", got)
 	}
+	if got := byAsset["THOR.RUJI"].AmountRaw; got != "800000000" {
+		t.Fatalf("expected RUJI bank balance 800000000, got %q", got)
+	}
 
 	totalUSD := 0.0
 	for _, holding := range holdings {
 		totalUSD += holding.USDSpot
 	}
-	if totalUSD != 6012 {
-		t.Fatalf("expected total USD 6012, got %f", totalUSD)
+	if totalUSD != 6014 {
+		t.Fatalf("expected total USD 6014, got %f", totalUSD)
 	}
 }
 
@@ -625,6 +630,7 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 				"balances": []map[string]any{
 					{"denom": "rune", "amount": "100000000"},
 					{"denom": "btc-btc", "amount": "50000000"},
+					{"denom": "x/ruji", "amount": "800000000"},
 				},
 			})
 		case "/thorchain/nodes":
@@ -671,6 +677,7 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
 		AssetUSD: map[string]float64{
 			"THOR.RUNE": 2,
+			"THOR.RUJI": 0.25,
 			"BTC.BTC":   10000,
 			"BASE.ETH":  1000,
 		},
@@ -694,8 +701,8 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 	if got := nodes[0].Metrics["live_holdings_available"]; got != true {
 		t.Fatalf("expected THOR live holdings available=true, got %#v", got)
 	}
-	if got, ok := nodes[0].Metrics["live_holdings_usd_spot"].(float64); !ok || got != 6012 {
-		t.Fatalf("expected THOR live_holdings_usd_spot=6012, got %#v", nodes[0].Metrics["live_holdings_usd_spot"])
+	if got, ok := nodes[0].Metrics["live_holdings_usd_spot"].(float64); !ok || got != 6014 {
+		t.Fatalf("expected THOR live_holdings_usd_spot=6014, got %#v", nodes[0].Metrics["live_holdings_usd_spot"])
 	}
 }
 

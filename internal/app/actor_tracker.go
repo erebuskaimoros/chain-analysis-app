@@ -58,6 +58,7 @@ var knownAddressLabels = map[string]string{
 	"thor1v8ppstuf6e3x0r4glqc68d5jqcs2tf38cg2q6y": "Synth Module",
 	"thor17hwqt302e5f2xm4h95ma8wuggqkvfzgvsnh5z9": "Arb Bot",
 	"thor1g98cy3n9mmjrpn0sxmn63lztelera37n8n67c0": "Asgard Module",
+	"thor15q46zcln5qkmyt7azje3qyvlrfxzl8j2v9k6rw": "Scheduler Module",
 	"0x0b354326e140bdfb605b90aff0fe2cb07d48f7a3":  "Treasury Eth Wallet",
 	"TWS1onJnNTg8tJHomceqxBxTsUB1DHh7PV":          "ChangeNOW",
 	// Rujira / TCY flow labels discovered from on-chain contract metadata.
@@ -68,6 +69,8 @@ var knownAddressLabels = map[string]string{
 	"thor136rwqvwy3flttm9wfnc5xgnlr6mu5k8e2elgzs2hdhuwf50w3l2q0nu2qu": "CALC Manager",
 	"thor1t2cnyn98xusxakgemsenn2p9n3ykd6accr2c0zg22nczh097ln7qeze20f": "CALC Scheduler",
 	"thor17dxtxrne37gguxdeun4n36vqd5jmxxku5tr6gkuhhsh4lz9e8gksck4ygu": "CALC DAO",
+	// Shared deployer repeated across audited/mainnet-targeted Rujira contract manifests.
+	"thor1e0lmk5juawc46jwjwd0xfz587njej7ay5fh6cd": "Rujira Contract Deployer",
 }
 
 // knownCalcRepresentativePayouts preserves stable Treasury destinations for
@@ -2197,19 +2200,7 @@ func applyLiveHoldingMetrics(node *FlowNode, holdings []liveHoldingValue, source
 }
 
 func thorDenomToAsset(denom string) string {
-	normalized := strings.ToLower(strings.TrimSpace(denom))
-	switch normalized {
-	case "":
-		return ""
-	case "rune":
-		return "THOR.RUNE"
-	case "tcy":
-		return "THOR.TCY"
-	}
-	if strings.Contains(normalized, "-") || strings.Contains(normalized, ".") {
-		return normalizeAsset(normalized)
-	}
-	return "THOR." + strings.ToUpper(strings.TrimSpace(denom))
+	return normalizeTHORDenomAsset(denom)
 }
 
 func (b *graphBuilder) projectMidgardAction(action midgardAction, baseDepth int) ([]projectedSegment, []frontierAddress, []string) {
@@ -4381,12 +4372,30 @@ func normalizeContractDenom(denom string) string {
 	if denom == "" {
 		return ""
 	}
+	return normalizeTHORDenomAsset(denom)
+}
+
+func normalizeTHORDenomAsset(denom string) string {
+	denom = strings.TrimSpace(denom)
+	if denom == "" {
+		return ""
+	}
 	lower := strings.ToLower(denom)
 	switch lower {
 	case "rune":
 		return "THOR.RUNE"
 	case "tcy":
 		return "THOR.TCY"
+	}
+	if strings.HasPrefix(lower, "x/") {
+		symbol := strings.TrimSpace(denom[2:])
+		if symbol == "" {
+			return ""
+		}
+		if asset := normalizeAsset(symbol); strings.Contains(asset, ".") {
+			return asset
+		}
+		return "THOR." + strings.ToUpper(symbol)
 	}
 	asset := normalizeAsset(denom)
 	if strings.Contains(asset, ".") {
