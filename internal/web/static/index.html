@@ -203,6 +203,8 @@
             </div>
           </form>
 
+          <div id="explorer-form-status" class="inline-status"></div>
+
           <div id="explorer-direction-chooser" class="direction-chooser" style="display:none;">
             <p>This address has more than 500 transactions. Choose loading direction:</p>
             <div class="form-actions">
@@ -218,6 +220,14 @@
 
           <div id="explorer-query-summary" class="meta-strip"></div>
           <div id="explorer-warnings" class="warning-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Past Runs <span id="explorer-run-count" class="badge">0</span></h2>
+            <p>Select a previous explorer build to reload or delete.</p>
+          </div>
+          <div id="explorer-run-list" class="graph-run-list"></div>
         </section>
 
         <section class="card graph-card">

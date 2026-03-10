@@ -123,6 +123,7 @@ type priceBook struct {
 type graphBuilder struct {
 	ownerMap             map[string][]int64
 	actorsByID           map[int64]Actor
+	addressRefOverrides  map[string]flowRef
 	protocols            protocolDirectory
 	prices               priceBook
 	bondMemoNodeByTx     map[string]string
@@ -3049,6 +3050,12 @@ func (b *graphBuilder) makeAddressRef(address, chain string, depth int) flowRef 
 	if graphExcludedAddresses[norm] {
 		return flowRef{}
 	}
+	resolvedChain := normalizeChain(chain, address)
+	if b != nil && len(b.addressRefOverrides) > 0 {
+		if ref, ok := b.addressRefOverrides[frontierKey(resolvedChain, address)]; ok {
+			return ref
+		}
+	}
 	actorKey := frontierKey(chain, address)
 	actorIDs := append([]int64{}, b.ownerMap[actorKey]...)
 	if len(actorIDs) == 0 {
@@ -3110,7 +3117,6 @@ func (b *graphBuilder) makeAddressRef(address, chain string, depth int) flowRef 
 		label = blacklistLabel
 	}
 
-	resolvedChain := normalizeChain(chain, address)
 	// For EVM addresses (0x-prefix), include chain in the dedup key so the same
 	// address on ETH vs BASE etc. renders as separate graph nodes.
 	nodeKey := norm

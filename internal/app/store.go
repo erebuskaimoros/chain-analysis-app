@@ -93,6 +93,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_address_annotations_addr_kind
 
 CREATE TABLE IF NOT EXISTS graph_runs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	run_type TEXT NOT NULL DEFAULT 'actor_tracker',
 	request_json TEXT NOT NULL,
 	actor_names TEXT NOT NULL DEFAULT '',
 	node_count INTEGER NOT NULL DEFAULT 0,
@@ -113,7 +114,57 @@ func initSchema(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, schemaSQL); err != nil {
 		return err
 	}
+	if err := ensureGraphRunsSchema(ctx, db); err != nil {
+		return err
+	}
 	return nil
+}
+
+func ensureGraphRunsSchema(ctx context.Context, db *sql.DB) error {
+	columns, err := tableColumnSet(ctx, db, "graph_runs")
+	if err != nil {
+		return err
+	}
+	if _, ok := columns["run_type"]; !ok {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE graph_runs ADD COLUMN run_type TEXT NOT NULL DEFAULT 'actor_tracker'`); err != nil {
+			return err
+		}
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE graph_runs SET run_type = ? WHERE TRIM(run_type) = ''`, GraphRunTypeActorTracker); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_graph_runs_type_created
+		ON graph_runs(run_type, created_at DESC)
+	`); err != nil {
+		return err
+	}
+	return nil
+}
+
+func tableColumnSet(ctx context.Context, db *sql.DB, table string) (map[string]struct{}, error) {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns := map[string]struct{}{}
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			colType    string
+			notNull    int
+			defaultVal any
+			pk         int
+		)
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultVal, &pk); err != nil {
+			return nil, err
+		}
+		columns[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	}
+	return columns, rows.Err()
 }
 
 func insertRebondLink(ctx context.Context, execer interface {
@@ -333,49 +384,108 @@ func insertExternalTransferCache(ctx context.Context, db *sql.DB, provider, chai
 	return err
 }
 
-func insertGraphRun(ctx context.Context, db *sql.DB, req ActorTrackerRequest, actorNames string, nodeCount, edgeCount int) (int64, error) {
+type storedGraphRun struct {
+	ID        int64
+	RunType   string
+	Request   string
+	Summary   string
+	NodeCount int
+	EdgeCount int
+	CreatedAt time.Time
+}
+
+func insertTypedGraphRun(ctx context.Context, db *sql.DB, runType string, req any, summary string, nodeCount, edgeCount int) (int64, error) {
 	raw, err := json.Marshal(req)
 	if err != nil {
 		return 0, err
 	}
 	result, err := db.ExecContext(ctx, `
-		INSERT INTO graph_runs(request_json, actor_names, node_count, edge_count, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, string(raw), actorNames, nodeCount, edgeCount, time.Now().UTC().Format(time.RFC3339Nano))
+		INSERT INTO graph_runs(run_type, request_json, actor_names, node_count, edge_count, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, runType, string(raw), summary, nodeCount, edgeCount, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return 0, err
 	}
 	return result.LastInsertId()
 }
 
-func listGraphRuns(ctx context.Context, db *sql.DB) ([]GraphRun, error) {
+func insertGraphRun(ctx context.Context, db *sql.DB, req ActorTrackerRequest, actorNames string, nodeCount, edgeCount int) (int64, error) {
+	return insertTypedGraphRun(ctx, db, GraphRunTypeActorTracker, req, actorNames, nodeCount, edgeCount)
+}
+
+func insertAddressExplorerRun(ctx context.Context, db *sql.DB, req AddressExplorerRequest, summary string, nodeCount, edgeCount int) (int64, error) {
+	return insertTypedGraphRun(ctx, db, GraphRunTypeAddressExplorer, req, summary, nodeCount, edgeCount)
+}
+
+func listTypedGraphRuns(ctx context.Context, db *sql.DB, runType string) ([]storedGraphRun, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, request_json, actor_names, node_count, edge_count, created_at
+		SELECT id, run_type, request_json, actor_names, node_count, edge_count, created_at
 		FROM graph_runs
+		WHERE run_type = ?
 		ORDER BY created_at DESC
-	`)
+	`, runType)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []GraphRun
+	var out []storedGraphRun
 	for rows.Next() {
-		var run GraphRun
-		var rawReq string
+		var run storedGraphRun
 		var createdAt string
-		if err := rows.Scan(&run.ID, &rawReq, &run.ActorNames, &run.NodeCount, &run.EdgeCount, &createdAt); err != nil {
+		if err := rows.Scan(&run.ID, &run.RunType, &run.Request, &run.Summary, &run.NodeCount, &run.EdgeCount, &createdAt); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal([]byte(rawReq), &run.Request)
 		run.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 		out = append(out, run)
 	}
 	return out, rows.Err()
 }
 
-func deleteGraphRun(ctx context.Context, db *sql.DB, id int64) error {
-	res, err := db.ExecContext(ctx, `DELETE FROM graph_runs WHERE id = ?`, id)
+func listGraphRuns(ctx context.Context, db *sql.DB) ([]GraphRun, error) {
+	stored, err := listTypedGraphRuns(ctx, db, GraphRunTypeActorTracker)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]GraphRun, 0, len(stored))
+	for _, item := range stored {
+		run := GraphRun{
+			ID:         item.ID,
+			RunType:    item.RunType,
+			ActorNames: item.Summary,
+			NodeCount:  item.NodeCount,
+			EdgeCount:  item.EdgeCount,
+			CreatedAt:  item.CreatedAt,
+		}
+		_ = json.Unmarshal([]byte(item.Request), &run.Request)
+		out = append(out, run)
+	}
+	return out, nil
+}
+
+func listAddressExplorerRuns(ctx context.Context, db *sql.DB) ([]AddressExplorerRun, error) {
+	stored, err := listTypedGraphRuns(ctx, db, GraphRunTypeAddressExplorer)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AddressExplorerRun, 0, len(stored))
+	for _, item := range stored {
+		run := AddressExplorerRun{
+			ID:        item.ID,
+			RunType:   item.RunType,
+			Summary:   item.Summary,
+			NodeCount: item.NodeCount,
+			EdgeCount: item.EdgeCount,
+			CreatedAt: item.CreatedAt,
+		}
+		_ = json.Unmarshal([]byte(item.Request), &run.Request)
+		out = append(out, run)
+	}
+	return out, nil
+}
+
+func deleteTypedGraphRun(ctx context.Context, db *sql.DB, id int64, runType string) error {
+	res, err := db.ExecContext(ctx, `DELETE FROM graph_runs WHERE id = ? AND run_type = ?`, id, runType)
 	if err != nil {
 		return err
 	}
@@ -384,4 +494,12 @@ func deleteGraphRun(ctx context.Context, db *sql.DB, id int64) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func deleteGraphRun(ctx context.Context, db *sql.DB, id int64) error {
+	return deleteTypedGraphRun(ctx, db, id, GraphRunTypeActorTracker)
+}
+
+func deleteAddressExplorerRun(ctx context.Context, db *sql.DB, id int64) error {
+	return deleteTypedGraphRun(ctx, db, id, GraphRunTypeAddressExplorer)
 }

@@ -31,6 +31,9 @@ const state = {
   blocklist: [],
   graphRuns: [],
   selectedGraphRunID: null,
+  explorerRuns: [],
+  selectedExplorerRunID: null,
+  explorerPreview: null,
 };
 
 const FRONTEND_LOG_PREFIX = "[chain-analysis-ui]";
@@ -171,6 +174,25 @@ function ensureElements(scope, elements) {
   }
   frontendLog("warn", "missing_required_dom_elements", { scope, missing });
   return false;
+}
+
+function normalizeExplorerRequest(rawRequest) {
+  const request = rawRequest && typeof rawRequest === "object" ? rawRequest : {};
+  const direction = String(request.direction || "").trim().toLowerCase();
+  const mode = String(request.mode || "").trim().toLowerCase();
+  const offset = Number(request.offset);
+  const batchSize = Number(request.batch_size);
+  const minUSD = Number(request.min_usd);
+  return {
+    ...request,
+    address: String(request.address || "").trim(),
+    flow_types: [...DEFAULT_FLOW_TYPES],
+    min_usd: Number.isFinite(minUSD) ? minUSD : 0,
+    mode: mode === "preview" ? "preview" : "graph",
+    direction: direction === "oldest" ? "oldest" : direction === "newest" ? "newest" : "",
+    offset: Number.isFinite(offset) && offset > 0 ? Math.floor(offset) : 0,
+    batch_size: Number.isFinite(batchSize) && batchSize > 0 ? Math.floor(batchSize) : 10,
+  };
 }
 
 function bindTabs() {
@@ -1286,6 +1308,8 @@ function bindActorTracker(activateTab, actionLookup) {
         elements,
         style: graphStylesheet(),
         wheelSensitivity: 0.3,
+        zoomingEnabled: true,
+        userZoomingEnabled: true,
         boxSelectionEnabled: true,
         selectionType: "additive",
         userPanningEnabled: false,
@@ -1321,11 +1345,6 @@ function bindActorTracker(activateTab, actionLookup) {
       graphContainer.addEventListener("auxclick", (e) => {
         if (e.button === 1) e.preventDefault();
       });
-
-      // Prevent page scroll when wheeling over graph — enables Cytoscape zoom
-      graphContainer.addEventListener("wheel", (e) => {
-        if (state.cy) e.preventDefault();
-      }, { passive: false });
 
       state.cy.on("tap", "node", (event) => {
         const data = event.target.data();
@@ -2616,6 +2635,7 @@ function bindAddressExplorer(activateTab) {
   const form = document.getElementById("explorer-form");
   const addressInput = document.getElementById("explorer-address");
   const minUSD = document.getElementById("explorer-min-usd");
+  const formStatus = document.getElementById("explorer-form-status");
   const graphSummary = document.getElementById("explorer-query-summary");
   const graphWarnings = document.getElementById("explorer-warnings");
   const graphStats = document.getElementById("explorer-graph-stats");
@@ -2626,14 +2646,18 @@ function bindAddressExplorer(activateTab) {
   const graphToolbar = document.getElementById("explorer-graph-toolbar");
   const graphCard = graphContainer ? graphContainer.closest(".graph-card") : null;
   const directionChooser = document.getElementById("explorer-direction-chooser");
+  const directionMessage = directionChooser ? directionChooser.querySelector("p") : null;
   const paginationBar = document.getElementById("explorer-pagination");
   const loadedCountEl = document.getElementById("explorer-loaded-count");
   const loadMoreBtn = document.getElementById("explorer-load-more");
+  const explorerRunList = document.getElementById("explorer-run-list");
+  const explorerRunCount = document.getElementById("explorer-run-count");
 
   if (
     !ensureElements("bindAddressExplorer", {
       form,
       addressInput,
+      formStatus,
       graphSummary,
       graphWarnings,
       graphStats,
@@ -2642,9 +2666,12 @@ function bindAddressExplorer(activateTab) {
       graphContainer,
       contextMenu,
       directionChooser,
+      directionMessage,
       paginationBar,
       loadedCountEl,
       loadMoreBtn,
+      explorerRunList,
+      explorerRunCount,
     })
   ) {
     return;
@@ -2661,6 +2688,11 @@ function bindAddressExplorer(activateTab) {
   state.explorerExpandedHopAddressMap = new Map();
   state.explorerExpansionInFlight = false;
   state.explorerViewport = null;
+  state.explorerPreview = null;
+  state.explorerRuns = [];
+  state.selectedExplorerRunID = null;
+  state.explorerGraphRequest = null;
+  state.explorerRawAddress = "";
 
   let explorerLabelLayer = null;
   let explorerLabelFrame = 0;
@@ -2672,6 +2704,28 @@ function bindAddressExplorer(activateTab) {
   let explorerContextMenuTarget = null;
   let explorerContextMenuMode = "node";
   let pendingAddress = "";
+
+  function setExplorerFormStatus(message) {
+    formStatus.textContent = String(message || "");
+  }
+
+  function clearExplorerTables() {
+    actionsBody.innerHTML = "";
+  }
+
+  function showExplorerPlaceholder(message) {
+    clearExplorerGraphSurface();
+    graphContainer.innerHTML = `<div class="empty-state">${escapeHTML(String(message || "No graph loaded."))}</div>`;
+  }
+
+  function explorerCurrentMeta() {
+    return state.explorerGraph || state.explorerPreview || null;
+  }
+
+  function explorerSeedChips(meta) {
+    const activeChains = Array.isArray(meta?.active_chains) ? meta.active_chains : [];
+    return activeChains.map((chain) => metaChip(chain));
+  }
 
   graphContainer.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -2697,152 +2751,230 @@ function bindAddressExplorer(activateTab) {
     return null;
   }
 
-  // --- Form submission ---
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  async function refreshExplorerRuns() {
+    try {
+      const data = await callAPI("/api/address-explorer/runs");
+      state.explorerRuns = data.runs || [];
+    } catch {
+      state.explorerRuns = [];
+    }
+    renderExplorerRuns();
+  }
+
+  function explorerRunOptionLabel(run) {
+    const summary = String(run.summary || "Unknown run");
+    const counts = `${run.node_count}N/${run.edge_count}E`;
+    const created = run.created_at ? new Date(run.created_at).toLocaleString() : "";
+    return created ? `${summary} | ${counts} | ${created}` : `${summary} | ${counts}`;
+  }
+
+  function selectedExplorerRun() {
+    const selectedID = String(state.selectedExplorerRunID || "");
+    return state.explorerRuns.find((run) => String(run.id) === selectedID) || null;
+  }
+
+  function renderExplorerRuns() {
+    explorerRunCount.textContent = String(state.explorerRuns.length);
+    if (!state.explorerRuns.length) {
+      state.selectedExplorerRunID = null;
+      explorerRunList.innerHTML = `<div class="empty-state">No past runs yet.</div>`;
+      return;
+    }
+
+    const selectedExists = state.explorerRuns.some((run) => String(run.id) === String(state.selectedExplorerRunID || ""));
+    state.selectedExplorerRunID = selectedExists ? String(state.selectedExplorerRunID) : String(state.explorerRuns[0].id);
+
+    const options = state.explorerRuns
+      .map((run) => {
+        const runID = String(run.id);
+        const selectedAttr = runID === state.selectedExplorerRunID ? " selected" : "";
+        return `<option value="${escapeHTML(runID)}"${selectedAttr}>${escapeHTML(explorerRunOptionLabel(run))}</option>`;
+      })
+      .join("");
+
+    explorerRunList.innerHTML = `
+      <article class="actor-card graph-run-dropdown">
+        <select id="explorer-run-select" aria-label="Select a past explorer run">
+          ${options}
+        </select>
+        <div class="actor-card-actions">
+          <button class="secondary" data-load-selected-explorer-run type="button">Load</button>
+          <button class="secondary" data-delete-selected-explorer-run type="button">Delete</button>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderExplorerMeta() {
+    const meta = explorerCurrentMeta();
+    if (!meta) {
+      graphSummary.innerHTML = "";
+      graphWarnings.innerHTML = "";
+      graphStats.innerHTML = "";
+      return;
+    }
+    const q = meta.query || {};
+    const chips = [metaChip(q.address ? shortHash(q.address) : "")].concat(explorerSeedChips(meta));
+    if (q.direction) {
+      chips.push(metaChip(`${q.direction} direction`));
+    }
+    if (meta.direction_required) {
+      chips.push(metaChip("Choose direction"));
+    }
+    if (state.explorerExpandedHopAddressMap.size > 0) {
+      chips.push(metaChip(`+${state.explorerExpandedHopAddressMap.size} expanded edges`));
+    }
+    graphSummary.innerHTML = chips.join("");
+
+    const warnings = Array.isArray(meta.warnings) ? meta.warnings : [];
+    graphWarnings.innerHTML = warnings.length
+      ? warnings.map((w) => `<span class="warning-chip">${escapeHTML(w)}</span>`).join("")
+      : "";
+
+    if (state.explorerGraph) {
+      graphStats.innerHTML = [
+        metaChip(`${(state.explorerGraph.stats || {}).node_count || 0} nodes`),
+        metaChip(`${(state.explorerGraph.stats || {}).edge_count || 0} edges`),
+        metaChip(`${(state.explorerGraph.stats || {}).supporting_action_count || 0} actions`),
+      ].join("");
+      return;
+    }
+
+    graphStats.innerHTML = [
+      metaChip(`${(meta.active_chains || []).length} active chains`),
+      meta.has_more ? metaChip("500+ actions detected") : metaChip("Ready to load"),
+    ].join("");
+  }
+
+  async function loadExplorerGraph(rawRequest, options = {}) {
+    const request = normalizeExplorerRequest({
+      ...rawRequest,
+      mode: "graph",
+      direction: rawRequest?.direction || "newest",
+    });
+    const merge = Boolean(options.merge);
+    const preserveViewport = Boolean(options.preserveViewport);
+    const refreshRuns = Boolean(options.refreshRuns);
+
+    if (!request.address) {
+      inspector.textContent = "Enter a wallet address to explore.";
+      return;
+    }
+
+    state.explorerRawAddress = request.address;
+    pendingAddress = request.address;
+    state.explorerDirection = request.direction || "newest";
+    setExplorerFormStatus(merge ? "Loading next batch..." : "Loading graph...");
+    if (!merge) {
+      clearExplorerTables();
+      clearExplorerGraphSurface();
+      inspector.textContent = "Graph is loading…";
+    }
+
+    if (merge && preserveViewport && state.explorerCy) {
+      state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
+    }
+
+    const resp = await callAPI("/api/address-explorer/graph", {
+      method: "POST",
+      body: request,
+    });
+
+    state.explorerPreview = resp;
+    state.explorerHasMore = resp.has_more;
+    state.explorerNextOffset = resp.next_offset;
+    state.explorerGraphRequest = { ...request, offset: 0 };
+
+    if (merge && state.explorerGraph) {
+      state.explorerGraph = mergeExplorerGraphResponse(state.explorerGraph, resp);
+      state.explorerBaseGraph = mergeExplorerGraphResponse(state.explorerBaseGraph, resp);
+      state.explorerLoadedActions += resp.loaded_actions || 0;
+    } else {
+      state.explorerGraph = resp;
+      state.explorerBaseGraph = resp;
+      state.explorerLoadedActions = resp.loaded_actions || 0;
+      state.explorerExpandedHopAddressMap = new Map();
+    }
+
+    renderExplorerGraphResponse();
+    updatePaginationBar();
+    setExplorerFormStatus("");
+    inspector.textContent = merge
+      ? `Loaded ${state.explorerLoadedActions} total actions.`
+      : "Select a node or edge in the graph.";
+    if (refreshRuns) {
+      await refreshExplorerRuns();
+    }
+  }
+
+  async function requestExplorerPreview() {
     const address = addressInput.value.trim();
     if (!address) {
       inspector.textContent = "Enter a wallet address to explore.";
       return;
     }
+
     pendingAddress = address;
+    state.explorerRawAddress = address;
+    state.explorerGraph = null;
+    state.explorerBaseGraph = null;
+    state.explorerPreview = null;
+    state.explorerDirection = null;
+    state.explorerHasMore = false;
+    state.explorerNextOffset = 0;
+    state.explorerLoadedActions = 0;
+    state.explorerExpandedHopAddressMap = new Map();
+    state.explorerViewport = null;
     directionChooser.style.display = "none";
     paginationBar.style.display = "none";
-    inspector.textContent = "Loading…";
+    clearExplorerTables();
+    clearExplorerGraphSurface();
     graphSummary.innerHTML = "";
     graphWarnings.innerHTML = "";
     graphStats.innerHTML = "";
-    actionsBody.innerHTML = "";
-    clearExplorerGraphSurface();
+    inspector.textContent = "Checking address activity…";
+    setExplorerFormStatus("Checking address activity…");
 
-    try {
-      const resp = await callAPI("/api/address-explorer/graph", {
-        method: "POST",
-        body: {
-          address,
-          min_usd: Number(minUSD.value) || 0,
-          direction: "newest",
-          offset: 0,
-          batch_size: 10,
-        },
-      });
+    const previewRequest = normalizeExplorerRequest({
+      address,
+      min_usd: Number(minUSD.value) || 0,
+      mode: "preview",
+      direction: "",
+      offset: 0,
+      batch_size: 10,
+    });
 
-      if (resp.has_more) {
-        // More than 500 txns — show direction chooser.
-        state.explorerGraph = resp;
-        state.explorerBaseGraph = resp;
-        state.explorerDirection = null;
-        directionChooser.style.display = "block";
-        inspector.textContent = `This address has more than 500 transactions. Choose loading direction.`;
-        // Render the initial batch while user decides.
-        state.explorerHasMore = resp.has_more;
-        state.explorerNextOffset = resp.next_offset;
-        state.explorerLoadedActions = resp.loaded_actions;
-        renderExplorerGraphResponse();
-        updatePaginationBar();
-        return;
-      }
+    const resp = await callAPI("/api/address-explorer/graph", {
+      method: "POST",
+      body: previewRequest,
+    });
 
-      // <= 500 txns — render directly.
-      state.explorerDirection = "newest";
-      state.explorerGraph = resp;
-      state.explorerBaseGraph = resp;
-      state.explorerHasMore = resp.has_more;
-      state.explorerNextOffset = resp.next_offset;
-      state.explorerLoadedActions = resp.loaded_actions;
-      state.explorerExpandedHopAddressMap = new Map();
-      renderExplorerGraphResponse();
-      updatePaginationBar();
-    } catch (err) {
-      inspector.textContent = `Explorer failed: ${String(err)}`;
-    }
-  });
+    state.explorerPreview = resp;
+    renderExplorerMeta();
 
-  // --- Direction chooser ---
-  directionChooser.addEventListener("click", async (e) => {
-    const btn = e.target instanceof Element ? e.target.closest("button[data-direction]") : null;
-    if (!btn) return;
-    const direction = btn.dataset.direction;
-    directionChooser.style.display = "none";
-
-    if (direction === "newest") {
-      // Already loaded newest-first — just confirm.
-      state.explorerDirection = "newest";
-      updatePaginationBar();
+    if (resp.direction_required) {
+      state.explorerDirection = null;
+      directionMessage.textContent = `This address spans ${Math.max((resp.active_chains || []).length, 1)} active chain(s) and more than 500 actions. Choose loading direction:`;
+      directionChooser.style.display = "block";
+      setExplorerFormStatus("Choose a loading direction.");
+      showExplorerPlaceholder("Choose newest or oldest to load the first graph batch.");
+      inspector.textContent = "Choose newest or oldest to load the first graph batch.";
       return;
     }
 
-    // Oldest — need to re-fetch.
-    state.explorerDirection = "oldest";
-    inspector.textContent = "Reloading oldest transactions first…";
-    clearExplorerGraphSurface();
-
-    try {
-      const resp = await callAPI("/api/address-explorer/graph", {
-        method: "POST",
-        body: {
-          address: pendingAddress,
-          min_usd: Number(minUSD.value) || 0,
-          direction: "oldest",
-          offset: 0,
-          batch_size: 10,
-        },
-      });
-
-      state.explorerGraph = resp;
-      state.explorerBaseGraph = resp;
-      state.explorerHasMore = resp.has_more;
-      state.explorerNextOffset = resp.next_offset;
-      state.explorerLoadedActions = resp.loaded_actions;
-      state.explorerExpandedHopAddressMap = new Map();
-      renderExplorerGraphResponse();
-      updatePaginationBar();
-    } catch (err) {
-      inspector.textContent = `Explorer failed: ${String(err)}`;
-    }
-  });
-
-  // --- Load more ---
-  loadMoreBtn.addEventListener("click", async () => {
-    if (!state.explorerHasMore || !state.explorerDirection) return;
-    loadMoreBtn.disabled = true;
-    loadMoreBtn.textContent = "Loading…";
-    inspector.textContent = "Loading next batch…";
-
-    try {
-      const resp = await callAPI("/api/address-explorer/graph", {
-        method: "POST",
-        body: {
-          address: pendingAddress,
-          min_usd: Number(minUSD.value) || 0,
-          direction: state.explorerDirection,
-          offset: state.explorerNextOffset,
-          batch_size: 10,
-        },
-      });
-
-      // Merge the new batch into the existing graph.
-      state.explorerGraph = mergeExplorerGraphResponse(state.explorerGraph, resp);
-      state.explorerBaseGraph = mergeExplorerGraphResponse(state.explorerBaseGraph, resp);
-      state.explorerHasMore = resp.has_more;
-      state.explorerNextOffset = resp.next_offset;
-      state.explorerLoadedActions += resp.loaded_actions;
-      if (state.explorerCy) {
-        state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
-      }
-      renderExplorerGraphResponse();
-      updatePaginationBar();
-      inspector.textContent = `Loaded ${state.explorerLoadedActions} total actions.`;
-    } catch (err) {
-      inspector.textContent = `Load more failed: ${String(err)}`;
-    } finally {
-      loadMoreBtn.disabled = false;
-      loadMoreBtn.textContent = "Load next 500";
-    }
-  });
+    directionChooser.style.display = "none";
+    setExplorerFormStatus("Loading graph…");
+    await loadExplorerGraph({
+      address,
+      min_usd: Number(minUSD.value) || 0,
+      direction: "newest",
+      offset: 0,
+      batch_size: 10,
+    }, { refreshRuns: true });
+  }
 
   function updatePaginationBar() {
-    if (state.explorerDirection && (state.explorerHasMore || state.explorerLoadedActions > 0)) {
+    if (state.explorerGraph && state.explorerDirection && (state.explorerHasMore || state.explorerLoadedActions > 0)) {
       paginationBar.style.display = "flex";
       loadedCountEl.textContent = `${state.explorerLoadedActions} actions loaded`;
       loadMoreBtn.style.display = state.explorerHasMore ? "" : "none";
@@ -2850,6 +2982,109 @@ function bindAddressExplorer(activateTab) {
       paginationBar.style.display = "none";
     }
   }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await requestExplorerPreview();
+    } catch (err) {
+      setExplorerFormStatus("");
+      inspector.textContent = `Explorer failed: ${String(err)}`;
+      graphWarnings.innerHTML = `<span class="warning-chip">${escapeHTML(String(err))}</span>`;
+    }
+  });
+
+  directionChooser.addEventListener("click", async (e) => {
+    const btn = e.target instanceof Element ? e.target.closest("button[data-direction]") : null;
+    if (!btn) return;
+    const direction = btn.dataset.direction;
+    if (direction !== "newest" && direction !== "oldest") return;
+    directionChooser.style.display = "none";
+    try {
+      await loadExplorerGraph({
+        address: pendingAddress,
+        min_usd: Number(minUSD.value) || 0,
+        direction,
+        offset: 0,
+        batch_size: 10,
+      }, { refreshRuns: true });
+    } catch (err) {
+      setExplorerFormStatus("");
+      inspector.textContent = `Explorer failed: ${String(err)}`;
+    }
+  });
+
+  loadMoreBtn.addEventListener("click", async () => {
+    if (!state.explorerHasMore || !state.explorerDirection || !state.explorerGraphRequest) return;
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.textContent = "Loading…";
+    inspector.textContent = "Loading next batch…";
+    try {
+      await loadExplorerGraph({
+        ...state.explorerGraphRequest,
+        address: pendingAddress || state.explorerGraphRequest.address,
+        direction: state.explorerDirection,
+        offset: state.explorerNextOffset,
+      }, { merge: true, preserveViewport: true, refreshRuns: false });
+    } catch (err) {
+      setExplorerFormStatus("");
+      inspector.textContent = `Load more failed: ${String(err)}`;
+    } finally {
+      loadMoreBtn.disabled = false;
+      loadMoreBtn.textContent = "Load next 500";
+    }
+  });
+
+  explorerRunList.addEventListener("change", (e) => {
+    const target = e.target instanceof HTMLSelectElement ? e.target : null;
+    if (!target || target.id !== "explorer-run-select") return;
+    state.selectedExplorerRunID = target.value;
+  });
+
+  explorerRunList.addEventListener("click", async (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+
+    if (target.closest("[data-load-selected-explorer-run]")) {
+      const selected = explorerRunList.querySelector("#explorer-run-select");
+      if (selected instanceof HTMLSelectElement) {
+        state.selectedExplorerRunID = selected.value;
+      }
+      const run = selectedExplorerRun();
+      if (!run) return;
+      const request = normalizeExplorerRequest(run.request);
+      addressInput.value = request.address || "";
+      minUSD.value = Number.isFinite(Number(request.min_usd)) ? String(request.min_usd) : "0";
+      directionChooser.style.display = "none";
+      try {
+        await loadExplorerGraph({
+          ...request,
+          mode: "graph",
+          offset: 0,
+          batch_size: request.batch_size || 10,
+        }, { refreshRuns: false });
+      } catch (err) {
+        setExplorerFormStatus("");
+        inspector.textContent = `Explorer failed: ${String(err)}`;
+      }
+      return;
+    }
+
+    if (target.closest("[data-delete-selected-explorer-run]")) {
+      const selected = explorerRunList.querySelector("#explorer-run-select");
+      if (selected instanceof HTMLSelectElement) {
+        state.selectedExplorerRunID = selected.value;
+      }
+      const run = selectedExplorerRun();
+      if (!run) return;
+      try {
+        await callAPI(`/api/address-explorer/runs/${run.id}`, { method: "DELETE" });
+        await refreshExplorerRuns();
+      } catch (err) {
+        frontendLog("error", "explorer_run_delete_failed", { id: run.id, error: String(err) });
+      }
+    }
+  });
 
   // --- Graph merge ---
   function mergeExplorerGraphResponse(base, expansion) {
@@ -2941,12 +3176,22 @@ function bindAddressExplorer(activateTab) {
 
     return {
       ...base,
+      mode: expansion.mode || base.mode,
+      raw_address: expansion.raw_address || base.raw_address,
+      address: expansion.address || base.address,
+      query: { ...(base.query || {}), ...(expansion.query || {}) },
+      active_chains: Array.isArray(expansion.active_chains) && expansion.active_chains.length ? expansion.active_chains : base.active_chains || [],
+      seed_summaries: Array.isArray(expansion.seed_summaries) && expansion.seed_summaries.length ? expansion.seed_summaries : base.seed_summaries || [],
+      direction_required: Boolean(expansion.direction_required),
+      run_label: expansion.run_label || base.run_label || "",
       warnings: uniqueStrings((base.warnings || []).concat(expansion.warnings || [])),
       nodes: Array.from(nodeMap.values()),
       edges: Array.from(edgeMap.values()),
       supporting_actions: Array.from(actionMap.values()),
+      loaded_actions: Number(base.loaded_actions || 0) + Number(expansion.loaded_actions || 0),
       stats: {
         ...(base.stats || {}),
+        ...(expansion.stats || {}),
         node_count: nodeMap.size,
         edge_count: edgeMap.size,
         supporting_action_count: actionMap.size,
@@ -2971,15 +3216,12 @@ function bindAddressExplorer(activateTab) {
 
   function renderExplorerGraphResponse() {
     if (!state.explorerGraph) {
+      renderExplorerMeta();
       clearExplorerGraphSurface();
-      graphSummary.innerHTML = "";
-      graphWarnings.innerHTML = "";
-      graphStats.innerHTML = "";
-      actionsBody.innerHTML = "";
+      clearExplorerTables();
       return;
     }
-    renderExplorerSummary();
-    renderExplorerWarnings();
+    renderExplorerMeta();
     renderExplorerActions();
     renderExplorerGraph();
   }
@@ -3386,6 +3628,8 @@ function bindAddressExplorer(activateTab) {
         elements,
         style: explorerGraphStylesheet(),
         wheelSensitivity: 0.3,
+        zoomingEnabled: true,
+        userZoomingEnabled: true,
         boxSelectionEnabled: true,
         selectionType: "additive",
         userPanningEnabled: false,
@@ -3405,7 +3649,6 @@ function bindAddressExplorer(activateTab) {
       graphContainer.addEventListener("mouseup", (e) => { if (e.button === 1) middlePanning = false; });
       graphContainer.addEventListener("mouseleave", () => { middlePanning = false; });
       graphContainer.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
-      graphContainer.addEventListener("wheel", (e) => { if (state.explorerCy) e.preventDefault(); }, { passive: false });
 
       // Node tap / double-tap
       state.explorerCy.on("tap", "node", (event) => {
@@ -3779,6 +4022,11 @@ function bindAddressExplorer(activateTab) {
       }
     });
   }
+
+  renderExplorerMeta();
+  updatePaginationBar();
+  showExplorerPlaceholder("Enter a wallet address to explore.");
+  void refreshExplorerRuns();
 }
 
 const activateTab = safeInit("bindTabs", bindTabs, () => {});

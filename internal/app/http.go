@@ -33,6 +33,8 @@ func (a *App) RegisterRoutes(mux *http.ServeMux) {
 	handle("PUT /api/actors/{id}", a.handleActorByID)
 	handle("DELETE /api/actors/{id}", a.handleActorByID)
 	handle("POST /api/address-explorer/graph", a.handleAddressExplorerGraph)
+	handle("GET /api/address-explorer/runs", a.handleAddressExplorerRuns)
+	handle("DELETE /api/address-explorer/runs/{id}", a.handleAddressExplorerRunDelete)
 	handle("POST /api/actor-tracker/graph", a.handleActorTrackerGraph)
 	handle("POST /api/actor-tracker/expand", a.handleActorTrackerExpand)
 	handle("POST /api/actor-tracker/live-holdings", a.handleActorTrackerLiveHoldings)
@@ -467,6 +469,20 @@ func (a *App) handleAddressExplorerGraph(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if strings.EqualFold(strings.TrimSpace(resp.Mode), "graph") && req.Offset <= 0 {
+		storedReq := req
+		storedReq.Mode = resp.Mode
+		storedReq.Direction = resp.Query.Direction
+		storedReq.BatchSize = resp.Query.BatchSize
+		storedReq.Offset = 0
+		if strings.TrimSpace(resp.RawAddress) != "" {
+			storedReq.Address = resp.RawAddress
+		}
+		if _, err := insertAddressExplorerRun(ctx, a.db, storedReq, firstNonEmpty(resp.RunLabel, shortAddress(resp.Address)), len(resp.Nodes), len(resp.Edges)); err != nil {
+			logError(ctx, "address_explorer_run_save_failed", err, nil)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -575,6 +591,21 @@ func (a *App) handleGraphRuns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"runs": runs})
 }
 
+func (a *App) handleAddressExplorerRuns(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), a.cfg.RequestTimeout)
+	defer cancel()
+
+	runs, err := listAddressExplorerRuns(ctx, a.db)
+	if err != nil {
+		writeError(r, w, http.StatusInternalServerError, err)
+		return
+	}
+	if runs == nil {
+		runs = []AddressExplorerRun{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"runs": runs})
+}
+
 func (a *App) handleGraphRunDelete(w http.ResponseWriter, r *http.Request) {
 	id := parseInt64(strings.TrimSpace(r.PathValue("id")))
 	if id <= 0 {
@@ -585,6 +616,26 @@ func (a *App) handleGraphRunDelete(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := deleteGraphRun(ctx, a.db, id); err != nil {
+		status := http.StatusInternalServerError
+		if err == sql.ErrNoRows {
+			status = http.StatusNotFound
+		}
+		writeError(r, w, status, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
+}
+
+func (a *App) handleAddressExplorerRunDelete(w http.ResponseWriter, r *http.Request) {
+	id := parseInt64(strings.TrimSpace(r.PathValue("id")))
+	if id <= 0 {
+		writeError(r, w, http.StatusBadRequest, fmt.Errorf("run id is required"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), a.cfg.RequestTimeout)
+	defer cancel()
+
+	if err := deleteAddressExplorerRun(ctx, a.db, id); err != nil {
 		status := http.StatusInternalServerError
 		if err == sql.ErrNoRows {
 			status = http.StatusNotFound

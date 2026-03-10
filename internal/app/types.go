@@ -186,41 +186,73 @@ type AddressExplorerRequest struct {
 	Address   string   `json:"address"`
 	FlowTypes []string `json:"flow_types"`
 	MinUSD    float64  `json:"min_usd"`
+	Mode      string   `json:"mode"`       // "preview" or "graph"
 	Direction string   `json:"direction"`  // "newest" or "oldest"
 	Offset    int      `json:"offset"`     // Midgard page offset (0 = first batch)
 	BatchSize int      `json:"batch_size"` // pages per batch, default 10 (500 txns)
 }
 
+type AddressExplorerSeedSummary struct {
+	Chain                 string `json:"chain"`
+	Address               string `json:"address"`
+	Active                bool   `json:"active"`
+	MidgardActionCount    int    `json:"midgard_action_count"`
+	ExternalTransferCount int    `json:"external_transfer_count"`
+}
+
 type AddressExplorerResponse struct {
-	Address           string               `json:"address"`
-	Query             AddressExplorerQuery `json:"query"`
-	Stats             map[string]any       `json:"stats"`
-	Warnings          []string             `json:"warnings"`
-	Nodes             []FlowNode           `json:"nodes"`
-	Edges             []FlowEdge           `json:"edges"`
-	SupportingActions []SupportingAction   `json:"supporting_actions"`
-	LoadedActions     int                  `json:"loaded_actions"`
-	HasMore           bool                 `json:"has_more"`
-	NextOffset        int                  `json:"next_offset"`
-	TotalEstimate     int                  `json:"total_estimate"` // -1 if unknown
+	Mode              string                       `json:"mode"`
+	RawAddress        string                       `json:"raw_address"`
+	Address           string                       `json:"address"`
+	Query             AddressExplorerQuery         `json:"query"`
+	Stats             map[string]any               `json:"stats"`
+	Warnings          []string                     `json:"warnings"`
+	Nodes             []FlowNode                   `json:"nodes"`
+	Edges             []FlowEdge                   `json:"edges"`
+	SupportingActions []SupportingAction           `json:"supporting_actions"`
+	LoadedActions     int                          `json:"loaded_actions"`
+	HasMore           bool                         `json:"has_more"`
+	NextOffset        int                          `json:"next_offset"`
+	TotalEstimate     int                          `json:"total_estimate"` // -1 if unknown
+	DirectionRequired bool                         `json:"direction_required"`
+	ActiveChains      []string                     `json:"active_chains"`
+	SeedSummaries     []AddressExplorerSeedSummary `json:"seed_summaries"`
+	RunLabel          string                       `json:"run_label"`
 }
 
 type AddressExplorerQuery struct {
-	Address   string `json:"address"`
+	Address   string   `json:"address"`
 	FlowTypes []string `json:"flow_types"`
 	MinUSD    float64  `json:"min_usd"`
+	Mode      string   `json:"mode"`
 	Direction string   `json:"direction"`
 	Offset    int      `json:"offset"`
 	BatchSize int      `json:"batch_size"`
 }
 
+const (
+	GraphRunTypeActorTracker    = "actor_tracker"
+	GraphRunTypeAddressExplorer = "address_explorer"
+)
+
 type GraphRun struct {
 	ID         int64               `json:"id"`
+	RunType    string              `json:"run_type,omitempty"`
 	Request    ActorTrackerRequest `json:"request"`
 	ActorNames string              `json:"actor_names"`
 	NodeCount  int                 `json:"node_count"`
 	EdgeCount  int                 `json:"edge_count"`
 	CreatedAt  time.Time           `json:"created_at"`
+}
+
+type AddressExplorerRun struct {
+	ID        int64                  `json:"id"`
+	RunType   string                 `json:"run_type,omitempty"`
+	Request   AddressExplorerRequest `json:"request"`
+	Summary   string                 `json:"summary"`
+	NodeCount int                    `json:"node_count"`
+	EdgeCount int                    `json:"edge_count"`
+	CreatedAt time.Time              `json:"created_at"`
 }
 
 type FlowSegment struct {
