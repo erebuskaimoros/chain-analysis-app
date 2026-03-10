@@ -1437,6 +1437,14 @@ func TestProjectMidgardBondMapsWalletToValidatorNode(t *testing.T) {
 				},
 			},
 		},
+		Metadata: midgardActionMetadata{
+			Bond: &midgardBondMetadata{
+				Memo:        "BOND:thor1m3fruxmw0x6a8hed6a6jns07h669uhcuc2jdg3:thor1provider:2000",
+				NodeAddress: "thor1m3fruxmw0x6a8hed6a6jns07h669uhcuc2jdg3",
+				Provider:    "thor1provider",
+				Fee:         "2000",
+			},
+		},
 	}
 
 	segments, _, warnings := builder.projectMidgardAction(action, 1)
@@ -1449,6 +1457,9 @@ func TestProjectMidgardBondMapsWalletToValidatorNode(t *testing.T) {
 	seg := segments[0]
 	if seg.Source.Kind != "external_address" {
 		t.Fatalf("expected wallet source, got %#v", seg.Source)
+	}
+	if seg.Source.Address != "thor1provider" {
+		t.Fatalf("expected provider source address, got %#v", seg.Source)
 	}
 	if seg.Target.Kind != "node" {
 		t.Fatalf("expected validator target, got %#v", seg.Target)
@@ -1517,6 +1528,44 @@ func TestParseBondMemoNodeAddress(t *testing.T) {
 	}
 	if got := parseBondMemoNodeAddress("SWAP:BTC.BTC:bc1abc"); got != "" {
 		t.Fatalf("expected empty memo node for non-bond memo, got %q", got)
+	}
+}
+
+func TestHydrateBondMemoNodeCacheUsesRebondMetadata(t *testing.T) {
+	app := &App{}
+	cache := map[string]string{}
+
+	app.hydrateBondMemoNodeCache(context.Background(), []midgardAction{{
+		Type: "rebond",
+		In: []midgardActionLeg{{
+			TxID: "rebondtx",
+		}},
+		Metadata: midgardActionMetadata{
+			Rebond: &midgardRebondMetadata{
+				Memo:           "REBOND:thor1validator:thor1newbond:123",
+				NodeAddress:    "thor1validator",
+				NewBondAddress: "thor1newbond",
+			},
+		},
+	}}, cache)
+
+	if got := cache["REBONDTX"]; got != "thor1validator" {
+		t.Fatalf("expected rebond tx to hydrate validator node, got %q", got)
+	}
+}
+
+func TestThorNodeDisplayLabelReflectsStatus(t *testing.T) {
+	if got := thorNodeDisplayLabel("thor1active", "Active"); got != "Validator thor1active" {
+		t.Fatalf("unexpected active label %q", got)
+	}
+	if got := thorNodeDisplayLabel("thor1white", "Whitelisted"); got != "Whitelisted Node thor1white" {
+		t.Fatalf("unexpected whitelisted label %q", got)
+	}
+	if got := thorNodeDisplayLabel("thor1standby", "Standby"); got != "Standby Node thor1standby" {
+		t.Fatalf("unexpected standby label %q", got)
+	}
+	if got := thorNodeDisplayLabel("thor1unknown", "Unknown"); got != "Node thor1unknown" {
+		t.Fatalf("unexpected fallback label %q", got)
 	}
 }
 

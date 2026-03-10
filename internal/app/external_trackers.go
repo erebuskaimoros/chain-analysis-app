@@ -118,6 +118,7 @@ type midgardMemberResponse struct {
 
 type thornodeNodeAccount struct {
 	NodeAddress   string `json:"node_address"`
+	Status        string `json:"status"`
 	TotalBond     string `json:"total_bond"`
 	BondProviders struct {
 		Providers []struct {
@@ -260,27 +261,32 @@ func (a *App) fetchTHORBondHoldings(ctx context.Context, address string, prices 
 }
 
 func (a *App) fetchTHORBondedRuneIndex(ctx context.Context) (map[string]string, error) {
-	bondedByAddress, _, err := a.fetchTHORBondIndexes(ctx)
+	bondedByAddress, _, _, err := a.fetchTHORBondIndexes(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return bondedByAddress, nil
 }
 
-func (a *App) fetchTHORBondIndexes(ctx context.Context) (map[string]string, map[string]string, error) {
+func (a *App) fetchTHORBondIndexes(ctx context.Context) (map[string]string, map[string]string, map[string]string, error) {
 	client := a.thornodeClient()
 	if client == nil {
-		return nil, nil, errExternalTrackerUnavailable
+		return nil, nil, nil, errExternalTrackerUnavailable
 	}
 	var nodes []thornodeNodeAccount
 	if err := client.GetJSON(ctx, "/thorchain/nodes", &nodes); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	bondedByAddress := map[string]string{}
 	totalBondByNode := map[string]string{}
+	statusByNode := map[string]string{}
 	for _, node := range nodes {
 		nodeAddress := normalizeAddress(node.NodeAddress)
 		totalBond := strings.TrimSpace(node.TotalBond)
+		nodeStatus := strings.TrimSpace(node.Status)
+		if nodeAddress != "" && nodeStatus != "" {
+			statusByNode[nodeAddress] = nodeStatus
+		}
 		if nodeAddress != "" && hasGraphableLiquidity(totalBond) {
 			totalBondByNode[nodeAddress] = addRawAmounts(totalBondByNode[nodeAddress], totalBond)
 		}
@@ -293,7 +299,7 @@ func (a *App) fetchTHORBondIndexes(ctx context.Context) (map[string]string, map[
 			bondedByAddress[address] = addRawAmounts(bondedByAddress[address], bond)
 		}
 	}
-	return bondedByAddress, totalBondByNode, nil
+	return bondedByAddress, totalBondByNode, statusByNode, nil
 }
 
 func mulDivAmounts(multiplier, multiplicand, divisor string) string {

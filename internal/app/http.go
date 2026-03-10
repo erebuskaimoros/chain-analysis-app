@@ -291,15 +291,15 @@ func (a *App) handleWalletBonds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract rebond links from bond actions' metadata.bond.memo
+	// Extract rebond links from bond/rebond Midgard metadata.
 	a.extractRebondLinksFromMidgardBondActions(ctx, actions)
 
 	bondTypes := map[string]bool{
-		"bond": true, "unbond": true, "refund": true,
+		"bond": true, "rebond": true, "unbond": true, "refund": true,
 	}
 	var filtered []midgardAction
 	for _, action := range actions {
-		if bondTypes[action.Type] {
+		if bondTypes[strings.ToLower(strings.TrimSpace(action.Type))] {
 			filtered = append(filtered, action)
 		}
 	}

@@ -708,6 +708,7 @@ func TestEnrichNodesWithLiveHoldingsValidatorNodeUsesTotalBond(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{
 					"node_address": "thor1validator",
+					"status":       "Active",
 					"total_bond":   "450000000",
 				},
 			})
@@ -745,6 +746,12 @@ func TestEnrichNodesWithLiveHoldingsValidatorNodeUsesTotalBond(t *testing.T) {
 	if got := nodes[0].Metrics["node_total_bond"]; got != "450000000" {
 		t.Fatalf("expected node_total_bond=450000000, got %#v", got)
 	}
+	if got := nodes[0].Metrics["node_status"]; got != "Active" {
+		t.Fatalf("expected node_status=Active, got %#v", got)
+	}
+	if got := nodes[0].Label; got != "Validator thor1validator" {
+		t.Fatalf("expected validator label, got %#v", got)
+	}
 	if got := nodes[0].Metrics["live_holdings_available"]; got != true {
 		t.Fatalf("expected validator live holdings available=true, got %#v", got)
 	}
@@ -753,6 +760,56 @@ func TestEnrichNodesWithLiveHoldingsValidatorNodeUsesTotalBond(t *testing.T) {
 	}
 	if got, ok := nodes[0].Metrics["live_holdings_usd_spot"].(float64); !ok || got != 9 {
 		t.Fatalf("expected validator live_holdings_usd_spot=9, got %#v", nodes[0].Metrics["live_holdings_usd_spot"])
+	}
+}
+
+func TestEnrichNodesWithLiveHoldingsWhitelistedNodeNotMarkedValidator(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"node_address": "thor1whitelisted",
+					"status":       "Whitelisted",
+					"total_bond":   "0",
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		thor:          NewThorClient([]string{server.URL}, 10*time.Second),
+		mid:           NewThorClient([]string{server.URL}, 10*time.Second),
+		httpClient:    server.Client(),
+		trackerHealth: newTrackerHealthStore(),
+	}
+
+	nodes := []FlowNode{{
+		ID:      "node:thor1whitelisted:node_bond:1",
+		Kind:    "node",
+		Label:   "Node thor1whitelisted",
+		Chain:   "THOR",
+		Stage:   "node_bond",
+		Depth:   1,
+		Metrics: map[string]any{"address": "thor1whitelisted"},
+	}}
+
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{"THOR.RUNE": 2},
+	}, protocolDirectory{})
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %#v", warnings)
+	}
+	if got := nodes[0].Metrics["node_status"]; got != "Whitelisted" {
+		t.Fatalf("expected node_status=Whitelisted, got %#v", got)
+	}
+	if got := nodes[0].Label; got != "Whitelisted Node "+shortAddress("thor1whitelisted") {
+		t.Fatalf("expected whitelisted label, got %#v", got)
 	}
 }
 

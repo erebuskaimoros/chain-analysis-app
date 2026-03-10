@@ -247,13 +247,20 @@ type midgardActionCoin struct {
 type midgardActionMetadata struct {
 	Contract *midgardContractMetadata `json:"contract"`
 	Bond     *midgardBondMetadata     `json:"bond"`
+	Rebond   *midgardRebondMetadata   `json:"rebond"`
 }
 
 type midgardBondMetadata struct {
+	Fee         string `json:"fee"`
 	Memo        string `json:"memo"`
 	NodeAddress string `json:"nodeAddress"`
-	BondType    string `json:"bondType"`
-	BondAddress string `json:"bondAddress"`
+	Provider    string `json:"provider"`
+}
+
+type midgardRebondMetadata struct {
+	Memo           string `json:"memo"`
+	NodeAddress    string `json:"nodeAddress"`
+	NewBondAddress string `json:"newBondAddress"`
 }
 
 type midgardContractMetadata struct {
@@ -631,6 +638,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 
 	nodes := builder.nodeList()
 	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols)...)
+	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	actions := builder.actionList()
 
@@ -894,6 +902,7 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 
 	nodes := builder.nodeList()
 	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols)...)
+	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	actions := builder.actionList()
 	stats := map[string]any{
@@ -1477,7 +1486,13 @@ func (a *App) hydrateBondMemoNodeCache(_ context.Context, actions []midgardActio
 		}
 		// Read node address directly from Midgard metadata.
 		nodeAddress := ""
-		if action.Metadata.Bond != nil {
+		switch {
+		case action.Metadata.Rebond != nil:
+			nodeAddress = normalizeAddress(action.Metadata.Rebond.NodeAddress)
+			if nodeAddress == "" {
+				nodeAddress = parseBondMemoNodeAddress(action.Metadata.Rebond.Memo)
+			}
+		case action.Metadata.Bond != nil:
 			nodeAddress = normalizeAddress(action.Metadata.Bond.NodeAddress)
 			if nodeAddress == "" {
 				nodeAddress = parseBondMemoNodeAddress(action.Metadata.Bond.Memo)
@@ -1895,9 +1910,10 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 	}
 
 	var (
-		thorBondedByAddress map[string]string
-		thorBondedByNode    map[string]string
-		hasTHORLookups      bool
+		thorBondedByAddress  map[string]string
+		thorBondedByNode     map[string]string
+		thorNodeStatusByNode map[string]string
+		hasTHORLookups       bool
 	)
 	for _, task := range addressLookupTasks {
 		if task != nil && strings.EqualFold(strings.TrimSpace(task.chain), "THOR") {
@@ -1907,7 +1923,7 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 	}
 	if hasTHORLookups || len(nodeLookupRefs) > 0 {
 		bondLookupCtx, bondLookupCancel := context.WithTimeout(baseLookupCtx, a.liveHoldingsLookupTimeout("thornode", "THOR"))
-		bondedByAddress, bondedByNode, err := a.fetchTHORBondIndexes(bondLookupCtx)
+		bondedByAddress, bondedByNode, nodeStatusByNode, err := a.fetchTHORBondIndexes(bondLookupCtx)
 		bondLookupCancel()
 		if err != nil {
 			if hasTHORLookups {
@@ -1919,6 +1935,7 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		} else {
 			thorBondedByAddress = bondedByAddress
 			thorBondedByNode = bondedByNode
+			thorNodeStatusByNode = nodeStatusByNode
 		}
 	}
 
@@ -1926,9 +1943,17 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		idx := ref.index
 		nodeAddress := normalizeAddress(getString(nodes[idx].Metrics, "address"))
 		amountRaw := ""
+		nodeStatus := ""
 		if thorBondedByNode != nil {
 			amountRaw = strings.TrimSpace(thorBondedByNode[nodeAddress])
 		}
+		if thorNodeStatusByNode != nil {
+			nodeStatus = strings.TrimSpace(thorNodeStatusByNode[nodeAddress])
+		}
+		if nodeAddress != "" {
+			nodes[idx].Label = thorNodeDisplayLabel(nodeAddress, nodeStatus)
+		}
+		nodes[idx].Metrics["node_status"] = nodeStatus
 		nodes[idx].Metrics["node_total_bond"] = amountRaw
 		if hasGraphableLiquidity(amountRaw) {
 			holdings := []liveHoldingValue{{
@@ -2447,10 +2472,18 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			return "THOR.RUNE", "0"
 		}
 		isOutboundBondFlow := strings.Contains(actionType, "unbond") || actionType == "leave" || strings.Contains(actionType, "slash") || strings.Contains(actionType, "reward")
+		bondProviderAddress := ""
+		if action.Metadata.Bond != nil {
+			bondProviderAddress = normalizeAddress(action.Metadata.Bond.Provider)
+		}
 
 		globalNodeAddress := firstNonEmpty(resolveNodeAddressFromAction(), resolveNodeAddressFromLegs(legsIn), resolveNodeAddressFromLegs(legsOut))
 		for _, inLeg := range legsIn {
-			walletRef := b.makeBondWalletRef(inLeg.Address, baseDepth)
+			walletAddress := strings.TrimSpace(inLeg.Address)
+			if bondProviderAddress != "" {
+				walletAddress = bondProviderAddress
+			}
+			walletRef := b.makeBondWalletRef(walletAddress, baseDepth)
 			if walletRef.ID == "" || isAsgardModuleAddress(walletRef.Address) || isBondModuleAddress(walletRef.Address) {
 				continue
 			}
@@ -2825,7 +2858,7 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 	validatorAddress := normalizeAddress(seg.ValidatorAddress)
 	validatorLabel := strings.TrimSpace(seg.ValidatorLabel)
 	if validatorAddress != "" && validatorLabel == "" {
-		validatorLabel = "Validator " + shortAddress(validatorAddress)
+		validatorLabel = thorNodeDisplayLabel(validatorAddress, "")
 	}
 	meta := mergeAssetMetadata(assetMetadata{
 		AssetKind:     seg.AssetKind,
@@ -3209,6 +3242,25 @@ func (b *graphBuilder) makePoolRef(pool string, depth int) flowRef {
 	}
 }
 
+func thorNodeDisplayLabel(address, status string) string {
+	address = normalizeAddress(address)
+	if address == "" {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active":
+		return "Validator " + shortAddress(address)
+	case "whitelisted":
+		return "Whitelisted Node " + shortAddress(address)
+	case "standby":
+		return "Standby Node " + shortAddress(address)
+	case "disabled":
+		return "Disabled Node " + shortAddress(address)
+	default:
+		return "Node " + shortAddress(address)
+	}
+}
+
 func (b *graphBuilder) makeNodeRef(nodeAddress string, depth int) flowRef {
 	nodeAddress = strings.TrimSpace(nodeAddress)
 	if nodeAddress == "" {
@@ -3222,7 +3274,7 @@ func (b *graphBuilder) makeNodeRef(nodeAddress string, depth int) flowRef {
 		ID:      fmt.Sprintf("node:%s:node_bond:%d", normalized, depth),
 		Key:     normalized,
 		Kind:    "node",
-		Label:   "Validator " + shortAddress(nodeAddress),
+		Label:   thorNodeDisplayLabel(nodeAddress, ""),
 		Chain:   "THOR",
 		Stage:   "node_bond",
 		Depth:   depth,
@@ -3312,6 +3364,37 @@ func (b *graphBuilder) nodeList() []FlowNode {
 		return out[i].Depth < out[j].Depth
 	})
 	return out
+}
+
+func (b *graphBuilder) applyNodeLabelsToValidatorMetadata(nodes []FlowNode) {
+	if len(nodes) == 0 {
+		return
+	}
+	labelByAddress := map[string]string{}
+	for _, node := range nodes {
+		if node.Kind != "node" {
+			continue
+		}
+		address := normalizeAddress(getString(node.Metrics, "address"))
+		if address == "" {
+			continue
+		}
+		label := strings.TrimSpace(node.Label)
+		if label == "" {
+			label = thorNodeDisplayLabel(address, getString(node.Metrics, "node_status"))
+		}
+		labelByAddress[address] = label
+	}
+	for _, edge := range b.edges {
+		if label := strings.TrimSpace(labelByAddress[normalizeAddress(edge.ValidatorAddress)]); label != "" {
+			edge.ValidatorLabel = label
+		}
+	}
+	for _, action := range b.actions {
+		if label := strings.TrimSpace(labelByAddress[normalizeAddress(action.ValidatorAddress)]); label != "" {
+			action.ValidatorLabel = label
+		}
+	}
 }
 
 func (b *graphBuilder) edgeList() []FlowEdge {

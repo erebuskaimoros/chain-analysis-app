@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -122,5 +123,193 @@ func TestCanonicalizeMidgardLookupActionsKeepsStandaloneSend(t *testing.T) {
 	})
 	if len(actions) != 1 {
 		t.Fatalf("expected standalone send to be preserved, got %#v", actions)
+	}
+}
+
+func TestExtractRebondLinkFromMidgardBondActionParsesNativeRebondMetadata(t *testing.T) {
+	action := midgardAction{
+		Height: "23034924",
+		Type:   "rebond",
+		In: []midgardActionLeg{{
+			Address: "thor1oldbond",
+			TxID:    "rebondtx",
+		}},
+		Metadata: midgardActionMetadata{
+			Rebond: &midgardRebondMetadata{
+				Memo:           "REBOND:thor1validator:thor1newbond:31018731723188",
+				NodeAddress:    "thor1validator",
+				NewBondAddress: "thor1newbond",
+			},
+		},
+	}
+
+	link, ok := extractRebondLinkFromMidgardBondAction(action)
+	if !ok {
+		t.Fatal("expected native rebond metadata to produce a link")
+	}
+	if link.Height != 23034924 {
+		t.Fatalf("unexpected height %d", link.Height)
+	}
+	if link.TxID != "REBONDTX" {
+		t.Fatalf("unexpected tx id %q", link.TxID)
+	}
+	if link.NodeAddress != "thor1validator" {
+		t.Fatalf("unexpected node address %q", link.NodeAddress)
+	}
+	if link.OldBondAddress != "thor1oldbond" {
+		t.Fatalf("unexpected old bond address %q", link.OldBondAddress)
+	}
+	if link.NewBondAddress != "thor1newbond" {
+		t.Fatalf("unexpected new bond address %q", link.NewBondAddress)
+	}
+}
+
+func TestExtractRebondLinkFromMidgardBondActionIgnoresBondProviderTx(t *testing.T) {
+	action := midgardAction{
+		Height: "22796618",
+		Type:   "bond",
+		In: []midgardActionLeg{{
+			Address: "thor1sender",
+			TxID:    "bondtx",
+		}},
+		Metadata: midgardActionMetadata{
+			Bond: &midgardBondMetadata{
+				Memo:        "BOND:thor1node:thor1provider:2000",
+				NodeAddress: "thor1node",
+				Provider:    "thor1provider",
+				Fee:         "2000",
+			},
+		},
+	}
+
+	if link, ok := extractRebondLinkFromMidgardBondAction(action); ok {
+		t.Fatalf("expected bond provider tx to be ignored, got %#v", link)
+	}
+}
+
+func TestExtractRebondLinksFromMidgardBondActionsReplacesStaleTxRows(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	app := &App{db: db}
+	ctx := context.Background()
+	if err := insertRebondLink(ctx, db, RebondLink{
+		Height:         1,
+		TxID:           "BONDTX",
+		NodeAddress:    "thor1node",
+		OldBondAddress: "thor1old",
+		NewBondAddress: "thor1new",
+		Data:           map[string]any{"memo": "BOND:thor1node:thor1new"},
+	}); err != nil {
+		t.Fatalf("insert stale rebond link: %v", err)
+	}
+
+	app.extractRebondLinksFromMidgardBondActions(ctx, []midgardAction{{
+		Type:   "bond",
+		Status: "success",
+		In: []midgardActionLeg{{
+			Address: "thor1sender",
+			TxID:    "bondtx",
+		}},
+		Metadata: midgardActionMetadata{
+			Bond: &midgardBondMetadata{
+				Memo:        "BOND:thor1node:thor1provider:2000",
+				NodeAddress: "thor1node",
+				Provider:    "thor1provider",
+				Fee:         "2000",
+			},
+		},
+	}})
+
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM rebond_links WHERE tx_id = ?`, "BONDTX").Scan(&count); err != nil {
+		t.Fatalf("count rebond links: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected stale rebond link to be removed, got %d rows", count)
+	}
+}
+
+func TestHandleWalletBondsIncludesRebondActionsAndLinks(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/actions" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := strings.TrimSpace(r.URL.Query().Get("address")); got != "thor1yes8zxhq4p3r5rp9vt6rk9fdxqf2mnm43apumu" {
+			t.Fatalf("unexpected address query %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(midgardActionsResponse{
+			Actions: []midgardAction{{
+				Date:   "1759108019365569722",
+				Height: "23034924",
+				Type:   "rebond",
+				Status: "success",
+				In: []midgardActionLeg{{
+					Address: "thor1mlucvrd56xrhac4zqqx6yku84a6e5edj6k8una",
+					TxID:    "F747ABEF3F185B4DB133B19F6F971F132FECCB6BE8271413B923021DE0FEDDCA",
+					Coins:   []midgardActionCoin{{Amount: "31018731723188", Asset: "THOR.RUNE"}},
+				}},
+				Out: []midgardActionLeg{{
+					Address: "thor1g98cy3n9mmjrpn0sxmn63lztelera37n8n67c0",
+					TxID:    "F747ABEF3F185B4DB133B19F6F971F132FECCB6BE8271413B923021DE0FEDDCA",
+					Coins:   []midgardActionCoin{{Amount: "31018731723188", Asset: "THOR.RUNE"}},
+				}},
+				Metadata: midgardActionMetadata{
+					Rebond: &midgardRebondMetadata{
+						Memo:           "REBOND:thor1z6lg2u2kxccnmz3xy65856mcuslwaxcvx56uuk:thor1yes8zxhq4p3r5rp9vt6rk9fdxqf2mnm43apumu:31018731723188",
+						NodeAddress:    "thor1z6lg2u2kxccnmz3xy65856mcuslwaxcvx56uuk",
+						NewBondAddress: "thor1yes8zxhq4p3r5rp9vt6rk9fdxqf2mnm43apumu",
+					},
+				},
+			}},
+		})
+	}))
+	defer upstream.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout: 5 * time.Second,
+			MidgardTimeout: 5 * time.Second,
+		},
+		db:            db,
+		mid:           NewThorClient([]string{upstream.URL}, 5*time.Second),
+		trackerHealth: newTrackerHealthStore(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/wallets/thor1yes8zxhq4p3r5rp9vt6rk9fdxqf2mnm43apumu/bonds?max_pages=1", nil)
+	rec := httptest.NewRecorder()
+	mux := http.NewServeMux()
+	app.RegisterRoutes(mux)
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Actions     []midgardAction `json:"actions"`
+		RebondLinks []RebondLink    `json:"rebond_links"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Actions) != 1 {
+		t.Fatalf("expected rebond action in response, got %#v", resp.Actions)
+	}
+	if got := strings.ToLower(strings.TrimSpace(resp.Actions[0].Type)); got != "rebond" {
+		t.Fatalf("expected rebond action type, got %q", got)
+	}
+	if len(resp.RebondLinks) != 1 {
+		t.Fatalf("expected one rebond link, got %#v", resp.RebondLinks)
+	}
+	if resp.RebondLinks[0].OldBondAddress != "thor1mlucvrd56xrhac4zqqx6yku84a6e5edj6k8una" {
+		t.Fatalf("unexpected old bond address %q", resp.RebondLinks[0].OldBondAddress)
+	}
+	if resp.RebondLinks[0].NewBondAddress != "thor1yes8zxhq4p3r5rp9vt6rk9fdxqf2mnm43apumu" {
+		t.Fatalf("unexpected new bond address %q", resp.RebondLinks[0].NewBondAddress)
 	}
 }

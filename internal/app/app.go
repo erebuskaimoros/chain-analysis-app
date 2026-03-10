@@ -176,16 +176,16 @@ func filepathDir(path string) string {
 	return path[:idx]
 }
 
-// extractRebondLinkFromMidgardBondAction parses a Midgard bond action's
-// metadata.bond.memo for 3-part BOND memos (BOND:nodeAddr:newBondAddr) and
-// extracts a rebond link using in[0].address as the old bond address.
+// extractRebondLinkFromMidgardBondAction parses Midgard rebond actions into
+// rebond continuity links using the documented metadata.rebond payload.
 func extractRebondLinkFromMidgardBondAction(action midgardAction) (RebondLink, bool) {
-	memo := ""
-	nodeAddress := ""
-	if action.Metadata.Bond != nil {
-		memo = strings.TrimSpace(action.Metadata.Bond.Memo)
-		nodeAddress = strings.TrimSpace(action.Metadata.Bond.NodeAddress)
+	if action.Metadata.Rebond == nil {
+		return RebondLink{}, false
 	}
+
+	memo := strings.TrimSpace(action.Metadata.Rebond.Memo)
+	nodeAddress := strings.TrimSpace(action.Metadata.Rebond.NodeAddress)
+	newBondAddress := strings.TrimSpace(action.Metadata.Rebond.NewBondAddress)
 	if memo == "" {
 		return RebondLink{}, false
 	}
@@ -194,15 +194,21 @@ func extractRebondLinkFromMidgardBondAction(action midgardAction) (RebondLink, b
 	if len(parts) < 3 {
 		return RebondLink{}, false
 	}
-	action0 := strings.ToUpper(strings.TrimSpace(parts[0]))
-	if action0 != "BOND" {
+	memoAction := strings.ToUpper(strings.TrimSpace(parts[0]))
+	if memoAction != "REBOND" {
+		return RebondLink{}, false
+	}
+	actionType := strings.ToUpper(strings.TrimSpace(action.Type))
+	if actionType != "" && actionType != "REBOND" {
 		return RebondLink{}, false
 	}
 
 	if nodeAddress == "" {
 		nodeAddress = strings.TrimSpace(parts[1])
 	}
-	newBondAddress := strings.TrimSpace(parts[2])
+	if newBondAddress == "" {
+		newBondAddress = strings.TrimSpace(parts[2])
+	}
 	if newBondAddress == "" {
 		return RebondLink{}, false
 	}
@@ -232,10 +238,29 @@ func extractRebondLinkFromMidgardBondAction(action midgardAction) (RebondLink, b
 }
 
 // extractRebondLinksFromMidgardBondActions iterates bond-class Midgard actions,
-// parses metadata.bond.memo for 3-part BOND memos, and inserts rebond links into the database.
+// replaces cached rebond continuity for the fetched txids, and stores valid
+// metadata.rebond links on-demand.
 func (a *App) extractRebondLinksFromMidgardBondActions(ctx context.Context, actions []midgardAction) {
+	var txIDs []string
 	for _, action := range actions {
 		if midgardActionClass(action) != "bonds" {
+			continue
+		}
+		txIDs = append(txIDs, midgardActionTxIDs(action)...)
+	}
+	txIDs = uniqueStrings(txIDs)
+	if err := deleteRebondLinksByTxIDs(ctx, a.db, txIDs); err != nil {
+		logError(ctx, "rebond_link_delete_failed", err, map[string]any{
+			"tx_count": len(txIDs),
+		})
+		return
+	}
+
+	for _, action := range actions {
+		if midgardActionClass(action) != "bonds" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(action.Status), "failed") {
 			continue
 		}
 		link, ok := extractRebondLinkFromMidgardBondAction(action)

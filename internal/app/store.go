@@ -191,6 +191,20 @@ func insertRebondLink(ctx context.Context, execer interface {
 	return err
 }
 
+func deleteRebondLinksByTxIDs(ctx context.Context, execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}, txIDs []string) error {
+	if len(txIDs) == 0 {
+		return nil
+	}
+	where, args := buildInClause(txIDs)
+	_, err := execer.ExecContext(ctx, fmt.Sprintf(`
+		DELETE FROM rebond_links
+		WHERE tx_id IN (%s)
+	`, where), args...)
+	return err
+}
+
 func queryRebondLinksByAddress(ctx context.Context, db *sql.DB, address string, limit int) ([]RebondLink, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT height, tx_id, node_address, old_bond_address, new_bond_address, data_json
