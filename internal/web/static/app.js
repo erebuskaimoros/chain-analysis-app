@@ -229,8 +229,12 @@ function createGraphFilterState() {
     selectedChains: [],
     graphMinTime: "",
     graphMaxTime: "",
+    graphMinTxnUSD: null,
+    graphMaxTxnUSD: null,
     startTime: "",
     endTime: "",
+    minTxnUSD: null,
+    maxTxnUSD: null,
   };
 }
 
@@ -251,21 +255,33 @@ function graphFilterMetadataFromResponse(response) {
   ).sort();
   let graphMinTime = "";
   let graphMaxTime = "";
+  let graphMinTxnUSD = null;
+  let graphMaxTxnUSD = null;
   (response?.edges || []).forEach((edge) => {
     normalizeEdgeTransactions(edge).forEach((tx) => {
       const when = normalizeISODateTime(tx.time);
       if (!when) {
+      } else {
+        if (!graphMinTime || when < graphMinTime) {
+          graphMinTime = when;
+        }
+        if (!graphMaxTime || when > graphMaxTime) {
+          graphMaxTime = when;
+        }
+      }
+      const usdSpot = Number(tx?.usd_spot);
+      if (!Number.isFinite(usdSpot)) {
         return;
       }
-      if (!graphMinTime || when < graphMinTime) {
-        graphMinTime = when;
+      if (graphMinTxnUSD === null || usdSpot < graphMinTxnUSD) {
+        graphMinTxnUSD = usdSpot;
       }
-      if (!graphMaxTime || when > graphMaxTime) {
-        graphMaxTime = when;
+      if (graphMaxTxnUSD === null || usdSpot > graphMaxTxnUSD) {
+        graphMaxTxnUSD = usdSpot;
       }
     });
   });
-  return { availableChains, graphMinTime, graphMaxTime };
+  return { availableChains, graphMinTime, graphMaxTime, graphMinTxnUSD, graphMaxTxnUSD };
 }
 
 function chainSelectionsMatchAll(selectedChains, availableChains) {
@@ -281,6 +297,59 @@ function timeSelectionsMatchFullRange(filters, graphMinTime, graphMaxTime) {
   const start = normalizeISODateTime(filters?.startTime || "");
   const end = normalizeISODateTime(filters?.endTime || "");
   return start === normalizeISODateTime(graphMinTime) && end === normalizeISODateTime(graphMaxTime);
+}
+
+function normalizeGraphFilterNumber(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+  const number = Number(raw);
+  return Number.isFinite(number) ? number : null;
+}
+
+function graphFilterNumbersEqual(left, right) {
+  const a = normalizeGraphFilterNumber(left);
+  const b = normalizeGraphFilterNumber(right);
+  if (a === null || b === null) {
+    return a === b;
+  }
+  return Math.abs(a - b) < 1e-9;
+}
+
+function valueSelectionsMatchFullRange(filters, graphMinTxnUSD, graphMaxTxnUSD) {
+  return (
+    graphFilterNumbersEqual(filters?.minTxnUSD, graphMinTxnUSD) &&
+    graphFilterNumbersEqual(filters?.maxTxnUSD, graphMaxTxnUSD)
+  );
+}
+
+function clampGraphFilterNumber(value, minValue, maxValue) {
+  const normalized = normalizeGraphFilterNumber(value);
+  if (normalized === null) {
+    return null;
+  }
+  const minNumber = normalizeGraphFilterNumber(minValue);
+  const maxNumber = normalizeGraphFilterNumber(maxValue);
+  let output = normalized;
+  if (minNumber !== null && output < minNumber) {
+    output = minNumber;
+  }
+  if (maxNumber !== null && output > maxNumber) {
+    output = maxNumber;
+  }
+  return output;
+}
+
+function formatGraphFilterNumber(value) {
+  const normalized = normalizeGraphFilterNumber(value);
+  if (normalized === null) {
+    return "";
+  }
+  if (Number.isInteger(normalized)) {
+    return String(normalized);
+  }
+  return String(normalized);
 }
 
 function clampISOToRange(value, minValue, maxValue) {
@@ -308,13 +377,18 @@ function syncGraphFilterStateWithResponse(filterState, response, options = {}) {
   const previousChains = Array.isArray(filterState.availableChains) ? [...filterState.availableChains] : [];
   const previousMinTime = normalizeISODateTime(filterState.graphMinTime);
   const previousMaxTime = normalizeISODateTime(filterState.graphMaxTime);
+  const previousMinTxnUSD = normalizeGraphFilterNumber(filterState.graphMinTxnUSD);
+  const previousMaxTxnUSD = normalizeGraphFilterNumber(filterState.graphMaxTxnUSD);
   const selectedAllChains = chainSelectionsMatchAll(filterState.selectedChains, previousChains);
   const selectedFullRange = timeSelectionsMatchFullRange(filterState, previousMinTime, previousMaxTime);
+  const selectedFullValueRange = valueSelectionsMatchFullRange(filterState, previousMinTxnUSD, previousMaxTxnUSD);
   const metadata = graphFilterMetadataFromResponse(response);
 
   filterState.availableChains = metadata.availableChains;
   filterState.graphMinTime = metadata.graphMinTime;
   filterState.graphMaxTime = metadata.graphMaxTime;
+  filterState.graphMinTxnUSD = metadata.graphMinTxnUSD;
+  filterState.graphMaxTxnUSD = metadata.graphMaxTxnUSD;
 
   if (reset || !filterState.initialized) {
     GRAPH_FILTER_TXN_TYPES.forEach((item) => {
@@ -323,6 +397,8 @@ function syncGraphFilterStateWithResponse(filterState, response, options = {}) {
     filterState.selectedChains = metadata.availableChains.slice();
     filterState.startTime = metadata.graphMinTime;
     filterState.endTime = metadata.graphMaxTime;
+    filterState.minTxnUSD = metadata.graphMinTxnUSD;
+    filterState.maxTxnUSD = metadata.graphMaxTxnUSD;
     filterState.initialized = true;
     return;
   }
@@ -349,6 +425,22 @@ function syncGraphFilterStateWithResponse(filterState, response, options = {}) {
       filterState.endTime = metadata.graphMaxTime;
     }
   }
+
+  if (selectedFullValueRange) {
+    filterState.minTxnUSD = metadata.graphMinTxnUSD;
+    filterState.maxTxnUSD = metadata.graphMaxTxnUSD;
+  } else {
+    filterState.minTxnUSD = clampGraphFilterNumber(filterState.minTxnUSD, metadata.graphMinTxnUSD, metadata.graphMaxTxnUSD);
+    filterState.maxTxnUSD = clampGraphFilterNumber(filterState.maxTxnUSD, metadata.graphMinTxnUSD, metadata.graphMaxTxnUSD);
+    if (
+      filterState.minTxnUSD !== null &&
+      filterState.maxTxnUSD !== null &&
+      filterState.minTxnUSD > filterState.maxTxnUSD
+    ) {
+      filterState.minTxnUSD = metadata.graphMinTxnUSD;
+      filterState.maxTxnUSD = metadata.graphMaxTxnUSD;
+    }
+  }
 }
 
 function graphFiltersAreActive(filterState) {
@@ -358,7 +450,8 @@ function graphFiltersAreActive(filterState) {
   const allTxnEnabled = GRAPH_FILTER_TXN_TYPES.every((item) => filterState.txnTypes[item.key] !== false);
   const allChainsSelected = chainSelectionsMatchAll(filterState.selectedChains, filterState.availableChains);
   const fullRangeSelected = timeSelectionsMatchFullRange(filterState, filterState.graphMinTime, filterState.graphMaxTime);
-  return !(allTxnEnabled && allChainsSelected && fullRangeSelected);
+  const fullValueRangeSelected = valueSelectionsMatchFullRange(filterState, filterState.graphMinTxnUSD, filterState.graphMaxTxnUSD);
+  return !(allTxnEnabled && allChainsSelected && fullRangeSelected && fullValueRangeSelected);
 }
 
 function setGraphFilterDateValue(filterState, field, localValue) {
@@ -390,6 +483,31 @@ function resetGraphFilters(filterState) {
   filterState.selectedChains = [...(filterState.availableChains || [])];
   filterState.startTime = filterState.graphMinTime || "";
   filterState.endTime = filterState.graphMaxTime || "";
+  filterState.minTxnUSD = filterState.graphMinTxnUSD;
+  filterState.maxTxnUSD = filterState.graphMaxTxnUSD;
+}
+
+function setGraphFilterNumberValue(filterState, field, rawValue) {
+  if (!filterState) {
+    return;
+  }
+  const normalized = normalizeGraphFilterNumber(rawValue);
+  if (normalized === null) {
+    filterState[field] = field === "minTxnUSD" ? filterState.graphMinTxnUSD : filterState.graphMaxTxnUSD;
+  } else {
+    filterState[field] = clampGraphFilterNumber(normalized, filterState.graphMinTxnUSD, filterState.graphMaxTxnUSD);
+  }
+  if (
+    filterState.minTxnUSD !== null &&
+    filterState.maxTxnUSD !== null &&
+    filterState.minTxnUSD > filterState.maxTxnUSD
+  ) {
+    if (field === "minTxnUSD") {
+      filterState.maxTxnUSD = filterState.minTxnUSD;
+    } else {
+      filterState.minTxnUSD = filterState.maxTxnUSD;
+    }
+  }
 }
 
 function isRebondGraphAction(actionClass, actionKey, actionLabel) {
@@ -420,6 +538,104 @@ function graphTxnTypeAllowed(actionClass, actionKey, actionLabel, filterState) {
     return true;
   }
   return filterState?.txnTypes?.[bucket] !== false;
+}
+
+function graphTxnBucketLabel(bucket) {
+  const match = GRAPH_FILTER_TXN_TYPES.find((item) => item.key === bucket);
+  return match ? match.label : "";
+}
+
+function summarizeGraphLabels(labels, maxVisible = 2) {
+  const uniqueLabels = uniqueStrings((labels || []).map((label) => String(label || "").trim()).filter(Boolean));
+  if (!uniqueLabels.length) {
+    return "";
+  }
+  if (uniqueLabels.length <= maxVisible) {
+    return uniqueLabels.join(" + ");
+  }
+  return `${uniqueLabels.slice(0, maxVisible).join(" + ")} +${uniqueLabels.length - maxVisible} more`;
+}
+
+function graphVisibleEdgeKey(rawEdge, from, to) {
+  const actionClass = String(rawEdge?.action_class || "").trim().toLowerCase();
+  return actionClass === "ownership" ? `${from}|${to}|ownership` : `${from}|${to}|flow`;
+}
+
+function resolveVisibleEdgeMetadata(edge) {
+  const actionClasses = uniqueStrings(edge?.actionClasses || []);
+  const actionKeys = uniqueStrings(edge?.actionKeys || []);
+  const actionLabels = uniqueStrings(edge?.actionLabels || []);
+  const actionDomains = uniqueStrings(edge?.actionDomains || []);
+  const txnBuckets = uniqueStrings(edge?.txnBuckets || []);
+  const validatorAddresses = uniqueStrings(edge?.validatorAddresses || []);
+  const validatorLabels = uniqueStrings(edge?.validatorLabels || []);
+  const contractTypes = uniqueStrings(edge?.contractTypes || []);
+  const contractProtocols = uniqueStrings(edge?.contractProtocols || []);
+
+  let actionClass = actionClasses.length === 1 ? actionClasses[0] : actionClasses.length ? "mixed" : "";
+  let actionKey = actionKeys.length === 1 ? actionKeys[0] : actionKeys.length ? "multiple" : "";
+  let actionDomain = actionDomains.length === 1 ? actionDomains[0] : actionDomains.length ? "multiple" : "";
+  let actionLabel = actionLabels.length === 1 ? actionLabels[0] : "";
+  if (!actionLabel) {
+    const bucketLabels = txnBuckets.map(graphTxnBucketLabel).filter(Boolean);
+    actionLabel = summarizeGraphLabels(bucketLabels.length ? bucketLabels : actionLabels, 2);
+  }
+  if (!actionLabel && actionClasses.length === 1) {
+    actionLabel = actionClasses[0];
+  }
+  if (!actionLabel) {
+    actionLabel = "Transactions";
+  }
+
+  return {
+    actionClass,
+    actionKey,
+    actionLabel,
+    actionDomain,
+    validatorAddress: validatorAddresses.length === 1 ? validatorAddresses[0] : "",
+    validatorLabel: validatorLabels.length === 1 ? validatorLabels[0] : "",
+    contractType: contractTypes.length === 1 ? contractTypes[0] : "",
+    contractProtocol: contractProtocols.length === 1 ? contractProtocols[0] : "",
+    actionClasses,
+    actionKeys,
+    actionLabels,
+    actionDomains,
+    txnBuckets,
+    validatorAddresses,
+    validatorLabels,
+    contractTypes,
+    contractProtocols,
+  };
+}
+
+function formatVisibleEdgeActionLabel(edge) {
+  if (String(edge?.actionClass || "").trim().toLowerCase() === "ownership") {
+    return "";
+  }
+
+  let label = String(edge?.actionLabel || "").trim() || "Transactions";
+  const txCount = Math.max(Number(edge?.txCount || 0), Array.isArray(edge?.transactions) ? edge.transactions.length : 0);
+  const mixedKinds =
+    uniqueStrings(edge?.actionClasses || []).length > 1 ||
+    uniqueStrings(edge?.actionLabels || []).length > 1 ||
+    uniqueStrings(edge?.rawEdgeIDs || []).length > 1;
+  if (txCount > 1 && mixedKinds) {
+    label = `${label} (${txCount} txns)`;
+  }
+
+  const validatorAddresses = uniqueStrings(edge?.validatorAddresses || []);
+  const validatorLabels = uniqueStrings(edge?.validatorLabels || []);
+  const validatorCount = Math.max(validatorAddresses.length, validatorLabels.length);
+  if (validatorCount === 1) {
+    const validator = String(edge?.validatorLabel || edge?.validatorAddress || "").trim();
+    if (validator && !label.toLowerCase().includes(" via ")) {
+      label = `${label} via ${validator}`;
+    }
+  } else if (validatorCount > 1) {
+    label = `${label} via ${validatorCount} validators`;
+  }
+
+  return label;
 }
 
 function cloneFlowAssetValue(asset) {
@@ -560,6 +776,8 @@ function summarizeTransactions(transactions) {
 function filterTransactionsByTime(transactions, filterState) {
   const startTime = normalizeISODateTime(filterState?.startTime);
   const endTime = normalizeISODateTime(filterState?.endTime);
+  const minTxnUSD = normalizeGraphFilterNumber(filterState?.minTxnUSD);
+  const maxTxnUSD = normalizeGraphFilterNumber(filterState?.maxTxnUSD);
   return (transactions || []).filter((tx) => {
     const when = normalizeISODateTime(tx?.time);
     if ((startTime || endTime) && !when) {
@@ -569,6 +787,16 @@ function filterTransactionsByTime(transactions, filterState) {
       return false;
     }
     if (endTime && when > endTime) {
+      return false;
+    }
+    const usdSpot = Number(tx?.usd_spot);
+    if ((minTxnUSD !== null || maxTxnUSD !== null) && !Number.isFinite(usdSpot)) {
+      return false;
+    }
+    if (minTxnUSD !== null && usdSpot < minTxnUSD) {
+      return false;
+    }
+    if (maxTxnUSD !== null && usdSpot > maxTxnUSD) {
       return false;
     }
     return true;
@@ -598,6 +826,8 @@ function filterSupportingActions(actions, response, filterState) {
   const rawNodeByID = new Map((response?.nodes || []).map((node) => [String(node.id), node]));
   const startTime = normalizeISODateTime(filterState?.startTime);
   const endTime = normalizeISODateTime(filterState?.endTime);
+  const minTxnUSD = normalizeGraphFilterNumber(filterState?.minTxnUSD);
+  const maxTxnUSD = normalizeGraphFilterNumber(filterState?.maxTxnUSD);
   return (actions || []).filter((action) => {
     if (!graphTxnTypeAllowed(action.action_class, action.action_key, action.action_label, filterState)) {
       return false;
@@ -614,6 +844,16 @@ function filterSupportingActions(actions, response, filterState) {
       return false;
     }
     if (endTime && when > endTime) {
+      return false;
+    }
+    const usdSpot = Number(action?.usd_spot);
+    if ((minTxnUSD !== null || maxTxnUSD !== null) && !Number.isFinite(usdSpot)) {
+      return false;
+    }
+    if (minTxnUSD !== null && usdSpot < minTxnUSD) {
+      return false;
+    }
+    if (maxTxnUSD !== null && usdSpot > maxTxnUSD) {
       return false;
     }
     return true;
@@ -643,6 +883,8 @@ function graphFilterPopoverMarkup(filterState) {
     : `<div class="graph-filter-empty">No chains loaded.</div>`;
   const startValue = filterState?.startTime ? toLocalInputValue(new Date(filterState.startTime)) : "";
   const endValue = filterState?.endTime ? toLocalInputValue(new Date(filterState.endTime)) : "";
+  const minTxnUSDValue = formatGraphFilterNumber(filterState?.minTxnUSD);
+  const maxTxnUSDValue = formatGraphFilterNumber(filterState?.maxTxnUSD);
   return `
     <div class="graph-filter-head">
       <strong>Filters</strong>
@@ -665,6 +907,17 @@ function graphFilterPopoverMarkup(filterState) {
       <label class="graph-filter-field">
         <span>End</span>
         <input type="datetime-local" data-filter-time="end" value="${escapeHTML(endValue)}" />
+      </label>
+    </div>
+    <div class="graph-filter-section">
+      <div class="graph-filter-section-title">Txn Value ($)</div>
+      <label class="graph-filter-field">
+        <span>Min</span>
+        <input type="number" min="0" step="any" data-filter-usd="min" value="${escapeHTML(minTxnUSDValue)}" />
+      </label>
+      <label class="graph-filter-field">
+        <span>Max</span>
+        <input type="number" min="0" step="any" data-filter-usd="max" value="${escapeHTML(maxTxnUSDValue)}" />
       </label>
     </div>
   `;
@@ -1070,6 +1323,18 @@ function bindActorTracker(activateTab, actionLookup) {
     }
     if (target.dataset.filterTime === "end") {
       setGraphFilterDateValue(state.actorGraphFilters, "endTime", target.value);
+      renderGraphFilterPopover();
+      renderGraphResponse();
+      return;
+    }
+    if (target.dataset.filterUsd === "min") {
+      setGraphFilterNumberValue(state.actorGraphFilters, "minTxnUSD", target.value);
+      renderGraphFilterPopover();
+      renderGraphResponse();
+      return;
+    }
+    if (target.dataset.filterUsd === "max") {
+      setGraphFilterNumberValue(state.actorGraphFilters, "maxTxnUSD", target.value);
       renderGraphFilterPopover();
       renderGraphResponse();
     }
@@ -1630,10 +1895,13 @@ function bindActorTracker(activateTab, actionLookup) {
     const totalNodeCount = Number(state.actorGraph.stats?.node_count || 0);
     const totalEdgeCount = Number(state.actorGraph.stats?.edge_count || 0);
     const totalActionCount = Number(state.actorGraph.stats?.supporting_action_count || 0);
+    const showNodeFraction = graphFiltersAreActive(state.actorGraphFilters) || filteredNodeCount !== totalNodeCount;
+    const showEdgeFraction = graphFiltersAreActive(state.actorGraphFilters) || filteredEdgeCount !== totalEdgeCount;
+    const showActionFraction = graphFiltersAreActive(state.actorGraphFilters) || filteredActionCount !== totalActionCount;
     graphStats.innerHTML = [
-      metaChip(graphFiltersAreActive(state.actorGraphFilters) ? `${filteredNodeCount} / ${totalNodeCount} nodes` : `${totalNodeCount} nodes`),
-      metaChip(graphFiltersAreActive(state.actorGraphFilters) ? `${filteredEdgeCount} / ${totalEdgeCount} edges` : `${totalEdgeCount} edges`),
-      metaChip(graphFiltersAreActive(state.actorGraphFilters) ? `${filteredActionCount} / ${totalActionCount} actions` : `${totalActionCount} actions`),
+      metaChip(showNodeFraction ? `${filteredNodeCount} / ${totalNodeCount} nodes` : `${totalNodeCount} nodes`),
+      metaChip(showEdgeFraction ? `${filteredEdgeCount} / ${totalEdgeCount} edges` : `${totalEdgeCount} edges`),
+      metaChip(showActionFraction ? `${filteredActionCount} / ${totalActionCount} actions` : `${totalActionCount} actions`),
     ].join("");
   }
 
@@ -2443,10 +2711,7 @@ function bindActorTracker(activateTab, actionLookup) {
       ensureVisibleNode(sourceNode, from);
       ensureVisibleNode(targetNode, to);
 
-      let edgeID = `${from}|${to}|${rawEdge.action_key || rawEdge.action_class}`;
-      if (rawEdge.validator_address && String(rawEdge.action_key || rawEdge.action_class || "").toLowerCase().includes("rebond")) {
-        edgeID += `|validator:${rawEdge.validator_address}`;
-      }
+      const edgeID = graphVisibleEdgeKey(rawEdge, from, to);
       const existing = visibleEdges.get(edgeID) || {
         id: edgeID,
         source: from,
@@ -2467,6 +2732,15 @@ function bindActorTracker(activateTab, actionLookup) {
         assetTotals: {},
         transactions: [],
         chainSet: [],
+        actionClasses: [],
+        actionKeys: [],
+        actionLabels: [],
+        actionDomains: [],
+        txnBuckets: [],
+        validatorAddresses: [],
+        validatorLabels: [],
+        contractTypes: [],
+        contractProtocols: [],
         inspect: {
           action_class: rawEdge.action_class,
           action_key: rawEdge.action_key || rawEdge.action_class,
@@ -2475,24 +2749,69 @@ function bindActorTracker(activateTab, actionLookup) {
           contract_protocol: rawEdge.contract_protocol || "",
           validator_address: rawEdge.validator_address || "",
           validator_label: rawEdge.validator_label || "",
+          action_classes: [],
+          action_keys: [],
+          action_labels: [],
+          action_domains: [],
+          action_buckets: [],
+          validator_addresses: [],
+          validator_labels: [],
           chain_set: [],
           edges: [],
         },
       };
       existing.actorIds = uniqueNumbers(existing.actorIds.concat(rawEdge.actor_ids || []));
       existing.rawEdgeIDs = uniqueStrings(existing.rawEdgeIDs.concat(rawEdge.id));
-      if (!existing.validatorAddress) {
-        existing.validatorAddress = rawEdge.validator_address || "";
+      existing.actionClasses = uniqueStrings(existing.actionClasses.concat(String(rawEdge.action_class || "").trim()).filter(Boolean));
+      existing.actionKeys = uniqueStrings(existing.actionKeys.concat(String(rawEdge.action_key || rawEdge.action_class || "").trim()).filter(Boolean));
+      existing.actionLabels = uniqueStrings(existing.actionLabels.concat(String(rawEdge.action_label || rawEdge.action_class || "").trim()).filter(Boolean));
+      existing.actionDomains = uniqueStrings(existing.actionDomains.concat(String(rawEdge.action_domain || rawEdge.action_class || "").trim()).filter(Boolean));
+      const txnBucket = graphTxnBucket(rawEdge.action_class, rawEdge.action_key, rawEdge.action_label);
+      if (txnBucket) {
+        existing.txnBuckets = uniqueStrings(existing.txnBuckets.concat(txnBucket));
       }
-      if (!existing.validatorLabel) {
-        existing.validatorLabel = rawEdge.validator_label || "";
+      if (rawEdge.validator_address) {
+        existing.validatorAddresses = uniqueStrings(existing.validatorAddresses.concat(String(rawEdge.validator_address).trim()));
       }
+      if (rawEdge.validator_label) {
+        existing.validatorLabels = uniqueStrings(existing.validatorLabels.concat(String(rawEdge.validator_label).trim()));
+      }
+      if (rawEdge.contract_type) {
+        existing.contractTypes = uniqueStrings(existing.contractTypes.concat(String(rawEdge.contract_type).trim()));
+      }
+      if (rawEdge.contract_protocol) {
+        existing.contractProtocols = uniqueStrings(existing.contractProtocols.concat(String(rawEdge.contract_protocol).trim()));
+      }
+      const metadata = resolveVisibleEdgeMetadata(existing);
+      existing.actionClass = metadata.actionClass;
+      existing.actionKey = metadata.actionKey;
+      existing.actionLabel = metadata.actionLabel;
+      existing.actionDomain = metadata.actionDomain;
+      existing.validatorAddress = metadata.validatorAddress;
+      existing.validatorLabel = metadata.validatorLabel;
+      existing.contractType = metadata.contractType;
+      existing.contractProtocol = metadata.contractProtocol;
       existing.transactions = mergeEdgeTransactions(existing.transactions, rawEdge.transactions || []);
       const summary = summarizeTransactions(existing.transactions);
       existing.usdSpot = summary.usd_spot;
       existing.txIDs = summary.tx_ids;
-      existing.txCount = existing.txIDs.length;
+      existing.txCount = Math.max(existing.txIDs.length, existing.transactions.length);
       existing.chainSet = uniqueStrings(existing.chainSet.concat(rawEdge.chainSet || []));
+      existing.inspect.action_class = existing.actionClass;
+      existing.inspect.action_key = existing.actionKey;
+      existing.inspect.action_label = existing.actionLabel;
+      existing.inspect.action_domain = existing.actionDomain;
+      existing.inspect.contract_type = existing.contractType;
+      existing.inspect.contract_protocol = existing.contractProtocol;
+      existing.inspect.validator_address = existing.validatorAddress || "";
+      existing.inspect.validator_label = existing.validatorLabel || "";
+      existing.inspect.action_classes = metadata.actionClasses;
+      existing.inspect.action_keys = metadata.actionKeys;
+      existing.inspect.action_labels = metadata.actionLabels;
+      existing.inspect.action_domains = metadata.actionDomains;
+      existing.inspect.action_buckets = metadata.txnBuckets;
+      existing.inspect.validator_addresses = metadata.validatorAddresses;
+      existing.inspect.validator_labels = metadata.validatorLabels;
       existing.inspect.chain_set = existing.chainSet;
       existing.assetTotals = {};
       summary.assets.forEach((assetValue) => {
@@ -2551,10 +2870,7 @@ function bindActorTracker(activateTab, actionLookup) {
       const tokenSummary =
         edge.actionClass === "swaps" ? formatSwapTokenSummary(aggregatedAssets) : formatEdgeTokenSummary(aggregatedAssets);
       const usdSummary = formatUSD(edge.usdSpot);
-      const validatorSuffix =
-        edge.validatorLabel || edge.validatorAddress ? ` via ${edge.validatorLabel || shortHash(edge.validatorAddress)}` : "";
-      const actionLabel = edge.actionLabel || edge.actionClass;
-      const edgeActionLabel = actionLabel.toLowerCase().includes(" via ") ? actionLabel : `${actionLabel}${validatorSuffix}`;
+      const edgeActionLabel = formatVisibleEdgeActionLabel(edge);
       const edgeLabel =
         edge.actionClass === "ownership"
           ? ""
@@ -2574,9 +2890,17 @@ function bindActorTracker(activateTab, actionLookup) {
           action_domain: edge.actionDomain,
           validator_address: edge.validatorAddress || "",
           validator_label: edge.validatorLabel || "",
+          action_classes: edge.actionClasses,
+          action_keys: edge.actionKeys,
+          action_labels: edge.actionLabels,
+          action_domains: edge.actionDomains,
+          action_buckets: edge.txnBuckets,
+          validator_addresses: edge.validatorAddresses,
+          validator_labels: edge.validatorLabels,
           contract_type: edge.contractType,
           contract_protocol: edge.contractProtocol,
           usd_spot: edge.usdSpot,
+          tx_count: edge.txCount,
           tx_ids: edge.txIDs,
           raw_edge_ids: edge.rawEdgeIDs,
           transactions: edge.transactions,
@@ -3648,6 +3972,18 @@ function bindAddressExplorer(activateTab) {
       setGraphFilterDateValue(state.explorerGraphFilters, "endTime", target.value);
       renderExplorerFilterPopover();
       renderExplorerGraphResponse();
+      return;
+    }
+    if (target.dataset.filterUsd === "min") {
+      setGraphFilterNumberValue(state.explorerGraphFilters, "minTxnUSD", target.value);
+      renderExplorerFilterPopover();
+      renderExplorerGraphResponse();
+      return;
+    }
+    if (target.dataset.filterUsd === "max") {
+      setGraphFilterNumberValue(state.explorerGraphFilters, "maxTxnUSD", target.value);
+      renderExplorerFilterPopover();
+      renderExplorerGraphResponse();
     }
   });
 
@@ -3802,10 +4138,13 @@ function bindAddressExplorer(activateTab) {
       const totalNodeCount = Number((state.explorerGraph.stats || {}).node_count || 0);
       const totalEdgeCount = Number((state.explorerGraph.stats || {}).edge_count || 0);
       const totalActionCount = Number((state.explorerGraph.stats || {}).supporting_action_count || 0);
+      const showNodeFraction = graphFiltersAreActive(state.explorerGraphFilters) || filteredNodeCount !== totalNodeCount;
+      const showEdgeFraction = graphFiltersAreActive(state.explorerGraphFilters) || filteredEdgeCount !== totalEdgeCount;
+      const showActionFraction = graphFiltersAreActive(state.explorerGraphFilters) || filteredActionCount !== totalActionCount;
       graphStats.innerHTML = [
-        metaChip(graphFiltersAreActive(state.explorerGraphFilters) ? `${filteredNodeCount} / ${totalNodeCount} nodes` : `${totalNodeCount} nodes`),
-        metaChip(graphFiltersAreActive(state.explorerGraphFilters) ? `${filteredEdgeCount} / ${totalEdgeCount} edges` : `${totalEdgeCount} edges`),
-        metaChip(graphFiltersAreActive(state.explorerGraphFilters) ? `${filteredActionCount} / ${totalActionCount} actions` : `${totalActionCount} actions`),
+        metaChip(showNodeFraction ? `${filteredNodeCount} / ${totalNodeCount} nodes` : `${totalNodeCount} nodes`),
+        metaChip(showEdgeFraction ? `${filteredEdgeCount} / ${totalEdgeCount} edges` : `${totalEdgeCount} edges`),
+        metaChip(showActionFraction ? `${filteredActionCount} / ${totalActionCount} actions` : `${totalActionCount} actions`),
       ].join("");
       return;
     }
@@ -4353,10 +4692,7 @@ function bindAddressExplorer(activateTab) {
       ensureVisibleNode(sourceNode, from);
       ensureVisibleNode(targetNode, to);
 
-      let edgeID = `${from}|${to}|${rawEdge.action_key || rawEdge.action_class}`;
-      if (rawEdge.validator_address && String(rawEdge.action_key || rawEdge.action_class || "").toLowerCase().includes("rebond")) {
-        edgeID += `|validator:${rawEdge.validator_address}`;
-      }
+      const edgeID = graphVisibleEdgeKey(rawEdge, from, to);
       const existing = visibleEdges.get(edgeID) || {
         id: edgeID,
         source: from,
@@ -4377,6 +4713,15 @@ function bindAddressExplorer(activateTab) {
         assetTotals: {},
         transactions: [],
         chainSet: [],
+        actionClasses: [],
+        actionKeys: [],
+        actionLabels: [],
+        actionDomains: [],
+        txnBuckets: [],
+        validatorAddresses: [],
+        validatorLabels: [],
+        contractTypes: [],
+        contractProtocols: [],
         inspect: {
           action_class: rawEdge.action_class,
           action_key: rawEdge.action_key || rawEdge.action_class,
@@ -4385,19 +4730,68 @@ function bindAddressExplorer(activateTab) {
           contract_protocol: rawEdge.contract_protocol || "",
           validator_address: rawEdge.validator_address || "",
           validator_label: rawEdge.validator_label || "",
+          action_classes: [],
+          action_keys: [],
+          action_labels: [],
+          action_domains: [],
+          action_buckets: [],
+          validator_addresses: [],
+          validator_labels: [],
           chain_set: [],
           edges: [],
         },
       };
       existing.rawEdgeIDs = uniqueStrings(existing.rawEdgeIDs.concat(rawEdge.id));
-      if (!existing.validatorAddress) existing.validatorAddress = rawEdge.validator_address || "";
-      if (!existing.validatorLabel) existing.validatorLabel = rawEdge.validator_label || "";
+      existing.actionClasses = uniqueStrings(existing.actionClasses.concat(String(rawEdge.action_class || "").trim()).filter(Boolean));
+      existing.actionKeys = uniqueStrings(existing.actionKeys.concat(String(rawEdge.action_key || rawEdge.action_class || "").trim()).filter(Boolean));
+      existing.actionLabels = uniqueStrings(existing.actionLabels.concat(String(rawEdge.action_label || rawEdge.action_class || "").trim()).filter(Boolean));
+      existing.actionDomains = uniqueStrings(existing.actionDomains.concat(String(rawEdge.action_domain || rawEdge.action_class || "").trim()).filter(Boolean));
+      const txnBucket = graphTxnBucket(rawEdge.action_class, rawEdge.action_key, rawEdge.action_label);
+      if (txnBucket) {
+        existing.txnBuckets = uniqueStrings(existing.txnBuckets.concat(txnBucket));
+      }
+      if (rawEdge.validator_address) {
+        existing.validatorAddresses = uniqueStrings(existing.validatorAddresses.concat(String(rawEdge.validator_address).trim()));
+      }
+      if (rawEdge.validator_label) {
+        existing.validatorLabels = uniqueStrings(existing.validatorLabels.concat(String(rawEdge.validator_label).trim()));
+      }
+      if (rawEdge.contract_type) {
+        existing.contractTypes = uniqueStrings(existing.contractTypes.concat(String(rawEdge.contract_type).trim()));
+      }
+      if (rawEdge.contract_protocol) {
+        existing.contractProtocols = uniqueStrings(existing.contractProtocols.concat(String(rawEdge.contract_protocol).trim()));
+      }
+      const metadata = resolveVisibleEdgeMetadata(existing);
+      existing.actionClass = metadata.actionClass;
+      existing.actionKey = metadata.actionKey;
+      existing.actionLabel = metadata.actionLabel;
+      existing.actionDomain = metadata.actionDomain;
+      existing.validatorAddress = metadata.validatorAddress;
+      existing.validatorLabel = metadata.validatorLabel;
+      existing.contractType = metadata.contractType;
+      existing.contractProtocol = metadata.contractProtocol;
       existing.transactions = mergeEdgeTransactions(existing.transactions, rawEdge.transactions || []);
       const summary = summarizeTransactions(existing.transactions);
       existing.usdSpot = summary.usd_spot;
       existing.txIDs = summary.tx_ids;
-      existing.txCount = existing.txIDs.length;
+      existing.txCount = Math.max(existing.txIDs.length, existing.transactions.length);
       existing.chainSet = uniqueStrings(existing.chainSet.concat(rawEdge.chainSet || []));
+      existing.inspect.action_class = existing.actionClass;
+      existing.inspect.action_key = existing.actionKey;
+      existing.inspect.action_label = existing.actionLabel;
+      existing.inspect.action_domain = existing.actionDomain;
+      existing.inspect.contract_type = existing.contractType;
+      existing.inspect.contract_protocol = existing.contractProtocol;
+      existing.inspect.validator_address = existing.validatorAddress || "";
+      existing.inspect.validator_label = existing.validatorLabel || "";
+      existing.inspect.action_classes = metadata.actionClasses;
+      existing.inspect.action_keys = metadata.actionKeys;
+      existing.inspect.action_labels = metadata.actionLabels;
+      existing.inspect.action_domains = metadata.actionDomains;
+      existing.inspect.action_buckets = metadata.txnBuckets;
+      existing.inspect.validator_addresses = metadata.validatorAddresses;
+      existing.inspect.validator_labels = metadata.validatorLabels;
       existing.inspect.chain_set = existing.chainSet;
       existing.assetTotals = {};
       summary.assets.forEach((assetValue) => {
@@ -4450,9 +4844,7 @@ function bindAddressExplorer(activateTab) {
         .sort((a, b) => Number(b.usd_spot || 0) - Number(a.usd_spot || 0));
       const tokenSummary = edge.actionClass === "swaps" ? formatSwapTokenSummary(aggregatedAssets) : formatEdgeTokenSummary(aggregatedAssets);
       const usdSummary = formatUSD(edge.usdSpot);
-      const validatorSuffix = edge.validatorLabel || edge.validatorAddress ? ` via ${edge.validatorLabel || shortHash(edge.validatorAddress)}` : "";
-      const actionLabel = edge.actionLabel || edge.actionClass;
-      const edgeActionLabel = actionLabel.toLowerCase().includes(" via ") ? actionLabel : `${actionLabel}${validatorSuffix}`;
+      const edgeActionLabel = formatVisibleEdgeActionLabel(edge);
       const edgeLabel = edge.actionClass === "ownership" ? "" : `${edgeActionLabel} · ${tokenSummary}\n${usdSummary}`;
       return {
         ...edge,
@@ -4467,9 +4859,17 @@ function bindAddressExplorer(activateTab) {
           action_domain: edge.actionDomain,
           validator_address: edge.validatorAddress || "",
           validator_label: edge.validatorLabel || "",
+          action_classes: edge.actionClasses,
+          action_keys: edge.actionKeys,
+          action_labels: edge.actionLabels,
+          action_domains: edge.actionDomains,
+          action_buckets: edge.txnBuckets,
+          validator_addresses: edge.validatorAddresses,
+          validator_labels: edge.validatorLabels,
           contract_type: edge.contractType,
           contract_protocol: edge.contractProtocol,
           usd_spot: edge.usdSpot,
+          tx_count: edge.txCount,
           tx_ids: edge.txIDs,
           raw_edge_ids: edge.rawEdgeIDs,
           transactions: edge.transactions,
