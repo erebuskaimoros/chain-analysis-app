@@ -195,6 +195,223 @@ function normalizeExplorerRequest(rawRequest) {
   };
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function ensureGraphSelectionBox(container) {
+  let box = container.querySelector(".graph-selection-box");
+  if (box) {
+    return box;
+  }
+  box = document.createElement("div");
+  box.className = "graph-selection-box";
+  box.style.display = "none";
+  container.appendChild(box);
+  return box;
+}
+
+function hideGraphSelectionBox(container) {
+  const box = container.querySelector(".graph-selection-box");
+  if (box) {
+    box.style.display = "none";
+  }
+}
+
+function graphTapSuppressed(container) {
+  return Date.now() < Number(container.__graphSuppressTapUntil || 0);
+}
+
+function suppressGraphTap(container, durationMS = 160) {
+  container.__graphSuppressTapUntil = Date.now() + durationMS;
+}
+
+function attachGraphPointerControls({ container, getCy, hitNodeAtClientPoint }) {
+  if (!container || container.__graphPointerControlsAttached) {
+    return;
+  }
+  container.__graphPointerControlsAttached = true;
+
+  let middlePanning = false;
+  let panStart = { x: 0, y: 0 };
+  let panOrigin = { x: 0, y: 0 };
+  let boxSelecting = false;
+  let boxDragged = false;
+  let preserveSelection = false;
+  let boxStart = { x: 0, y: 0 };
+  let boxCurrent = { x: 0, y: 0 };
+
+  function renderedSelectionRect() {
+    const rect = container.getBoundingClientRect();
+    const left = clamp(Math.min(boxStart.x, boxCurrent.x) - rect.left, 0, rect.width);
+    const top = clamp(Math.min(boxStart.y, boxCurrent.y) - rect.top, 0, rect.height);
+    const right = clamp(Math.max(boxStart.x, boxCurrent.x) - rect.left, 0, rect.width);
+    const bottom = clamp(Math.max(boxStart.y, boxCurrent.y) - rect.top, 0, rect.height);
+    return {
+      x1: left,
+      y1: top,
+      x2: right,
+      y2: bottom,
+      width: Math.max(0, right - left),
+      height: Math.max(0, bottom - top),
+    };
+  }
+
+  function updateSelectionBox() {
+    const box = ensureGraphSelectionBox(container);
+    const rect = renderedSelectionRect();
+    box.style.display = boxDragged ? "block" : "none";
+    box.style.left = `${rect.x1}px`;
+    box.style.top = `${rect.y1}px`;
+    box.style.width = `${rect.width}px`;
+    box.style.height = `${rect.height}px`;
+  }
+
+  function nodeIntersectsSelection(node, rect) {
+    if (!node || typeof node.renderedBoundingBox !== "function") {
+      return false;
+    }
+    const box = node.renderedBoundingBox({
+      includeLabels: false,
+      includeOverlays: false,
+    });
+    if (!box) {
+      return false;
+    }
+    return rect.x1 <= box.x2 && rect.x2 >= box.x1 && rect.y1 <= box.y2 && rect.y2 >= box.y1;
+  }
+
+  function applyBoxSelection() {
+    const cy = getCy();
+    if (!cy) {
+      return;
+    }
+    const rect = renderedSelectionRect();
+    cy.batch(() => {
+      if (!preserveSelection) {
+        cy.elements(":selected").unselect();
+      }
+      cy.nodes().forEach((node) => {
+        if (typeof node.visible === "function" && !node.visible()) {
+          return;
+        }
+        if (nodeIntersectsSelection(node, rect)) {
+          node.select();
+        }
+      });
+    });
+  }
+
+  function stopBoxSelection() {
+    boxSelecting = false;
+    boxDragged = false;
+    hideGraphSelectionBox(container);
+  }
+
+  container.addEventListener("mousedown", (e) => {
+    const cy = getCy();
+    if (!cy) {
+      return;
+    }
+    if (e.button === 1) {
+      middlePanning = true;
+      panStart = { x: e.clientX, y: e.clientY };
+      panOrigin = { ...cy.pan() };
+      e.preventDefault();
+      return;
+    }
+    if (e.button !== 0) {
+      return;
+    }
+    if (typeof hitNodeAtClientPoint === "function" && hitNodeAtClientPoint(e.clientX, e.clientY)) {
+      return;
+    }
+    boxSelecting = true;
+    boxDragged = false;
+    preserveSelection = e.shiftKey || e.metaKey || e.ctrlKey;
+    boxStart = { x: e.clientX, y: e.clientY };
+    boxCurrent = { ...boxStart };
+    hideGraphSelectionBox(container);
+    e.preventDefault();
+  });
+
+  container.addEventListener("mousemove", (e) => {
+    const cy = getCy();
+    if (!cy) {
+      return;
+    }
+    if (middlePanning) {
+      cy.pan({
+        x: panOrigin.x + (e.clientX - panStart.x),
+        y: panOrigin.y + (e.clientY - panStart.y),
+      });
+      return;
+    }
+    if (!boxSelecting) {
+      return;
+    }
+    boxCurrent = { x: e.clientX, y: e.clientY };
+    if (!boxDragged) {
+      const moved = Math.abs(boxCurrent.x - boxStart.x) + Math.abs(boxCurrent.y - boxStart.y);
+      if (moved < 6) {
+        return;
+      }
+      boxDragged = true;
+    }
+    updateSelectionBox();
+    applyBoxSelection();
+    e.preventDefault();
+  });
+
+  container.addEventListener("mouseup", (e) => {
+    if (e.button === 1) {
+      middlePanning = false;
+    }
+    if (e.button !== 0 || !boxSelecting) {
+      return;
+    }
+    if (boxDragged) {
+      applyBoxSelection();
+      suppressGraphTap(container);
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    stopBoxSelection();
+  });
+
+  container.addEventListener("mouseleave", () => {
+    middlePanning = false;
+    stopBoxSelection();
+  });
+
+  container.addEventListener("auxclick", (e) => {
+    if (e.button === 1) {
+      e.preventDefault();
+    }
+  });
+
+  container.addEventListener("wheel", (e) => {
+    const cy = getCy();
+    if (!cy) {
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+    const renderedPosition = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+    const currentZoom = Number(cy.zoom() || 1);
+    const zoomFactor = Math.exp(-e.deltaY * 0.0015);
+    const minZoom = typeof cy.minZoom === "function" ? Number(cy.minZoom() || 0.05) : 0.05;
+    const maxZoom = typeof cy.maxZoom === "function" ? Number(cy.maxZoom() || 10) : 10;
+    cy.zoom({
+      level: clamp(currentZoom * zoomFactor, minZoom, maxZoom),
+      renderedPosition,
+    });
+    e.preventDefault();
+  }, { passive: false });
+}
+
 function bindTabs() {
   const tabs = Array.from(document.querySelectorAll(".tab"));
   const panels = Array.from(document.querySelectorAll(".tab-panel"));
@@ -295,6 +512,11 @@ function bindActorTracker(activateTab, actionLookup) {
       return;
     }
     showPaneContextMenu({ x: e.clientX, y: e.clientY });
+  });
+  attachGraphPointerControls({
+    container: graphContainer,
+    getCy: () => state.cy,
+    hitNodeAtClientPoint: (clientX, clientY) => graphNodeAtClientPoint(clientX, clientY),
   });
   let nodeTapTimer = null;
   let lastTappedNodeID = "";
@@ -1309,44 +1531,17 @@ function bindActorTracker(activateTab, actionLookup) {
         style: graphStylesheet(),
         wheelSensitivity: 0.3,
         zoomingEnabled: true,
-        userZoomingEnabled: true,
-        boxSelectionEnabled: true,
+        userZoomingEnabled: false,
+        boxSelectionEnabled: false,
         selectionType: "additive",
         userPanningEnabled: false,
         autoungrabify: false,
       });
 
-      // Middle-mouse panning
-      let middlePanning = false;
-      let panStart = { x: 0, y: 0 };
-      let panOrigin = { x: 0, y: 0 };
-      graphContainer.addEventListener("mousedown", (e) => {
-        if (e.button === 1) {
-          middlePanning = true;
-          panStart = { x: e.clientX, y: e.clientY };
-          panOrigin = { ...state.cy.pan() };
-          e.preventDefault();
-        }
-      });
-      graphContainer.addEventListener("mousemove", (e) => {
-        if (middlePanning) {
-          state.cy.pan({
-            x: panOrigin.x + (e.clientX - panStart.x),
-            y: panOrigin.y + (e.clientY - panStart.y),
-          });
-        }
-      });
-      graphContainer.addEventListener("mouseup", (e) => {
-        if (e.button === 1) middlePanning = false;
-      });
-      graphContainer.addEventListener("mouseleave", () => {
-        middlePanning = false;
-      });
-      graphContainer.addEventListener("auxclick", (e) => {
-        if (e.button === 1) e.preventDefault();
-      });
-
       state.cy.on("tap", "node", (event) => {
+        if (graphTapSuppressed(graphContainer)) {
+          return;
+        }
         const data = event.target.data();
         const nodeID = String(event.target.id() || "");
         const now = Date.now();
@@ -1432,6 +1627,9 @@ function bindActorTracker(activateTab, actionLookup) {
       });
 
       state.cy.on("tap", "edge", (event) => {
+        if (graphTapSuppressed(graphContainer)) {
+          return;
+        }
         inspector.textContent = JSON.stringify(event.target.data().inspect, null, 2);
       });
 
@@ -1798,6 +1996,10 @@ function bindActorTracker(activateTab, actionLookup) {
           width: 136,
           height: 56,
           "font-size": 13,
+          "background-width": "18%",
+          "background-height": "40%",
+          "background-image-opacity": 1,
+          "pie-size": "90%",
         },
       },
       {
@@ -2308,7 +2510,7 @@ function decorateVisibleNode(node, actorByIDMap, labelAnnotations) {
   const addr = String((node.metrics && node.metrics.address) || "").trim().toLowerCase();
   const customLabel = labelAnnotations && addr ? labelAnnotations.get(addr) : null;
   const displayLabel = customLabel || node.label || "";
-  const showChainLogo = !["actor", "pool", "external_cluster"].includes(node.kind);
+  const showChainLogo = !["pool", "external_cluster"].includes(node.kind);
   const chainLogo = showChainLogo ? (CHAIN_LOGO_URLS[node.chain] || "none") : "none";
   return {
     ...node,
@@ -2733,6 +2935,11 @@ function bindAddressExplorer(activateTab) {
       return;
     }
     showExplorerPaneContextMenu({ x: e.clientX, y: e.clientY });
+  });
+  attachGraphPointerControls({
+    container: graphContainer,
+    getCy: () => state.explorerCy,
+    hitNodeAtClientPoint: (clientX, clientY) => explorerGraphNodeAtClientPoint(clientX, clientY),
   });
 
   function explorerGraphNodeAtClientPoint(clientX, clientY) {
@@ -3486,6 +3693,7 @@ function bindAddressExplorer(activateTab) {
       { selector: "node:selected", style: { "border-width": 4, "border-color": "#ffdd44", "overlay-color": "rgba(255,221,68,0.15)", "overlay-opacity": 0.3 } },
       { selector: "node[kind = 'explorer_target']", style: { shape: "hexagon", width: 110, height: 100, "background-color": "#e67e22", "border-color": "#f5c76e", "border-width": 4, "font-size": 13 } },
       { selector: "node[kind = 'pool']", style: { shape: "diamond", width: 84, height: 84, "background-color": "#1e4f8f" } },
+      { selector: "node[kind = 'actor']", style: { "background-width": "32%", "background-height": "32%", "background-image-opacity": 0.95 } },
       { selector: "node[kind = 'actor_address'], node[kind = 'external_address']", style: { shape: "ellipse", width: 62, height: 62 } },
       { selector: "node[kind = 'node']", style: { shape: "octagon", width: 94, height: 94, "background-color": "#c86b1f", "border-color": "#ffe0b8", "border-width": 4, color: "#fff7ea", "font-size": 12 } },
       { selector: "node[kind = 'contract_address']", style: { shape: "round-rectangle", width: 108, height: 60, "background-color": "#915a2b" } },
@@ -3629,29 +3837,18 @@ function bindAddressExplorer(activateTab) {
         style: explorerGraphStylesheet(),
         wheelSensitivity: 0.3,
         zoomingEnabled: true,
-        userZoomingEnabled: true,
-        boxSelectionEnabled: true,
+        userZoomingEnabled: false,
+        boxSelectionEnabled: false,
         selectionType: "additive",
         userPanningEnabled: false,
         autoungrabify: false,
       });
 
-      // Middle-mouse panning
-      let middlePanning = false;
-      let panStart = { x: 0, y: 0 };
-      let panOrigin = { x: 0, y: 0 };
-      graphContainer.addEventListener("mousedown", (e) => {
-        if (e.button === 1) { middlePanning = true; panStart = { x: e.clientX, y: e.clientY }; panOrigin = { ...state.explorerCy.pan() }; e.preventDefault(); }
-      });
-      graphContainer.addEventListener("mousemove", (e) => {
-        if (middlePanning) state.explorerCy.pan({ x: panOrigin.x + (e.clientX - panStart.x), y: panOrigin.y + (e.clientY - panStart.y) });
-      });
-      graphContainer.addEventListener("mouseup", (e) => { if (e.button === 1) middlePanning = false; });
-      graphContainer.addEventListener("mouseleave", () => { middlePanning = false; });
-      graphContainer.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
-
       // Node tap / double-tap
       state.explorerCy.on("tap", "node", (event) => {
+        if (graphTapSuppressed(graphContainer)) {
+          return;
+        }
         const data = event.target.data();
         const nodeID = String(event.target.id() || "");
         const now = Date.now();
@@ -3691,6 +3888,9 @@ function bindAddressExplorer(activateTab) {
       });
 
       state.explorerCy.on("tap", "edge", (event) => {
+        if (graphTapSuppressed(graphContainer)) {
+          return;
+        }
         inspector.textContent = JSON.stringify(event.target.data().inspect, null, 2);
       });
       state.explorerCy.on("zoom pan", () => {

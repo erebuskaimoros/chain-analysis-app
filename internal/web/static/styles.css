@@ -441,6 +441,16 @@ pre {
   pointer-events: none;
 }
 
+.graph-selection-box {
+  position: absolute;
+  z-index: 9;
+  border: 1px dashed rgba(255, 221, 68, 0.95);
+  background: rgba(255, 221, 68, 0.14);
+  border-radius: 8px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 221, 68, 0.18);
+}
+
 .graph-node-text {
   position: absolute;
   left: 0;
