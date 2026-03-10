@@ -161,6 +161,19 @@ async function callAPI(path, options = {}) {
   return body;
 }
 
+async function refreshSharedAnnotations() {
+  try {
+    const [annotations, blocklist] = await Promise.all([
+      callAPI("/api/address-annotations"),
+      callAPI("/api/address-blocklist"),
+    ]);
+    state.annotations = annotations.annotations || [];
+    state.blocklist = blocklist.addresses || [];
+  } catch {
+    // silently ignore on first load if endpoints don't exist yet
+  }
+}
+
 function print(el, value) {
   el.textContent = JSON.stringify(value, null, 2);
 }
@@ -2312,7 +2325,7 @@ function bindActorTracker(activateTab, actionLookup) {
               method: "PUT",
               body: { address, kind: "label", value: label },
             });
-            await refreshAnnotations();
+            await refreshSharedAnnotations();
             if (state.cy) state.viewport = { zoom: state.cy.zoom(), pan: state.cy.pan() };
             renderGraph();
           } catch (err) {
@@ -2328,7 +2341,7 @@ function bindActorTracker(activateTab, actionLookup) {
               method: "PUT",
               body: { address, kind: "asgard_vault", value: "true" },
             });
-            await refreshAnnotations();
+            await refreshSharedAnnotations();
             if (state.cy) state.viewport = { zoom: state.cy.zoom(), pan: state.cy.pan() };
             renderGraph();
           } catch (err) {
@@ -2344,7 +2357,7 @@ function bindActorTracker(activateTab, actionLookup) {
               method: "POST",
               body: { address, reason: "Removed from graph" },
             });
-            await refreshAnnotations();
+            await refreshSharedAnnotations();
             if (state.cy) state.viewport = { zoom: state.cy.zoom(), pan: state.cy.pan() };
             renderGraph();
           } catch (err) {
@@ -2355,20 +2368,6 @@ function bindActorTracker(activateTab, actionLookup) {
       }
     }
   });
-
-  // --- Annotation & Blocklist Loading ---
-  async function refreshAnnotations() {
-    try {
-      const [annotations, blocklist] = await Promise.all([
-        callAPI("/api/address-annotations"),
-        callAPI("/api/address-blocklist"),
-      ]);
-      state.annotations = annotations.annotations || [];
-      state.blocklist = blocklist.addresses || [];
-    } catch {
-      // silently ignore on first load if endpoints don't exist yet
-    }
-  }
 
   async function refreshGraphRuns() {
     try {
@@ -2503,7 +2502,7 @@ function bindActorTracker(activateTab, actionLookup) {
     });
   }
 
-  refreshAnnotations();
+  refreshSharedAnnotations();
   refreshActors().catch((err) => {
     actorStatus.textContent = String(err);
   });
@@ -4165,7 +4164,7 @@ function bindAddressExplorer(activateTab) {
         if (label !== null && address) {
           try {
             await callAPI("/api/address-annotations", { method: "PUT", body: { address, kind: "label", value: label } });
-            await refreshAnnotations();
+            await refreshSharedAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
             renderExplorerGraph();
           } catch (err) { inspector.textContent = `Label failed: ${String(err)}`; }
@@ -4176,7 +4175,7 @@ function bindAddressExplorer(activateTab) {
         if (address) {
           try {
             await callAPI("/api/address-annotations", { method: "PUT", body: { address, kind: "asgard_vault", value: "true" } });
-            await refreshAnnotations();
+            await refreshSharedAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
             renderExplorerGraph();
           } catch (err) { inspector.textContent = `Mark Asgard failed: ${String(err)}`; }
@@ -4186,7 +4185,7 @@ function bindAddressExplorer(activateTab) {
         if (address) {
           try {
             await callAPI("/api/address-blocklist", { method: "POST", body: { address, reason: "Removed from graph" } });
-            await refreshAnnotations();
+            await refreshSharedAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
             renderExplorerGraph();
           } catch (err) { inspector.textContent = `Remove failed: ${String(err)}`; }

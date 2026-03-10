@@ -4,11 +4,11 @@
 
 | Session | Focus | Summary | File |
 |---------|-------|---------|------|
+| 2026-03-10 #5 | Explorer Annotation Refresh Scope Fix | Fixed the explorer right-click label regression by moving annotation refresh into shared frontend scope for both graph tabs | `sessions/2026-03-10/session-5.md` |
 | 2026-03-10 #4 | THOR Rebond Graph Accuracy | Fixed THOR rebond wallet projection, made all-time Midgard action lookups prefer Ninerealms, and corrected explorer rebond edge/render refresh behavior | `sessions/2026-03-10/session-4.md` |
 | 2026-03-10 #3 | Restore Wheel Zoom with Box Selection | Removed wheel suppression and explicitly re-enabled zoom while preserving left-drag selection and middle-button panning | `sessions/2026-03-10/session-3.md` |
 | 2026-03-10 #2 | Graph Interaction Controls and Actor Badge Tuning | Added wheel zoom, empty-space box selection, node dragging preservation, and actor badge visual tuning | `sessions/2026-03-10/session-2.md` |
 | 2026-03-10 #1 | Address Explorer Completion | Finished preview-first explorer flow, chain-scoped EVM targets, past-run history, migration fix, and verified restart | `sessions/2026-03-10/session-1.md` |
-| 2026-03-09 #4 | Address Explorer Tab (In Progress) | New tab for single-address tx graphing; backend + frontend implemented; scoping bug fixed; needs chain awareness and e2e testing | `sessions/2026-03-09/session-4.md` |
 
 ## Current Work In Progress
 
