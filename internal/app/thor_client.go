@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -195,6 +196,9 @@ func (c *ThorClient) endpointsForPath(path string) []string {
 	if len(c.endpoints) < 2 {
 		return c.endpoints
 	}
+	if shouldPreferPrimaryForPath(path) {
+		return c.endpoints
+	}
 	return c.rotatedEndpoints()
 }
 
@@ -209,6 +213,32 @@ func (c *ThorClient) rotatedEndpoints() []string {
 		rotated[i] = c.endpoints[(idx+i)%n]
 	}
 	return rotated
+}
+
+func shouldPreferPrimaryForPath(path string) bool {
+	parsed, err := url.Parse(path)
+	if err != nil {
+		return false
+	}
+	if strings.TrimSpace(parsed.Path) != "/actions" {
+		return false
+	}
+
+	query := parsed.Query()
+	fromTimestamp := strings.TrimSpace(query.Get("fromTimestamp"))
+	timestamp := strings.TrimSpace(query.Get("timestamp"))
+	if fromTimestamp == "" && timestamp == "" {
+		return true
+	}
+	if fromTimestamp == "" {
+		return false
+	}
+
+	from, err := strconv.ParseInt(fromTimestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+	return from <= 0
 }
 
 func requestAttemptsForPath(_ string) int {

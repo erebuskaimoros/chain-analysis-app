@@ -2472,6 +2472,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			return "THOR.RUNE", "0"
 		}
 		isOutboundBondFlow := strings.Contains(actionType, "unbond") || actionType == "leave" || strings.Contains(actionType, "slash") || strings.Contains(actionType, "reward")
+		isRebondFlow := actionType == "rebond"
 		bondProviderAddress := ""
 		if action.Metadata.Bond != nil {
 			bondProviderAddress = normalizeAddress(action.Metadata.Bond.Provider)
@@ -2490,11 +2491,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			if walletRef.Kind == "node" {
 				continue
 			}
-			nodeAddress := firstNonEmpty(resolveNodeAddressForLeg(inLeg), globalNodeAddress)
-			nodeRef := b.makeNodeRef(nodeAddress, baseDepth+1)
-			if nodeRef.ID == "" {
-				continue
-			}
+			nodeAddress := firstNonEmpty(midgardRebondValidatorAddress(action), resolveNodeAddressForLeg(inLeg), globalNodeAddress)
 			txID := strings.ToUpper(strings.TrimSpace(inLeg.TxID))
 			var fallbackCoins []midgardActionCoin
 			for _, outLeg := range legsOut {
@@ -2503,6 +2500,23 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				}
 			}
 			asset, amount := pickCoin(inLeg.Coins, fallbackCoins)
+			if isRebondFlow {
+				targetRef := b.makeBondWalletRef(midgardRebondNewBondAddress(action), baseDepth+1)
+				if targetRef.ID == "" || targetRef.Key == walletRef.Key {
+					continue
+				}
+				before := len(segments)
+				addSegment(walletRef, targetRef, asset, amount, 0.9, txID)
+				for i := before; i < len(segments); i++ {
+					segments[i].ValidatorAddress = nodeAddress
+					segments[i].ValidatorLabel = thorNodeDisplayLabel(nodeAddress, "")
+				}
+				continue
+			}
+			nodeRef := b.makeNodeRef(nodeAddress, baseDepth+1)
+			if nodeRef.ID == "" {
+				continue
+			}
 			if isOutboundBondFlow {
 				addSegment(nodeRef, walletRef, asset, amount, 0.88, txID)
 			} else {
@@ -3259,6 +3273,35 @@ func thorNodeDisplayLabel(address, status string) string {
 	default:
 		return "Node " + shortAddress(address)
 	}
+}
+
+func midgardRebondNewBondAddress(action midgardAction) string {
+	if action.Metadata.Rebond != nil {
+		if value := normalizeAddress(action.Metadata.Rebond.NewBondAddress); value != "" {
+			return value
+		}
+		memo := strings.TrimSpace(action.Metadata.Rebond.Memo)
+		if memo != "" {
+			parts := strings.Split(memo, ":")
+			if len(parts) >= 3 && strings.EqualFold(strings.TrimSpace(parts[0]), "REBOND") {
+				return normalizeAddress(parts[2])
+			}
+		}
+	}
+	return ""
+}
+
+func midgardRebondValidatorAddress(action midgardAction) string {
+	if action.Metadata.Rebond != nil {
+		if value := normalizeAddress(action.Metadata.Rebond.NodeAddress); value != "" {
+			return value
+		}
+		memo := strings.TrimSpace(action.Metadata.Rebond.Memo)
+		if memo != "" {
+			return normalizeAddress(parseBondMemoNodeAddress(memo))
+		}
+	}
+	return ""
 }
 
 func (b *graphBuilder) makeNodeRef(nodeAddress string, depth int) flowRef {

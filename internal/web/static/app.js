@@ -1835,7 +1835,10 @@ function bindActorTracker(activateTab, actionLookup) {
       ensureVisibleNode(sourceNode, from);
       ensureVisibleNode(targetNode, to);
 
-      const edgeID = `${from}|${to}|${rawEdge.action_key || rawEdge.action_class}`;
+      let edgeID = `${from}|${to}|${rawEdge.action_key || rawEdge.action_class}`;
+      if (rawEdge.validator_address && String(rawEdge.action_key || rawEdge.action_class || "").toLowerCase().includes("rebond")) {
+        edgeID += `|validator:${rawEdge.validator_address}`;
+      }
       const existing = visibleEdges.get(edgeID) || {
         id: edgeID,
         source: from,
@@ -3576,7 +3579,10 @@ function bindAddressExplorer(activateTab) {
       ensureVisibleNode(sourceNode, from);
       ensureVisibleNode(targetNode, to);
 
-      const edgeID = `${from}|${to}|${rawEdge.action_key || rawEdge.action_class}`;
+      let edgeID = `${from}|${to}|${rawEdge.action_key || rawEdge.action_class}`;
+      if (rawEdge.validator_address && String(rawEdge.action_key || rawEdge.action_class || "").toLowerCase().includes("rebond")) {
+        edgeID += `|validator:${rawEdge.validator_address}`;
+      }
       const existing = visibleEdges.get(edgeID) || {
         id: edgeID,
         source: from,
@@ -4159,6 +4165,7 @@ function bindAddressExplorer(activateTab) {
         if (label !== null && address) {
           try {
             await callAPI("/api/address-annotations", { method: "PUT", body: { address, kind: "label", value: label } });
+            await refreshAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
             renderExplorerGraph();
           } catch (err) { inspector.textContent = `Label failed: ${String(err)}`; }
@@ -4169,6 +4176,7 @@ function bindAddressExplorer(activateTab) {
         if (address) {
           try {
             await callAPI("/api/address-annotations", { method: "PUT", body: { address, kind: "asgard_vault", value: "true" } });
+            await refreshAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
             renderExplorerGraph();
           } catch (err) { inspector.textContent = `Mark Asgard failed: ${String(err)}`; }
@@ -4178,6 +4186,7 @@ function bindAddressExplorer(activateTab) {
         if (address) {
           try {
             await callAPI("/api/address-blocklist", { method: "POST", body: { address, reason: "Removed from graph" } });
+            await refreshAnnotations();
             if (state.explorerCy) state.explorerViewport = { zoom: state.explorerCy.zoom(), pan: state.explorerCy.pan() };
             renderExplorerGraph();
           } catch (err) { inspector.textContent = `Remove failed: ${String(err)}`; }

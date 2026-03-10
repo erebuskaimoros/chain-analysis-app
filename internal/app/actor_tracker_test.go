@@ -1469,6 +1469,75 @@ func TestProjectMidgardBondMapsWalletToValidatorNode(t *testing.T) {
 	}
 }
 
+func TestProjectMidgardRebondMapsOldBondWalletToNewBondWallet(t *testing.T) {
+	builder := &graphBuilder{
+		ownerMap:   map[string][]int64{},
+		actorsByID: map[int64]Actor{},
+		protocols: protocolDirectory{
+			AddressKinds: map[string]protocolAddress{},
+		},
+		prices: priceBook{
+			AssetUSD: map[string]float64{"THOR.RUNE": 2},
+		},
+		bondMemoNodeByTx: map[string]string{
+			"F747ABEF3F185B4DB133B19F6F971F132FECCB6BE8271413B923021DE0FEDDCA": "thor1z6lg2u2kxccnmz3xy65856mcuslwaxcvx56uuk",
+		},
+		allowedFlowTypes: flowTypeSet([]string{"bonds"}),
+		nodes:            map[string]*FlowNode{},
+		edges:            map[string]*FlowEdge{},
+		actions:          map[string]*SupportingAction{},
+	}
+
+	action := midgardAction{
+		Date:   "1759108019365569722",
+		Height: "23034924",
+		Type:   "rebond",
+		Status: "success",
+		In: []midgardActionLeg{{
+			Address: "thor1mlucvrd56xrhac4zqqx6yku84a6e5edj6k8una",
+			TxID:    "F747ABEF3F185B4DB133B19F6F971F132FECCB6BE8271413B923021DE0FEDDCA",
+			Coins: []midgardActionCoin{
+				{Asset: "THOR.RUNE", Amount: "31018731723188"},
+			},
+		}},
+		Out: []midgardActionLeg{{
+			Address: "thor1g98cy3n9mmjrpn0sxmn63lztelera37n8n67c0",
+			TxID:    "F747ABEF3F185B4DB133B19F6F971F132FECCB6BE8271413B923021DE0FEDDCA",
+			Coins: []midgardActionCoin{
+				{Asset: "THOR.RUNE", Amount: "31018731723188"},
+			},
+		}},
+		Metadata: midgardActionMetadata{
+			Rebond: &midgardRebondMetadata{
+				Memo:           "REBOND:thor1z6lg2u2kxccnmz3xy65856mcuslwaxcvx56uuk:thor1yes8zxhq4p3r5rp9vt6rk9fdxqf2mnm43apumu:31018731723188",
+				NodeAddress:    "thor1z6lg2u2kxccnmz3xy65856mcuslwaxcvx56uuk",
+				NewBondAddress: "thor1yes8zxhq4p3r5rp9vt6rk9fdxqf2mnm43apumu",
+			},
+		},
+	}
+
+	segments, _, warnings := builder.projectMidgardAction(action, 1)
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if len(segments) != 1 {
+		t.Fatalf("expected 1 rebond segment, got %d", len(segments))
+	}
+	seg := segments[0]
+	if seg.Source.Address != "thor1mlucvrd56xrhac4zqqx6yku84a6e5edj6k8una" {
+		t.Fatalf("unexpected rebond source %#v", seg.Source)
+	}
+	if seg.Target.Address != "thor1yes8zxhq4p3r5rp9vt6rk9fdxqf2mnm43apumu" {
+		t.Fatalf("unexpected rebond target %#v", seg.Target)
+	}
+	if seg.Target.Kind == "node" {
+		t.Fatalf("did not expect rebond target to be a node: %#v", seg.Target)
+	}
+	if seg.ValidatorAddress != "thor1z6lg2u2kxccnmz3xy65856mcuslwaxcvx56uuk" {
+		t.Fatalf("expected validator metadata on rebond segment, got %#v", seg)
+	}
+}
+
 func TestProjectMidgardBondSkipsWhenMemoNodeMissing(t *testing.T) {
 	builder := &graphBuilder{
 		ownerMap:         map[string][]int64{},
