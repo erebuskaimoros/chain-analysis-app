@@ -1,6 +1,6 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type cytoscape from "cytoscape";
-import { graphNodeAtClientPoint, clamp } from "./utils";
+import { graphNodeAtClientPoint, clamp, selectedGraphNodes } from "./utils";
 import type { ContextMenuState, GraphCanvasFilters, GraphCanvasNodeMenuActions, GraphCanvasPaneMenuActions } from "./types";
 import type { GraphSelection, VisibleGraphNode } from "../../../lib/graph";
 
@@ -239,11 +239,24 @@ export function useGraphCanvasInteractions({
 
     function onNativeContextMenu(event: MouseEvent) {
       event.preventDefault();
-      if (hitNodeAtClientPoint(event.clientX, event.clientY)) {
+      const hitNode = hitNodeAtClientPoint(event.clientX, event.clientY);
+      const selectedNodes = selectedGraphNodes(cyInstance);
+      if (hitNode) {
+        if (selectedNodes.length > 1 && selectedNodes.some((n) => n.id === hitNode.id)) {
+          setMenuState({ mode: "nodes", nodes: selectedNodes, x: event.clientX, y: event.clientY });
+          if (selection?.kind !== "nodes") {
+            onSelectionChange({ kind: "nodes", nodes: selectedNodes });
+          }
+          return;
+        }
+        setMenuState({ mode: "node", node: hitNode, x: event.clientX, y: event.clientY });
         return;
       }
-      if (selection?.kind === "nodes" && selection.nodes.length > 1) {
-        setMenuState({ mode: "nodes", nodes: selection.nodes, x: event.clientX, y: event.clientY });
+      if (selectedNodes.length > 1) {
+        setMenuState({ mode: "nodes", nodes: selectedNodes, x: event.clientX, y: event.clientY });
+        if (selection?.kind !== "nodes") {
+          onSelectionChange({ kind: "nodes", nodes: selectedNodes });
+        }
         return;
       }
       setMenuState({ mode: "pane", x: event.clientX, y: event.clientY });

@@ -243,16 +243,18 @@ export function useExplorerGraphController() {
       setStatusText(singular ? "Selected node has no address context to expand." : "Selected nodes have no address context to expand.");
       return;
     }
-    const nextSeedSet = [...new Set([...expandedHopSeeds, ...seeds.map((seed) => seed.encoded)])];
-    if (nextSeedSet.length === expandedHopSeeds.length) {
+    const expandedSeedSet = new Set(expandedHopSeeds);
+    const newSeeds = seeds.filter((seed) => !expandedSeedSet.has(seed.encoded));
+    if (!newSeeds.length) {
       setStatusText(singular ? "Already expanded from this node." : "Already expanded from the selected nodes.");
       return;
     }
-    setStatusText(`Expanding one edge from ${seeds.length} address(es)…`);
+    const nextSeedSet = [...expandedHopSeeds, ...newSeeds.map((seed) => seed.encoded)];
+    setStatusText(`Expanding one edge from ${newSeeds.length} address(es)…`);
     try {
       const expansion = await expandActorGraph({
         actor_ids: [],
-        addresses: nextSeedSet,
+        addresses: newSeeds.map((seed) => seed.encoded),
         start_time: new Date(0).toISOString(),
         end_time: new Date().toISOString(),
         flow_types: [...DEFAULT_FLOW_TYPES],
@@ -266,7 +268,7 @@ export function useExplorerGraphController() {
         syncWithGraph(next, false);
         return next;
       });
-      setStatusText(`Expanded from ${nextSeedSet.length} address seed(s).`);
+      setStatusText(`Expanded from ${newSeeds.length} new address seed(s).`);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Edge expansion failed.");
     }

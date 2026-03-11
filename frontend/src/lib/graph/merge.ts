@@ -78,14 +78,12 @@ export function mergeActorGraphResponse(current: ActorGraphResponse | null, inco
   current.edges.forEach(addEdge);
   incoming.edges.forEach(addEdge);
 
-  const actionMap = new Map<string, SupportingAction>();
-  [...current.supporting_actions, ...incoming.supporting_actions].forEach((action) => {
-    actionMap.set(actionKey(action), action);
-  });
-
   const nodes = Array.from(nodeMap.values());
   const edges = Array.from(edgeMap.values());
-  const supporting_actions = Array.from(actionMap.values());
+  const supporting_actions = mergeSupportingActions(
+    [current.supporting_actions, incoming.supporting_actions],
+    nodeAlias
+  );
 
   return {
     ...current,
@@ -219,14 +217,12 @@ function mergeExplorerLikeResponse(
   current.edges.forEach(addEdge);
   incoming.edges.forEach(addEdge);
 
-  const actionMap = new Map<string, SupportingAction>();
-  [...current.supporting_actions, ...incoming.supporting_actions].forEach((action) => {
-    actionMap.set(actionKey(action), action);
-  });
-
   const nodes = Array.from(nodeMap.values());
   const edges = Array.from(edgeMap.values());
-  const supporting_actions = Array.from(actionMap.values());
+  const supporting_actions = mergeSupportingActions(
+    [current.supporting_actions, incoming.supporting_actions],
+    nodeAlias
+  );
 
   const incomingQuery = incoming.query as Partial<AddressExplorerResponse["query"]> | undefined;
 
@@ -271,5 +267,69 @@ function mergeExplorerLikeResponse(
       edge_count: edges.length,
       supporting_action_count: supporting_actions.length,
     },
+  };
+}
+
+function mergeSupportingActions(
+  sources: SupportingAction[][],
+  nodeAlias: Map<string, string>
+) {
+  const actionMap = new Map<string, SupportingAction>();
+
+  sources.flat().forEach((action) => {
+    const canonical = canonicalizeSupportingAction(action, nodeAlias);
+    const existing = actionMap.get(actionKey(canonical));
+    if (!existing) {
+      actionMap.set(actionKey(canonical), canonical);
+      return;
+    }
+
+    existing.actor_ids = uniqueNumbers(existing.actor_ids.concat(canonical.actor_ids));
+    existing.usd_spot = Math.max(Number(existing.usd_spot || 0), Number(canonical.usd_spot || 0));
+    existing.height = Math.min(
+      Number(existing.height || Number.MAX_SAFE_INTEGER),
+      Number(canonical.height || Number.MAX_SAFE_INTEGER)
+    );
+    if (!Number.isFinite(existing.height) || existing.height === Number.MAX_SAFE_INTEGER) {
+      existing.height = Number(canonical.height || 0);
+    }
+    if (!existing.time || (canonical.time && canonical.time < existing.time)) {
+      existing.time = canonical.time || existing.time;
+    }
+    if (!existing.action_label) {
+      existing.action_label = canonical.action_label;
+    }
+    if (!existing.action_domain) {
+      existing.action_domain = canonical.action_domain;
+    }
+    if (!existing.validator_address) {
+      existing.validator_address = canonical.validator_address;
+    }
+    if (!existing.validator_label) {
+      existing.validator_label = canonical.validator_label;
+    }
+    if (!existing.contract_type) {
+      existing.contract_type = canonical.contract_type;
+    }
+    if (!existing.contract_protocol) {
+      existing.contract_protocol = canonical.contract_protocol;
+    }
+    if (!existing.primary_asset) {
+      existing.primary_asset = canonical.primary_asset;
+    }
+    if (!existing.amount_raw) {
+      existing.amount_raw = canonical.amount_raw;
+    }
+  });
+
+  return Array.from(actionMap.values());
+}
+
+function canonicalizeSupportingAction(action: SupportingAction, nodeAlias: Map<string, string>): SupportingAction {
+  return {
+    ...action,
+    from_node: nodeAlias.get(action.from_node) || action.from_node,
+    to_node: nodeAlias.get(action.to_node) || action.to_node,
+    actor_ids: [...action.actor_ids],
   };
 }

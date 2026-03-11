@@ -26,7 +26,6 @@ export function GraphCanvas({
   const selectionBoxRef = useRef<HTMLDivElement | null>(null);
   const filterPopoverRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const lastPaneContextMenuOpenedAtRef = useRef(0);
   const cyRef = useRef<cytoscape.Core | null>(null);
   const viewportRef = useRef<{ zoom: number; pan: cytoscape.Position } | null>(null);
   const suppressTapUntilRef = useRef(0);
@@ -51,8 +50,6 @@ export function GraphCanvas({
     cyMountRef,
     scheduleLabelRender,
     cancelScheduledLabelRender,
-    setMenuState,
-    lastPaneContextMenuOpenedAtRef,
   });
 
   const { handleToolbarAction, handleContextMenuAction } = useGraphCanvasInteractions({

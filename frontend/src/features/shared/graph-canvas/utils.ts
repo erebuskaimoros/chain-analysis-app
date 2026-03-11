@@ -1,4 +1,5 @@
 import cytoscape from "cytoscape";
+import type { VisibleGraphNode } from "../../../lib/graph";
 
 export function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -19,14 +20,17 @@ export function graphNodeAtClientPoint(
   surface: HTMLDivElement,
   clientX: number,
   clientY: number
-) {
+): VisibleGraphNode | null {
   const rect = surface.getBoundingClientRect();
   const x = clientX - rect.left;
   const y = clientY - rect.top;
-  return cy.nodes().some((node) => {
+  for (const node of cy.nodes().toArray()) {
     const box = node.renderedBoundingBox({ includeLabels: false, includeOverlays: false });
-    return x >= box.x1 && x <= box.x2 && y >= box.y1 && y <= box.y2;
-  });
+    if (x >= box.x1 && x <= box.x2 && y >= box.y1 && y <= box.y2) {
+      return node.data() as VisibleGraphNode;
+    }
+  }
+  return null;
 }
 
 export function contextMenuPointFromGraphEvent(surface: HTMLDivElement, event: cytoscape.EventObject) {
@@ -47,6 +51,13 @@ export function contextMenuPointFromGraphEvent(surface: HTMLDivElement, event: c
     x: rect.left + renderedPosition.x,
     y: rect.top + renderedPosition.y,
   };
+}
+
+export function selectedGraphNodes(cy: cytoscape.Core): VisibleGraphNode[] {
+  return cy
+    .nodes(":selected")
+    .map((node) => node.data() as VisibleGraphNode)
+    .filter(Boolean);
 }
 
 export function escapeHTML(value: string) {

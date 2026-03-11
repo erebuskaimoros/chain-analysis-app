@@ -1,10 +1,9 @@
-import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import cytoscape from "cytoscape";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { graphStylesheet, type GraphSelection, type VisibleGraphEdge, type VisibleGraphNode } from "../../../lib/graph";
 import { applyElkLayout } from "./layout";
-import { contextMenuPointFromGraphEvent } from "./utils";
-import type { ContextMenuState } from "./types";
+import { selectedGraphNodes } from "./utils";
 
 const DOUBLE_TAP_WINDOW_MS = 320;
 
@@ -24,8 +23,6 @@ interface UseGraphCanvasCoreOptions {
   cyMountRef: MutableRefObject<HTMLDivElement | null>;
   scheduleLabelRender: () => void;
   cancelScheduledLabelRender: () => void;
-  setMenuState: Dispatch<SetStateAction<ContextMenuState>>;
-  lastPaneContextMenuOpenedAtRef: MutableRefObject<number>;
 }
 
 export function useGraphCanvasCore({
@@ -44,8 +41,6 @@ export function useGraphCanvasCore({
   cyMountRef,
   scheduleLabelRender,
   cancelScheduledLabelRender,
-  setMenuState,
-  lastPaneContextMenuOpenedAtRef,
 }: UseGraphCanvasCoreOptions) {
   const elkRef = useRef(new ELK());
   const layoutSeqRef = useRef(0);
@@ -123,6 +118,11 @@ export function useGraphCanvasCore({
         if (nodePrimaryActionRef.current?.(tapped)) {
           return;
         }
+        const selectedNodes = selectedGraphNodes(cy);
+        if (selectedNodes.length > 1) {
+          selectionChangeRef.current({ kind: "nodes", nodes: selectedNodes });
+          return;
+        }
         selectionChangeRef.current({ kind: "node", node: tapped });
       }, DOUBLE_TAP_WINDOW_MS);
     });
@@ -144,62 +144,6 @@ export function useGraphCanvasCore({
       }
     });
 
-    cy.on("cxttap", "node", (event) => {
-      const node = nodeMapRef.current.get(event.target.id());
-      const surface = surfaceRef.current;
-      if (!node || !surface) {
-        return;
-      }
-      const point = contextMenuPointFromGraphEvent(surface, event);
-      const selection = selectionRef.current;
-      if (
-        selection?.kind === "nodes" &&
-        selection.nodes.length > 1 &&
-        selection.nodes.some((selectedNode) => selectedNode.id === node.id)
-      ) {
-        setMenuState({
-          mode: "nodes",
-          nodes: selection.nodes,
-          x: point.x,
-          y: point.y,
-        });
-        return;
-      }
-      setMenuState({
-        mode: "node",
-        node,
-        x: point.x,
-        y: point.y,
-      });
-    });
-
-    cy.on("cxttap", (event) => {
-      if (event.target !== cy || !surfaceRef.current) {
-        return;
-      }
-      if (Date.now() - lastPaneContextMenuOpenedAtRef.current < 120) {
-        return;
-      }
-      const point = contextMenuPointFromGraphEvent(surfaceRef.current, event);
-      const selection = selectionRef.current;
-      if (selection?.kind === "nodes" && selection.nodes.length > 1) {
-        setMenuState({
-          mode: "nodes",
-          nodes: selection.nodes,
-          x: point.x,
-          y: point.y,
-        });
-        lastPaneContextMenuOpenedAtRef.current = Date.now();
-        return;
-      }
-      setMenuState({
-        mode: "pane",
-        x: point.x,
-        y: point.y,
-      });
-      lastPaneContextMenuOpenedAtRef.current = Date.now();
-    });
-
     cy.on("zoom pan", () => {
       viewportRef.current = { zoom: cy.zoom(), pan: cy.pan() };
     });
@@ -215,7 +159,7 @@ export function useGraphCanvasCore({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [cancelScheduledLabelRender, cyMountRef, lastPaneContextMenuOpenedAtRef, mode, scheduleLabelRender, setMenuState, surfaceRef]);
+  }, [cancelScheduledLabelRender, cyMountRef, mode, scheduleLabelRender, surfaceRef]);
 
   useEffect(() => {
     const cy = cyRef.current;

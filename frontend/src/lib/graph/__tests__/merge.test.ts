@@ -208,6 +208,64 @@ describe("graph merges", () => {
     expect(merged.edges[0]?.from).toBe("explorer-target");
   });
 
+  it("dedupes explorer expansion supporting actions when matching nodes arrive with new raw IDs", () => {
+    const base = makeExplorerResponse({
+      address: "thor1base",
+      raw_address: "thor1base",
+      nodes: [
+        makeNode({
+          id: "base-source",
+          kind: "external_address",
+          chain: "THOR",
+          metrics: { address: "thor1same-source" },
+        }),
+        makeNode({
+          id: "base-target",
+          kind: "external_address",
+          chain: "BTC",
+          metrics: { address: "bc1same-target" },
+        }),
+      ],
+      supporting_actions: [
+        makeSupportingAction({
+          tx_id: "dup-tx",
+          from_node: "base-source",
+          to_node: "base-target",
+        }),
+      ],
+    });
+    const expansion = makeActorGraphResponse({
+      nodes: [
+        makeNode({
+          id: "expanded-source-id",
+          kind: "external_address",
+          chain: "THOR",
+          metrics: { address: "thor1same-source" },
+        }),
+        makeNode({
+          id: "expanded-target-id",
+          kind: "external_address",
+          chain: "BTC",
+          metrics: { address: "bc1same-target" },
+        }),
+      ],
+      supporting_actions: [
+        makeSupportingAction({
+          tx_id: "dup-tx",
+          from_node: "expanded-source-id",
+          to_node: "expanded-target-id",
+        }),
+      ],
+    });
+
+    const merged = mergeExplorerExpansionResponse(base, expansion);
+
+    expect(merged.supporting_actions).toHaveLength(1);
+    expect(merged.supporting_actions[0]?.from_node).toBe("base-source");
+    expect(merged.supporting_actions[0]?.to_node).toBe("base-target");
+    expect(merged.stats.supporting_action_count).toBe(1);
+  });
+
   it("applies node updates by merging metrics onto the existing node list", () => {
     const currentNodes = [
       makeNode({
