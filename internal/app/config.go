@@ -22,6 +22,7 @@ type Config struct {
 	BuildTime              string
 	ThornodeEndpoints      []string
 	MidgardEndpoints       []string
+	LegacyActionEndpoints  []string
 	ChainTrackerProviders  map[string]string
 	ChainTrackerOverrides  map[string]string
 	ChainTrackerCandidates map[string][]string
@@ -143,6 +144,15 @@ func LoadConfigFromEnv() Config {
 			continue
 		}
 		cfg.MidgardEndpoints = append(cfg.MidgardEndpoints, strings.TrimRight(v, "/"))
+	}
+
+	legacyActionEndpoints := getEnv("CHAIN_ANALYSIS_LEGACY_ACTION_ENDPOINTS", "https://vanaheimex.com")
+	for _, raw := range strings.Split(legacyActionEndpoints, ",") {
+		v := strings.TrimSpace(raw)
+		if v == "" {
+			continue
+		}
+		cfg.LegacyActionEndpoints = append(cfg.LegacyActionEndpoints, strings.TrimRight(v, "/"))
 	}
 
 	cfg.UtxoTrackerURLs = parseChainURLMapEnv(

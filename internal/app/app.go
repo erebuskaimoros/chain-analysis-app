@@ -20,6 +20,7 @@ type App struct {
 	db                *sql.DB
 	thor              *ThorClient
 	mid               *ThorClient
+	legacyActions     *ThorClient
 	httpClient        *http.Client
 	trackerHealth     *trackerHealthStore
 	trackerThrottle   *trackerThrottleStore
@@ -60,6 +61,7 @@ func New(cfg Config) (*App, error) {
 		db:               db,
 		thor:             NewThorClient(cfg.ThornodeEndpoints, cfg.MidgardTimeout),
 		mid:              NewThorClient(cfg.MidgardEndpoints, cfg.MidgardTimeout),
+		legacyActions:    NewThorClient(cfg.LegacyActionEndpoints, cfg.MidgardTimeout),
 		httpClient:       &http.Client{Timeout: cfg.RequestTimeout},
 		trackerHealth:    newTrackerHealthStore(),
 		trackerThrottle:  newTrackerThrottleStore(),

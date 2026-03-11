@@ -19,6 +19,7 @@ type HealthSnapshot struct {
 	Build             BuildInfo           `json:"build"`
 	ThornodeSources   []string            `json:"thornode_sources"`
 	MidgardSources    []string            `json:"midgard_sources"`
+	LegacySources     []string            `json:"legacy_action_sources"`
 	TrackerProviders  map[string]string   `json:"tracker_providers"`
 	TrackerOverrides  map[string]string   `json:"tracker_overrides"`
 	TrackerCandidates map[string][]string `json:"tracker_candidates"`
@@ -55,6 +56,7 @@ func (a *App) HealthSnapshot() HealthSnapshot {
 		},
 		ThornodeSources:   append([]string{}, a.cfg.ThornodeEndpoints...),
 		MidgardSources:    append([]string{}, a.cfg.MidgardEndpoints...),
+		LegacySources:     append([]string{}, a.cfg.LegacyActionEndpoints...),
 		TrackerProviders:  copyStringMap(a.cfg.ChainTrackerProviders),
 		TrackerOverrides:  copyStringMap(a.cfg.ChainTrackerOverrides),
 		TrackerCandidates: copyStringSliceMap(a.cfg.ChainTrackerCandidates),
@@ -94,16 +96,7 @@ func (a *App) LookupActionByTxID(ctx context.Context, txID string) (ActionLookup
 	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout)
 	defer cancel()
 
-	var response midgardActionsResponse
-	path := "/actions?txid=" + txID
-	if err := a.mid.GetJSON(ctx, path, &response); err != nil {
-		return ActionLookupResult{}, err
-	}
-
-	return ActionLookupResult{
-		TxID:    txID,
-		Actions: canonicalizeMidgardLookupActions(response.Actions),
-	}, nil
+	return a.lookupActionByTxID(ctx, txID)
 }
 
 func (a *App) ListActors(ctx context.Context) ([]Actor, error) {

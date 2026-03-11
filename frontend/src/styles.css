@@ -728,7 +728,7 @@ textarea {
   opacity: 1;
 }
 
-.graph-card.fullscreen {
+.graph-card-shell.fullscreen {
   position: fixed;
   inset: 0;
   z-index: 9998;
@@ -738,7 +738,29 @@ textarea {
   border: none;
 }
 
-.graph-card.fullscreen .graph-surface {
+.graph-card-shell.fullscreen .graph-head {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 11;
+  background: rgba(9, 18, 35, 0.88);
+  backdrop-filter: blur(8px);
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(109, 152, 222, 0.28);
+}
+
+.graph-card-shell.fullscreen .graph-head .eyebrow,
+.graph-card-shell.fullscreen .graph-head h2,
+.graph-card-shell.fullscreen .graph-head p {
+  color: #f5fbff;
+}
+
+.graph-card-shell.fullscreen .graph-head p {
+  color: #b9cfe6;
+}
+
+.graph-card-shell.fullscreen .graph-surface {
   height: 100vh;
   border-radius: 0;
   border: none;

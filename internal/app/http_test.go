@@ -102,6 +102,85 @@ func TestHandleActionByTxIDSuppressesShadowSendLookupAction(t *testing.T) {
 	}
 }
 
+func TestHandleActionByTxIDFallsBackToLegacySource(t *testing.T) {
+	midgard := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/actions" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(midgardActionsResponse{Actions: []midgardAction{}})
+	}))
+	defer midgard.Close()
+
+	legacy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/actions" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := strings.TrimSpace(r.URL.Query().Get("txid")); got != "LEGACYTX" {
+			t.Fatalf("unexpected txid query %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(midgardActionsResponse{
+			Actions: []midgardAction{
+				{
+					Date:   "1637020800000000000",
+					Height: "4473241",
+					Type:   "send",
+					Status: "success",
+					In: []midgardActionLeg{{
+						Address: "thor1sender",
+						TxID:    "LEGACYTX",
+						Coins:   []midgardActionCoin{{Amount: "250000000000000", Asset: "THOR.RUNE"}},
+					}},
+					Out: []midgardActionLeg{{
+						Address: "thor1recipient",
+						TxID:    "LEGACYTX",
+						Coins:   []midgardActionCoin{{Amount: "250000000000000", Asset: "THOR.RUNE"}},
+					}},
+				},
+			},
+		})
+	}))
+	defer legacy.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout:        5 * time.Second,
+			MidgardTimeout:        5 * time.Second,
+			LegacyActionEndpoints: []string{legacy.URL},
+		},
+		mid:           NewThorClient([]string{midgard.URL}, 5*time.Second),
+		legacyActions: NewThorClient([]string{legacy.URL}, 5*time.Second),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/actions/legacytx", nil)
+	rec := httptest.NewRecorder()
+	mux := http.NewServeMux()
+	app.RegisterRoutes(mux)
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		TxID    string          `json:"tx_id"`
+		Actions []midgardAction `json:"actions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.TxID != "LEGACYTX" {
+		t.Fatalf("unexpected tx_id %q", resp.TxID)
+	}
+	if len(resp.Actions) != 1 {
+		t.Fatalf("expected legacy lookup action, got %#v", resp.Actions)
+	}
+	if got := resp.Actions[0].Height; got != "4473241" {
+		t.Fatalf("unexpected legacy action height %q", got)
+	}
+}
+
 func TestCanonicalizeMidgardLookupActionsKeepsStandaloneSend(t *testing.T) {
 	actions := canonicalizeMidgardLookupActions([]midgardAction{
 		{

@@ -71,12 +71,13 @@ func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 			"commit":     a.cfg.BuildCommit,
 			"build_time": a.cfg.BuildTime,
 		},
-		"thornode_sources":   a.cfg.ThornodeEndpoints,
-		"midgard_sources":    a.cfg.MidgardEndpoints,
-		"tracker_providers":  a.cfg.ChainTrackerProviders,
-		"tracker_overrides":  a.cfg.ChainTrackerOverrides,
-		"tracker_candidates": a.cfg.ChainTrackerCandidates,
-		"tracker_health":     a.trackerHealth.snapshot(),
+		"thornode_sources":      a.cfg.ThornodeEndpoints,
+		"midgard_sources":       a.cfg.MidgardEndpoints,
+		"legacy_action_sources": a.cfg.LegacyActionEndpoints,
+		"tracker_providers":     a.cfg.ChainTrackerProviders,
+		"tracker_overrides":     a.cfg.ChainTrackerOverrides,
+		"tracker_candidates":    a.cfg.ChainTrackerCandidates,
+		"tracker_health":        a.trackerHealth.snapshot(),
 		"tracker_sources": map[string]any{
 			"utxo":                  a.cfg.UtxoTrackerURLs,
 			"utxo_expanded":         expandChainURLMap(a.cfg.UtxoTrackerURLs),
@@ -110,18 +111,12 @@ func (a *App) handleActionByTxID(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), a.cfg.RequestTimeout)
 	defer cancel()
 
-	var response midgardActionsResponse
-	path := "/actions?txid=" + txID
-	if err := a.mid.GetJSON(ctx, path, &response); err != nil {
+	result, err := a.lookupActionByTxID(ctx, txID)
+	if err != nil {
 		writeError(r, w, http.StatusBadGateway, err)
 		return
 	}
-	response.Actions = canonicalizeMidgardLookupActions(response.Actions)
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"tx_id":   txID,
-		"actions": response.Actions,
-	})
+	writeJSON(w, http.StatusOK, result)
 }
 
 func canonicalizeMidgardLookupActions(actions []midgardAction) []midgardAction {

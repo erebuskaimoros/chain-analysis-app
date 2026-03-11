@@ -1216,6 +1216,10 @@ func (a *App) prefetchMidgardBatch(
 }
 
 func (a *App) fetchMidgardActionsForAddress(ctx context.Context, address string, start, end time.Time, maxPages int) ([]midgardAction, bool, error) {
+	return a.fetchActionHistoryForAddress(ctx, address, start, end, maxPages)
+}
+
+func (a *App) fetchMidgardActionsForAddressOnly(ctx context.Context, address string, start, end time.Time, maxPages int) ([]midgardAction, bool, error) {
 	seed := normalizeFrontierAddress(address)
 	if seed.Address == "" {
 		return nil, false, nil
@@ -1327,6 +1331,10 @@ func (a *App) fetchMidgardActionsForAddress(ctx context.Context, address string,
 // because paged requests are not cache-aligned. It does not enforce the
 // midgardMaxPagesPerAddress cap so callers must bound pageCount themselves.
 func (a *App) fetchMidgardActionsForAddressPaged(ctx context.Context, address string, start, end time.Time, startPage, pageCount int) ([]midgardAction, bool, error) {
+	return a.fetchActionHistoryForAddressPaged(ctx, address, start, end, startPage, pageCount)
+}
+
+func (a *App) fetchMidgardActionsForAddressPagedOnly(ctx context.Context, address string, start, end time.Time, startPage, pageCount int) ([]midgardAction, bool, error) {
 	seed := normalizeFrontierAddress(address)
 	if seed.Address == "" {
 		return nil, false, nil
