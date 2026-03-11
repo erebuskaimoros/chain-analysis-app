@@ -9,6 +9,7 @@ import {
   upsertAnnotation,
 } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
+import type { AddressAnnotation } from "../../lib/types";
 
 export function AnnotationsPage() {
   const queryClient = useQueryClient();
@@ -25,6 +26,7 @@ export function AnnotationsPage() {
     kind: "label",
     value: "",
   });
+  const [editingAnnotation, setEditingAnnotation] = useState<{ address: string; kind: string } | null>(null);
   const [blocklistDraft, setBlocklistDraft] = useState({
     address: "",
     reason: "",
@@ -34,13 +36,22 @@ export function AnnotationsPage() {
     mutationFn: upsertAnnotation,
     onSuccess: async () => {
       setAnnotationDraft({ address: "", kind: "label", value: "" });
+      setEditingAnnotation(null);
       await queryClient.invalidateQueries({ queryKey: ["annotations"] });
     },
   });
 
   const annotationDeleteMutation = useMutation({
     mutationFn: deleteAnnotation,
-    onSuccess: async () => {
+    onSuccess: async (_data, variables) => {
+      if (
+        editingAnnotation &&
+        editingAnnotation.address === variables.address &&
+        editingAnnotation.kind === variables.kind
+      ) {
+        setEditingAnnotation(null);
+        setAnnotationDraft({ address: "", kind: "label", value: "" });
+      }
       await queryClient.invalidateQueries({ queryKey: ["annotations"] });
     },
   });
@@ -60,6 +71,25 @@ export function AnnotationsPage() {
     },
   });
 
+  function startEditing(annotation: AddressAnnotation) {
+    setEditingAnnotation({
+      address: annotation.address,
+      kind: annotation.kind,
+    });
+    setAnnotationDraft({
+      address: annotation.address,
+      kind: annotation.kind,
+      value: annotation.value,
+    });
+  }
+
+  function cancelAnnotationEdit() {
+    setEditingAnnotation(null);
+    setAnnotationDraft({ address: "", kind: "label", value: "" });
+  }
+
+  const isEditingAnnotation = editingAnnotation !== null;
+
   return (
     <div className="page-grid two-up">
       <section className="panel page-panel">
@@ -77,12 +107,19 @@ export function AnnotationsPage() {
             annotationMutation.mutate(annotationDraft);
           }}
         >
+          {isEditingAnnotation ? (
+            <p className="field field-full">
+              Editing annotation for <span className="mono-wrap">{annotationDraft.address}</span>. Address and kind stay
+              fixed while you update the value.
+            </p>
+          ) : null}
           <label className="field field-full">
             <span>Address</span>
             <input
               value={annotationDraft.address}
               onChange={(event) => setAnnotationDraft((current) => ({ ...current, address: event.target.value }))}
               placeholder="thor1..."
+              disabled={isEditingAnnotation}
             />
           </label>
           <label className="field">
@@ -91,6 +128,7 @@ export function AnnotationsPage() {
               value={annotationDraft.kind}
               onChange={(event) => setAnnotationDraft((current) => ({ ...current, kind: event.target.value }))}
               placeholder="label"
+              disabled={isEditingAnnotation}
             />
           </label>
           <label className="field">
@@ -103,8 +141,13 @@ export function AnnotationsPage() {
           </label>
           <div className="form-actions field-full">
             <button type="submit" className="button" disabled={annotationMutation.isPending}>
-              {annotationMutation.isPending ? "Saving..." : "Save Annotation"}
+              {annotationMutation.isPending ? "Saving..." : isEditingAnnotation ? "Update Annotation" : "Save Annotation"}
             </button>
+            {isEditingAnnotation ? (
+              <button type="button" className="button secondary" onClick={cancelAnnotationEdit}>
+                Cancel
+              </button>
+            ) : null}
           </div>
         </form>
         {annotationsQuery.isLoading ? <div className="empty-state">Loading annotations…</div> : null}
@@ -128,6 +171,14 @@ export function AnnotationsPage() {
                   <td>{annotation.value}</td>
                   <td>{formatDateTime(annotation.created_at)}</td>
                   <td>
+                    <button
+                      type="button"
+                      className="button secondary slim"
+                      onClick={() => startEditing(annotation)}
+                      disabled={annotationMutation.isPending}
+                    >
+                      Edit
+                    </button>
                     <button
                       type="button"
                       className="button secondary slim danger"
