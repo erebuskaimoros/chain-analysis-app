@@ -14,15 +14,15 @@ type BuildInfo struct {
 }
 
 type HealthSnapshot struct {
-	OK                bool                `json:"ok"`
-	Time              time.Time           `json:"time"`
-	Build             BuildInfo           `json:"build"`
+	OK                bool                            `json:"ok"`
+	Time              time.Time                       `json:"time"`
+	Build             BuildInfo                       `json:"build"`
 	LiquidityEngines  map[string]HealthEngineSnapshot `json:"liquidity_engines"`
-	TrackerProviders  map[string]string   `json:"tracker_providers"`
-	TrackerOverrides  map[string]string   `json:"tracker_overrides"`
-	TrackerCandidates map[string][]string `json:"tracker_candidates"`
-	TrackerHealth     map[string]any      `json:"tracker_health"`
-	TrackerSources    map[string]any      `json:"tracker_sources"`
+	TrackerProviders  map[string]string               `json:"tracker_providers"`
+	TrackerOverrides  map[string]string               `json:"tracker_overrides"`
+	TrackerCandidates map[string][]string             `json:"tracker_candidates"`
+	TrackerHealth     map[string]any                  `json:"tracker_health"`
+	TrackerSources    map[string]any                  `json:"tracker_sources"`
 }
 
 type HealthEngineSnapshot struct {
@@ -38,7 +38,7 @@ type ActionLookupAction struct {
 }
 
 type ActionLookupResult struct {
-	TxID    string             `json:"tx_id"`
+	TxID    string               `json:"tx_id"`
 	Actions []ActionLookupAction `json:"actions"`
 }
 
@@ -82,25 +82,25 @@ func (a *App) HealthSnapshot() HealthSnapshot {
 		TrackerCandidates: copyStringSliceMap(a.cfg.ChainTrackerCandidates),
 		TrackerHealth:     a.trackerHealth.snapshot(),
 		TrackerSources: map[string]any{
-			"utxo":                  copyStringMap(a.cfg.UtxoTrackerURLs),
-			"utxo_expanded":         expandChainURLMap(a.cfg.UtxoTrackerURLs),
-			"cosmos":                copyStringMap(a.cfg.CosmosTrackerURLs),
-			"cosmos_expanded":       expandChainURLMap(a.cfg.CosmosTrackerURLs),
-			"etherscan":             a.cfg.EtherscanAPIURL,
-			"etherscan_expanded":    a.cfg.etherscanAPIURLs(),
-			"blockscout_urls":       copyStringMap(a.cfg.BlockscoutAPIURLs),
-			"blockscout_expanded":   expandChainURLMap(a.cfg.BlockscoutAPIURLs),
-			"avacloud_base":         a.cfg.AvaCloudBaseURL,
-			"avacloud_expanded":     a.cfg.avaCloudBaseURLs(),
-			"nodereal_bsc":          a.cfg.NodeRealBSCURL,
-			"nodereal_bsc_expanded": a.cfg.nodeRealBSCURLs(),
-			"solana_rpc":            a.cfg.SolanaRPCURL,
-			"solana_rpc_expanded":   a.cfg.solanaRPCURLs(),
-			"trongrid":              a.cfg.TronGridURL,
-			"trongrid_expanded":     a.cfg.tronGridURLs(),
-			"xrp_rpc":               a.cfg.XRPRPCURL,
-			"xrp_rpc_expanded":      a.cfg.xrplRPCURLs(),
-			"radix_gateway":         a.cfg.RadixGatewayURL,
+			"utxo":                   copyStringMap(a.cfg.UtxoTrackerURLs),
+			"utxo_expanded":          expandChainURLMap(a.cfg.UtxoTrackerURLs),
+			"cosmos":                 copyStringMap(a.cfg.CosmosTrackerURLs),
+			"cosmos_expanded":        expandChainURLMap(a.cfg.CosmosTrackerURLs),
+			"etherscan":              a.cfg.EtherscanAPIURL,
+			"etherscan_expanded":     a.cfg.etherscanAPIURLs(),
+			"blockscout_urls":        copyStringMap(a.cfg.BlockscoutAPIURLs),
+			"blockscout_expanded":    expandChainURLMap(a.cfg.BlockscoutAPIURLs),
+			"avacloud_base":          a.cfg.AvaCloudBaseURL,
+			"avacloud_expanded":      a.cfg.avaCloudBaseURLs(),
+			"nodereal_bsc":           a.cfg.NodeRealBSCURL,
+			"nodereal_bsc_expanded":  a.cfg.nodeRealBSCURLs(),
+			"solana_rpc":             a.cfg.SolanaRPCURL,
+			"solana_rpc_expanded":    a.cfg.solanaRPCURLs(),
+			"trongrid":               a.cfg.TronGridURL,
+			"trongrid_expanded":      a.cfg.tronGridURLs(),
+			"xrp_rpc":                a.cfg.XRPRPCURL,
+			"xrp_rpc_expanded":       a.cfg.xrplRPCURLs(),
+			"radix_gateway":          a.cfg.RadixGatewayURL,
 			"radix_gateway_expanded": parseURLListValue(a.cfg.RadixGatewayURL),
 		},
 	}

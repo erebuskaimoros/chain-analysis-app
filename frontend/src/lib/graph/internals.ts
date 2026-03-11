@@ -38,7 +38,7 @@ export function nodeAddress(node: Pick<FlowNode, "metrics"> | null | undefined) 
 }
 
 export function actionKey(action: SupportingAction) {
-  return `${action.tx_id}|${action.action_key || action.action_class}|${action.from_node}|${action.to_node}`;
+  return `${action.source_protocol || ""}|${action.tx_id}|${action.action_key || action.action_class}|${action.from_node}|${action.to_node}`;
 }
 
 export function nodeMergeKey(node: FlowNode) {
@@ -85,6 +85,7 @@ export function cloneMergedEdge(edge: FlowEdge, canonicalID: string, nodeAlias: 
     heights: summary.heights,
     assets: summary.assets,
     usd_spot: summary.usd_spot,
+    source_protocols: uniqueStrings([...(edge.source_protocols || [])]),
   };
 }
 
@@ -220,6 +221,7 @@ export function normalizeEdgeTransactions(edge: FlowEdge | undefined) {
         time: "",
         usd_spot: Number(edge.usd_spot || 0),
         assets: mergeFlowAssetValues([], edge.assets || []),
+        source_protocol: edge.source_protocols?.length === 1 ? edge.source_protocols[0] : "",
       },
     ];
   }
@@ -481,6 +483,7 @@ function cloneEdgeTransaction(tx: FlowEdgeTransaction, index = 0): FlowEdgeTrans
     time: normalizeISODateTime(tx.time),
     usd_spot: Number(tx.usd_spot || 0),
     assets: mergeFlowAssetValues([], tx.assets || []),
+    source_protocol: String(tx.source_protocol || "").trim().toUpperCase(),
   };
 }
 
@@ -532,9 +535,9 @@ function cloneFlowAssetValue(asset: FlowAssetValue): FlowAssetValue {
 function edgeTransactionKey(tx: FlowEdgeTransaction, index = 0) {
   const txID = String(tx.tx_id || "").trim();
   if (txID) {
-    return txID;
+    return `${String(tx.source_protocol || "").trim().toUpperCase()}|${txID}`;
   }
-  return `${String(tx.height || 0)}|${normalizeISODateTime(tx.time)}|${index}`;
+  return `${String(tx.source_protocol || "").trim().toUpperCase()}|${String(tx.height || 0)}|${normalizeISODateTime(tx.time)}|${index}`;
 }
 
 function graphFilterNumbersEqual(left: number | null, right: number | null) {

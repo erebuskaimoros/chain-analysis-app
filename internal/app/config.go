@@ -304,6 +304,10 @@ func (c Config) xrplRPCURLs() []string {
 	return parseURLListValue(c.XRPRPCURL)
 }
 
+func (c Config) radixGatewayURLs() []string {
+	return parseURLListValue(c.RadixGatewayURL)
+}
+
 func (c Config) blockscoutAPIURLsForChain(chain string) []string {
 	return parseURLListValue(c.BlockscoutAPIURLs[strings.ToUpper(strings.TrimSpace(chain))])
 }

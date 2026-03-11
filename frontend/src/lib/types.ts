@@ -4,12 +4,18 @@ export interface BuildInfo {
   build_time: string;
 }
 
+export interface HealthEngineSnapshot {
+  protocol: string;
+  thornode_sources: string[];
+  midgard_sources: string[];
+  legacy_action_sources: string[];
+}
+
 export interface HealthSnapshot {
   ok: boolean;
   time: string;
   build: BuildInfo;
-  thornode_sources: string[];
-  midgard_sources: string[];
+  liquidity_engines: Record<string, HealthEngineSnapshot>;
   tracker_providers: Record<string, string>;
   tracker_overrides: Record<string, string>;
   tracker_candidates: Record<string, string[]>;
@@ -101,6 +107,7 @@ export interface FlowEdgeTransaction {
   time: string;
   usd_spot: number;
   assets: FlowAssetValue[];
+  source_protocol?: string;
 }
 
 export interface FlowEdge {
@@ -122,6 +129,7 @@ export interface FlowEdge {
   heights: number[];
   actor_ids: number[];
   confidence: number;
+  source_protocols?: string[];
 }
 
 export interface SupportingAction {
@@ -142,6 +150,7 @@ export interface SupportingAction {
   from_node: string;
   to_node: string;
   actor_ids: number[];
+  source_protocol?: string;
 }
 
 export interface ActorTrackerQuery {
@@ -183,7 +192,7 @@ export interface ActorGraphExpandRequest {
 export interface ActorGraphResponse {
   query: ActorTrackerQuery;
   actors: Actor[];
-  stats: Record<string, number | string | boolean>;
+  stats: Record<string, unknown>;
   warnings: string[];
   nodes: FlowNode[];
   edges: FlowEdge[];
@@ -229,7 +238,7 @@ export interface AddressExplorerResponse {
   raw_address: string;
   address: string;
   query: AddressExplorerQuery;
-  stats: Record<string, number | string | boolean>;
+  stats: Record<string, unknown>;
   warnings: string[];
   nodes: FlowNode[];
   edges: FlowEdge[];
@@ -272,7 +281,16 @@ export interface AddressExplorerRunsResponse {
   runs: AddressExplorerRun[];
 }
 
+export interface ActionLookupAction {
+  source_protocol?: string;
+  type?: string;
+  height?: string;
+  date?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
 export interface ActionLookupResponse {
   tx_id: string;
-  actions: unknown[];
+  actions: ActionLookupAction[];
 }

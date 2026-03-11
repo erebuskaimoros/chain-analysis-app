@@ -66,6 +66,7 @@ export interface VisibleEdgeAccumulator {
   validatorLabels: string[];
   contractTypes: string[];
   contractProtocols: string[];
+  sourceProtocols: string[];
   width: number;
   inspect: Record<string, unknown>;
 }
@@ -120,6 +121,7 @@ export function finalizeVisibleGraph(
       heights: [],
       actor_ids: uniqueNumbers(edge.actor_ids),
       confidence: 0,
+      source_protocols: edge.sourceProtocols,
       width: edge.width,
       lineColor: graphLineColor(edge.actionClass),
       edgeLabel,
@@ -153,6 +155,7 @@ export function finalizeVisibleGraph(
         contract_type: edge.contractType,
         contract_protocol: edge.contractProtocol,
         usd_spot: edge.usdSpot,
+        source_protocols: edge.sourceProtocols,
         tx_count: edge.txCount,
         tx_ids: edge.txIDs,
         raw_edge_ids: edge.rawEdgeIDs,
@@ -213,6 +216,7 @@ export function makeVisibleEdgeAdder(
       validatorLabels: [],
       contractTypes: [],
       contractProtocols: [],
+      sourceProtocols: [],
       width: 0,
       inspect: {
         action_class: rawEdge.action_class,
@@ -229,6 +233,7 @@ export function makeVisibleEdgeAdder(
         action_buckets: [],
         validator_addresses: [],
         validator_labels: [],
+        source_protocols: [],
         chain_set: [],
         edges: [],
       },
@@ -272,6 +277,9 @@ export function makeVisibleEdgeAdder(
         existing.contractProtocols.concat(String(rawEdge.contract_protocol).trim())
       );
     }
+    existing.sourceProtocols = uniqueStrings(
+      existing.sourceProtocols.concat((rawEdge.source_protocols || []).map((protocol) => String(protocol || "").trim().toUpperCase()).filter(Boolean))
+    );
 
     const resolved = resolveVisibleEdgeMetadata(existing);
     existing.actionClass = resolved.actionClass;
@@ -304,6 +312,7 @@ export function makeVisibleEdgeAdder(
     existing.inspect.action_buckets = resolved.txnBuckets;
     existing.inspect.validator_addresses = resolved.validatorAddresses;
     existing.inspect.validator_labels = resolved.validatorLabels;
+    existing.inspect.source_protocols = existing.sourceProtocols;
     existing.inspect.chain_set = existing.chainSet;
     existing.assetTotals = {};
     summary.assets.forEach((assetValue) => {

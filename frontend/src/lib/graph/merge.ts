@@ -68,6 +68,7 @@ export function mergeActorGraphResponse(current: ActorGraphResponse | null, inco
     existing.validator_label = existing.validator_label || edge.validator_label || "";
     existing.contract_type = existing.contract_type || edge.contract_type || "";
     existing.contract_protocol = existing.contract_protocol || edge.contract_protocol || "";
+    existing.source_protocols = uniqueStrings([...(existing.source_protocols || []), ...(edge.source_protocols || [])]);
     existing.transactions = mergeEdgeTransactions(existing.transactions, normalizeEdgeTransactions(edge));
     const summary = summarizeTransactions(existing.transactions);
     existing.tx_ids = summary.tx_ids;
@@ -208,6 +209,7 @@ function mergeExplorerLikeResponse(
     }
     existing.confidence = Math.max(Number(existing.confidence || 0), Number(edge.confidence || 0));
     existing.transactions = mergeEdgeTransactions(existing.transactions, normalizeEdgeTransactions(edge));
+    existing.source_protocols = uniqueStrings([...(existing.source_protocols || []), ...(edge.source_protocols || [])]);
     const summary = summarizeTransactions(existing.transactions);
     existing.tx_ids = summary.tx_ids;
     existing.heights = summary.heights;

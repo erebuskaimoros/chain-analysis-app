@@ -140,6 +140,7 @@ type graphBuilder struct {
 	actions              map[string]*SupportingAction
 	warnings             []string
 	seenCanonicalKey     map[string]struct{}
+	sourceProtocols      map[string]struct{}
 	swapEmitted          int
 	swapDeduped          int
 	swapSuppressed       int
@@ -229,15 +230,15 @@ type midgardActionsMeta struct {
 }
 
 type midgardAction struct {
-	Date     string                `json:"date"`
-	Height   string                `json:"height"`
-	Type     string                `json:"type"`
-	Status   string                `json:"status"`
-	In       []midgardActionLeg    `json:"in"`
-	Out      []midgardActionLeg    `json:"out"`
-	Pools    []string              `json:"pools"`
-	Metadata midgardActionMetadata `json:"metadata"`
-	SourceProtocol string          `json:"-"`
+	Date           string                `json:"date"`
+	Height         string                `json:"height"`
+	Type           string                `json:"type"`
+	Status         string                `json:"status"`
+	In             []midgardActionLeg    `json:"in"`
+	Out            []midgardActionLeg    `json:"out"`
+	Pools          []string              `json:"pools"`
+	Metadata       midgardActionMetadata `json:"metadata"`
+	SourceProtocol string                `json:"-"`
 }
 
 type midgardActionLeg struct {
@@ -350,6 +351,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 		actions:              map[string]*SupportingAction{},
 		warnings:             append([]string{}, coverageWarnings...),
 		seenCanonicalKey:     map[string]struct{}{},
+		sourceProtocols:      map[string]struct{}{},
 	}
 	if priceErr != nil {
 		builder.warnings = append(builder.warnings, "spot USD normalization unavailable; falling back to asset-native values")
@@ -654,6 +656,8 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 		"node_count":                         len(nodes),
 		"edge_count":                         len(edges),
 		"supporting_action_count":            len(actions),
+		"source_protocol_count":              len(builder.sourceProtocolList()),
+		"source_protocols":                   builder.sourceProtocolList(),
 		"coverage_satisfied":                 query.CoverageSatisfied,
 		"swap_emitted":                       builder.swapEmitted,
 		"swap_deduped":                       builder.swapDeduped,
@@ -772,6 +776,7 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 		actions:              map[string]*SupportingAction{},
 		warnings:             append(append([]string{}, coverageWarnings...), warnings...),
 		seenCanonicalKey:     map[string]struct{}{},
+		sourceProtocols:      map[string]struct{}{},
 	}
 	if priceErr != nil {
 		builder.warnings = append(builder.warnings, "spot USD normalization unavailable; falling back to asset-native values")
@@ -917,6 +922,8 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 		"node_count":                         len(nodes),
 		"edge_count":                         len(edges),
 		"supporting_action_count":            len(actions),
+		"source_protocol_count":              len(builder.sourceProtocolList()),
+		"source_protocols":                   builder.sourceProtocolList(),
 		"coverage_satisfied":                 query.CoverageSatisfied,
 		"expanded_seed_count":                len(expandAddresses),
 		"one_hop_expansion":                  true,
@@ -1470,10 +1477,20 @@ func (a *App) fetchMidgardActionsForAddressPagedOnlyFromProtocol(ctx context.Con
 // probeMidgardTotalPages does a binary search to find the last page with data
 // for an address. Returns the total number of pages (0-indexed last page + 1).
 func (a *App) probeMidgardTotalPages(ctx context.Context, address string, start, end time.Time) (int, error) {
+	seed := normalizeFrontierAddress(address)
+	protocols := a.actionSourceProtocolsForSeed(seed)
+	if len(protocols) == 0 {
+		return 0, nil
+	}
+	return a.probeMidgardTotalPagesForProtocol(ctx, protocols[0], seed.Address, start, end)
+}
+
+func (a *App) probeMidgardTotalPagesForProtocol(ctx context.Context, protocol, address string, start, end time.Time) (int, error) {
 	// Exponential probe to find upper bound.
 	probe := 10 // start at page 10 (offset 500)
 	for {
-		actions, _, err := a.fetchMidgardActionsForAddressPaged(ctx, address, start, end, probe, 1)
+		seed := normalizeFrontierAddress(address)
+		actions, _, err := a.fetchActionHistoryForAddressPagedFromProtocol(ctx, protocol, seed, start, end, probe, 1)
 		if err != nil {
 			return 0, err
 		}
@@ -1491,7 +1508,8 @@ func (a *App) probeMidgardTotalPages(ctx context.Context, address string, start,
 	lo, hi := probe/2, probe
 	for lo < hi {
 		mid := (lo + hi) / 2
-		actions, _, err := a.fetchMidgardActionsForAddressPaged(ctx, address, start, end, mid, 1)
+		seed := normalizeFrontierAddress(address)
+		actions, _, err := a.fetchActionHistoryForAddressPagedFromProtocol(ctx, protocol, seed, start, end, mid, 1)
 		if err != nil {
 			return 0, err
 		}
@@ -1745,13 +1763,14 @@ func isLikelyAddressCandidate(value string) bool {
 	return true
 }
 
-func (a *App) loadProtocolDirectory(_ context.Context) (protocolDirectory, error) {
+func (a *App) loadProtocolDirectory(ctx context.Context) (protocolDirectory, error) {
 	out := protocolDirectory{
 		AddressKinds: map[string]protocolAddress{},
 		SupportedChains: map[string]struct{}{
 			"BTC": {}, "ETH": {}, "LTC": {}, "BCH": {}, "DOGE": {},
 			"AVAX": {}, "BSC": {}, "GAIA": {}, "BASE": {},
 			"SOL": {}, "TRON": {}, "XRP": {}, "THOR": {},
+			"MAYA": {}, "ARB": {}, "XRD": {},
 		},
 	}
 
@@ -1777,52 +1796,104 @@ func (a *App) loadProtocolDirectory(_ context.Context) (protocolDirectory, error
 		}
 	}
 
+	for _, protocol := range []string{sourceProtocolTHOR, sourceProtocolMAYA} {
+		inboundCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		entries, err := a.protocolInboundAddresses(inboundCtx, protocol)
+		cancel()
+		if err != nil {
+			logError(ctx, "protocol_inbound_addresses_failed", err, map[string]any{
+				"protocol": protocol,
+			})
+			continue
+		}
+		for _, entry := range entries {
+			chain := strings.ToUpper(strings.TrimSpace(entry.Chain))
+			if chain == "" || !protocolSupportsChain(protocol, chain) {
+				continue
+			}
+			out.SupportedChains[chain] = struct{}{}
+			if address := normalizeAddress(entry.Address); address != "" {
+				out.AddressKinds[address] = protocolAddress{
+					Kind:  "inbound",
+					Chain: chain,
+					Label: protocol + " " + chain + " Inbound",
+				}
+			}
+			if router := normalizeAddress(entry.Router); router != "" {
+				out.AddressKinds[router] = protocolAddress{
+					Kind:  "router",
+					Chain: chain,
+					Label: protocol + " " + chain + " Router",
+				}
+			}
+		}
+	}
+
 	return out, nil
 }
 
 func (a *App) buildPriceBook(ctx context.Context) (priceBook, error) {
-	pools, err := a.fetchPools(ctx)
-	if err != nil {
-		return priceBook{}, err
-	}
-
 	book := priceBook{
+		NativeUSD:     map[string]float64{},
 		AssetUSD:      map[string]float64{},
 		PoolAssets:    map[string]struct{}{},
 		PoolSnapshots: map[string]MidgardPool{},
+		PoolProtocols: map[string]string{},
 		HasPoolData:   true,
 	}
-	var runeUSDs []float64
-	for _, pool := range pools {
-		if !strings.EqualFold(pool.Status, "available") && pool.Status != "" {
+	assetUSDs := map[string][]float64{}
+	nativeUSDs := map[string][]float64{}
+	var firstErr error
+	for _, engine := range a.availableLiquidityEngines() {
+		pools, err := a.fetchPoolsForProtocol(ctx, engine.Protocol)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
-		asset := normalizeAsset(pool.Asset)
-		if asset == "" {
-			continue
-		}
-		book.PoolAssets[asset] = struct{}{}
-		book.PoolSnapshots[asset] = pool
+		for _, pool := range pools {
+			if !strings.EqualFold(pool.Status, "available") && pool.Status != "" {
+				continue
+			}
+			asset := normalizeAsset(pool.Asset)
+			if asset == "" {
+				continue
+			}
+			book.PoolAssets[asset] = struct{}{}
+			key := protocolPoolSnapshotKey(engine.Protocol, asset)
+			book.PoolSnapshots[key] = pool
+			book.PoolProtocols[key] = engine.Protocol
 
-		// Midgard provides assetPriceUSD directly.
-		assetPriceUSD := parseFloat64(pool.AssetPriceUSD)
-		if assetPriceUSD > 0 {
-			book.AssetUSD[asset] = assetPriceUSD
-		}
+			assetPriceUSD := parseFloat64(pool.AssetPriceUSD)
+			if assetPriceUSD > 0 {
+				assetUSDs[asset] = append(assetUSDs[asset], assetPriceUSD)
+			}
 
-		// Derive RUNE USD from stable pools.
-		runeDepth := float64(parseInt64(pool.RuneDepth)) / 1e8
-		assetDepth := float64(parseInt64(pool.AssetDepth)) / 1e8
-		if runeDepth > 0 && assetDepth > 0 && isStableAsset(asset) {
-			runeUSDs = append(runeUSDs, assetDepth/runeDepth)
+			nativeDepth := float64(parseInt64(pool.RuneDepth)) / 1e8
+			assetDepth := float64(parseInt64(pool.AssetDepth)) / 1e8
+			if nativeDepth > 0 && assetDepth > 0 && isStableAsset(asset) {
+				nativeUSDs[engine.Protocol] = append(nativeUSDs[engine.Protocol], assetDepth/nativeDepth)
+			}
 		}
 	}
-	if len(runeUSDs) == 0 {
+
+	for asset, prices := range assetUSDs {
+		sort.Float64s(prices)
+		book.AssetUSD[asset] = prices[len(prices)/2]
+	}
+	for protocol, prices := range nativeUSDs {
+		sort.Float64s(prices)
+		median := prices[len(prices)/2]
+		book.NativeUSD[protocol] = median
+		book.AssetUSD[nativeAssetForProtocol(protocol)] = median
+	}
+	if len(book.AssetUSD) == 0 && firstErr != nil {
+		return priceBook{}, firstErr
+	}
+	if len(book.NativeUSD) == 0 {
 		return book, fmt.Errorf("no stable pools available for USD normalization")
 	}
-	sort.Float64s(runeUSDs)
-	book.RuneUSD = runeUSDs[len(runeUSDs)/2]
-	book.AssetUSD["THOR.RUNE"] = book.RuneUSD
 	return book, nil
 }
 
@@ -1842,6 +1913,145 @@ type liveHoldingValue struct {
 	Asset     string
 	AmountRaw string
 	USDSpot   float64
+}
+
+type liveHoldingNodeRef struct {
+	index    int
+	protocol string
+}
+
+type liveHoldingAddressLookupTask struct {
+	key       string
+	chain     string
+	address   string
+	provider  string
+	bucketKey string
+	refs      []liveHoldingNodeRef
+}
+
+type liveHoldingTaskRank struct {
+	phase     int
+	supported int
+	depth     int
+	kindRank  int
+	chain     string
+	address   string
+}
+
+func planAddressLookupPhases(nodes []FlowNode, tasks map[string]*liveHoldingAddressLookupTask) [][]liveHoldingAddressLookupTask {
+	ordered := orderedAddressLookupTasks(nodes, tasks)
+	if len(ordered) == 0 {
+		return nil
+	}
+	priority := make([]liveHoldingAddressLookupTask, 0, len(ordered))
+	background := make([]liveHoldingAddressLookupTask, 0, len(ordered))
+	for _, task := range ordered {
+		if liveHoldingTaskRankForNodes(nodes, task).phase == 0 {
+			priority = append(priority, task)
+			continue
+		}
+		background = append(background, task)
+	}
+	phases := make([][]liveHoldingAddressLookupTask, 0, 2)
+	if len(priority) > 0 {
+		phases = append(phases, priority)
+	}
+	if len(background) > 0 {
+		phases = append(phases, background)
+	}
+	return phases
+}
+
+func orderedAddressLookupTasks(nodes []FlowNode, tasks map[string]*liveHoldingAddressLookupTask) []liveHoldingAddressLookupTask {
+	ordered := make([]liveHoldingAddressLookupTask, 0, len(tasks))
+	for _, task := range tasks {
+		if task != nil {
+			ordered = append(ordered, *task)
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := liveHoldingTaskRankForNodes(nodes, ordered[i])
+		right := liveHoldingTaskRankForNodes(nodes, ordered[j])
+		if left.phase != right.phase {
+			return left.phase < right.phase
+		}
+		if left.supported != right.supported {
+			return left.supported < right.supported
+		}
+		if left.depth != right.depth {
+			return left.depth < right.depth
+		}
+		if left.kindRank != right.kindRank {
+			return left.kindRank < right.kindRank
+		}
+		if left.chain != right.chain {
+			return left.chain < right.chain
+		}
+		return left.address < right.address
+	})
+	return ordered
+}
+
+func liveHoldingTaskRankForNodes(nodes []FlowNode, task liveHoldingAddressLookupTask) liveHoldingTaskRank {
+	rank := liveHoldingTaskRank{
+		phase:     1,
+		supported: 0,
+		depth:     1 << 30,
+		kindRank:  99,
+		chain:     strings.ToUpper(strings.TrimSpace(task.chain)),
+		address:   normalizeAddress(task.address),
+	}
+	if strings.EqualFold(strings.TrimSpace(task.provider), "unconfigured") {
+		rank.supported = 1
+	}
+	for _, ref := range task.refs {
+		if ref.index < 0 || ref.index >= len(nodes) {
+			continue
+		}
+		node := nodes[ref.index]
+		if priorityAddressLiveHoldingsNode(node) {
+			rank.phase = 0
+		}
+		if depth := max(0, node.Depth); depth < rank.depth {
+			rank.depth = depth
+		}
+		if kindRank := liveHoldingKindRank(node.Kind); kindRank < rank.kindRank {
+			rank.kindRank = kindRank
+		}
+	}
+	if rank.depth == 1<<30 {
+		rank.depth = 1 << 29
+	}
+	return rank
+}
+
+func priorityAddressLiveHoldingsNode(node FlowNode) bool {
+	if len(node.ActorIDs) > 0 {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(node.Kind)) {
+	case "actor_address", "explorer_target":
+		return true
+	default:
+		return false
+	}
+}
+
+func liveHoldingKindRank(kind string) int {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "actor_address":
+		return 0
+	case "explorer_target":
+		return 1
+	case "bond_address":
+		return 2
+	case "contract_address":
+		return 3
+	case "router", "inbound":
+		return 4
+	default:
+		return 5
+	}
 }
 
 func (a *App) refreshActorTrackerLiveHoldings(ctx context.Context, nodes []FlowNode) ([]string, error) {
@@ -1876,44 +2086,8 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 
 	warnings := []string{}
 	now := time.Now().UTC().Format(time.RFC3339)
-
-	poolByAsset := map[string]MidgardPool{}
-	hasPoolLookups := false
-	for i := range nodes {
-		if nodes[i].Kind == "pool" {
-			hasPoolLookups = true
-			break
-		}
-	}
-	if hasPoolLookups {
-		poolsCtx, poolsCancel := context.WithTimeout(lookupCtx, a.liveHoldingsLookupTimeout("midgard", "THOR"))
-		if pools, err := a.fetchPools(poolsCtx); err == nil {
-			for _, pool := range pools {
-				asset := normalizeAsset(pool.Asset)
-				if asset == "" {
-					continue
-				}
-				poolByAsset[asset] = pool
-			}
-		} else {
-			warnings = append(warnings, "live holdings for pool nodes unavailable")
-		}
-		poolsCancel()
-	}
-
-	type nodeRef struct {
-		index int
-	}
-	type addressLookupTask struct {
-		key       string
-		chain     string
-		address   string
-		provider  string
-		bucketKey string
-		refs      []nodeRef
-	}
-	addressLookupTasks := map[string]*addressLookupTask{}
-	nodeLookupRefs := make([]nodeRef, 0)
+	addressLookupTasks := map[string]*liveHoldingAddressLookupTask{}
+	nodeLookupRefs := make([]liveHoldingNodeRef, 0)
 	queueAddressLookupTask := func(idx int) {
 		address := normalizeAddress(getString(nodes[idx].Metrics, "address"))
 		if address == "" {
@@ -1933,7 +2107,7 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		task, ok := addressLookupTasks[key]
 		if !ok {
 			provider := a.liveHoldingsProviderForChain(chain)
-			task = &addressLookupTask{
+			task = &liveHoldingAddressLookupTask{
 				key:       key,
 				chain:     chain,
 				address:   address,
@@ -1942,7 +2116,7 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 			}
 			addressLookupTasks[key] = task
 		}
-		task.refs = append(task.refs, nodeRef{index: idx})
+		task.refs = append(task.refs, liveHoldingNodeRef{index: idx})
 	}
 
 	for i := range nodes {
@@ -1955,15 +2129,19 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 			if poolAsset == "" {
 				continue
 			}
-			pool, ok := poolByAsset[poolAsset]
+			protocol := normalizeSourceProtocol(getString(nodes[i].Metrics, "source_protocol"))
+			if protocol == sourceProtocolTHOR && strings.EqualFold(strings.TrimSpace(nodes[i].Chain), "MAYA") {
+				protocol = sourceProtocolMAYA
+			}
+			pool, ok := prices.PoolSnapshots[protocolPoolSnapshotKey(protocol, poolAsset)]
 			if !ok {
 				continue
 			}
 			holdings := []liveHoldingValue{
 				{
-					Asset:     "THOR.RUNE",
+					Asset:     nativeAssetForProtocol(protocol),
 					AmountRaw: strings.TrimSpace(pool.RuneDepth),
-					USDSpot:   prices.usdFor("THOR.RUNE", pool.RuneDepth),
+					USDSpot:   prices.usdFor(nativeAssetForProtocol(protocol), pool.RuneDepth),
 				},
 				{
 					Asset:     poolAsset,
@@ -1974,39 +2152,52 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 			applyLiveHoldingMetrics(&nodes[i], holdings, "pool_snapshot", now)
 		case "node":
 			nodes[i].Metrics["node_total_bond"] = ""
-			nodeLookupRefs = append(nodeLookupRefs, nodeRef{index: i})
+			protocol := normalizeSourceProtocol(getString(nodes[i].Metrics, "source_protocol"))
+			if protocol == sourceProtocolTHOR && strings.EqualFold(strings.TrimSpace(nodes[i].Chain), "MAYA") {
+				protocol = sourceProtocolMAYA
+			}
+			nodeLookupRefs = append(nodeLookupRefs, liveHoldingNodeRef{index: i, protocol: protocol})
 		default:
 			queueAddressLookupTask(i)
 		}
 	}
 
-	var (
-		thorBondedByAddress  map[string]string
-		thorBondedByNode     map[string]string
-		thorNodeStatusByNode map[string]string
-		hasTHORLookups       bool
-	)
+	type bondSnapshot struct {
+		bondedByAddress  map[string]string
+		bondedByNode     map[string]string
+		nodeStatusByNode map[string]string
+	}
+	bondSnapshots := map[string]bondSnapshot{}
+	requiredBondProtocols := map[string]struct{}{}
 	for _, task := range addressLookupTasks {
-		if task != nil && strings.EqualFold(strings.TrimSpace(task.chain), "THOR") {
-			hasTHORLookups = true
-			break
+		if task == nil {
+			continue
+		}
+		switch strings.ToUpper(strings.TrimSpace(task.chain)) {
+		case "THOR", "MAYA":
+			requiredBondProtocols[strings.ToUpper(strings.TrimSpace(task.chain))] = struct{}{}
 		}
 	}
-	if hasTHORLookups || len(nodeLookupRefs) > 0 {
-		bondLookupCtx, bondLookupCancel := context.WithTimeout(lookupCtx, a.liveHoldingsLookupTimeout("thornode", "THOR"))
-		bondedByAddress, bondedByNode, nodeStatusByNode, err := a.fetchTHORBondIndexes(bondLookupCtx)
+	for _, ref := range nodeLookupRefs {
+		requiredBondProtocols[normalizeSourceProtocol(ref.protocol)] = struct{}{}
+	}
+	for protocol := range requiredBondProtocols {
+		provider := "thornode"
+		if protocol == sourceProtocolMAYA {
+			provider = "mayanode"
+		}
+		bondLookupCtx, bondLookupCancel := context.WithTimeout(lookupCtx, a.liveHoldingsLookupTimeout(provider, protocol))
+		bondedByAddress, bondedByNode, nodeStatusByNode, err := a.fetchProtocolBondIndexes(bondLookupCtx, protocol)
 		bondLookupCancel()
 		if err != nil {
-			if hasTHORLookups {
-				warnings = append(warnings, "live bonded rune unavailable for THOR addresses")
-			}
-			if len(nodeLookupRefs) > 0 {
-				warnings = append(warnings, "live bonded rune unavailable for validator nodes")
-			}
+			warnings = append(warnings, fmt.Sprintf("live bonded %s unavailable for %s addresses", strings.ToLower(strings.TrimPrefix(nativeAssetForProtocol(protocol), strings.ToUpper(protocol)+".")), protocol))
+			warnings = append(warnings, fmt.Sprintf("live bonded %s unavailable for %s validator nodes", strings.ToLower(strings.TrimPrefix(nativeAssetForProtocol(protocol), strings.ToUpper(protocol)+".")), protocol))
 		} else {
-			thorBondedByAddress = bondedByAddress
-			thorBondedByNode = bondedByNode
-			thorNodeStatusByNode = nodeStatusByNode
+			bondSnapshots[protocol] = bondSnapshot{
+				bondedByAddress:  bondedByAddress,
+				bondedByNode:     bondedByNode,
+				nodeStatusByNode: nodeStatusByNode,
+			}
 		}
 	}
 
@@ -2015,24 +2206,29 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		nodeAddress := normalizeAddress(getString(nodes[idx].Metrics, "address"))
 		amountRaw := ""
 		nodeStatus := ""
-		if thorBondedByNode != nil {
-			amountRaw = strings.TrimSpace(thorBondedByNode[nodeAddress])
+		snapshot := bondSnapshots[normalizeSourceProtocol(ref.protocol)]
+		if snapshot.bondedByNode != nil {
+			amountRaw = strings.TrimSpace(snapshot.bondedByNode[nodeAddress])
 		}
-		if thorNodeStatusByNode != nil {
-			nodeStatus = strings.TrimSpace(thorNodeStatusByNode[nodeAddress])
+		if snapshot.nodeStatusByNode != nil {
+			nodeStatus = strings.TrimSpace(snapshot.nodeStatusByNode[nodeAddress])
 		}
 		if nodeAddress != "" {
-			nodes[idx].Label = thorNodeDisplayLabel(nodeAddress, nodeStatus)
+			nodes[idx].Label = protocolBondDisplayLabel(ref.protocol, nodeAddress, nodeStatus)
 		}
 		nodes[idx].Metrics["node_status"] = nodeStatus
 		nodes[idx].Metrics["node_total_bond"] = amountRaw
 		if hasGraphableLiquidity(amountRaw) {
 			holdings := []liveHoldingValue{{
-				Asset:     "THOR.RUNE",
+				Asset:     nativeAssetForProtocol(ref.protocol),
 				AmountRaw: amountRaw,
-				USDSpot:   prices.usdFor("THOR.RUNE", amountRaw),
+				USDSpot:   prices.usdFor(nativeAssetForProtocol(ref.protocol), amountRaw),
 			}}
-			applyLiveHoldingMetrics(&nodes[idx], holdings, "thornode_node_bond", now)
+			source := "thornode_node_bond"
+			if normalizeSourceProtocol(ref.protocol) == sourceProtocolMAYA {
+				source = "mayanode_node_bond"
+			}
+			applyLiveHoldingMetrics(&nodes[idx], holdings, source, now)
 		} else {
 			nodes[idx].Metrics["live_holdings_available"] = false
 			nodes[idx].Metrics["live_holdings_status"] = "error"
@@ -2060,128 +2256,142 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		err      error
 		elapsed  time.Duration
 	}
-	results := make(chan addressResult, len(addressLookupTasks))
-	buckets := map[string][]addressLookupTask{}
-	for _, task := range addressLookupTasks {
-		if task == nil {
-			continue
-		}
-		buckets[task.bucketKey] = append(buckets[task.bucketKey], *task)
-	}
-
-	runBucket := func(tasks []addressLookupTask) {
-		if len(tasks) == 0 {
+	var failed []string
+	runTaskPhase := func(tasks []liveHoldingAddressLookupTask) {
+		if len(tasks) == 0 || lookupCtx.Err() != nil {
 			return
 		}
-		jobs := make(chan addressLookupTask, len(tasks))
-		workerCount := min(a.liveHoldingsBucketConcurrency(tasks[0].provider, tasks[0].chain), len(tasks))
-		if workerCount < 1 {
-			workerCount = 1
+		results := make(chan addressResult, len(tasks))
+		buckets := map[string][]liveHoldingAddressLookupTask{}
+		for _, task := range tasks {
+			buckets[task.bucketKey] = append(buckets[task.bucketKey], task)
 		}
-		var bucketWG sync.WaitGroup
-		bucketWG.Add(workerCount)
-		for i := 0; i < workerCount; i++ {
-			go func() {
-				defer bucketWG.Done()
-				for task := range jobs {
-					if err := lookupCtx.Err(); err != nil {
+		runBucket := func(tasks []liveHoldingAddressLookupTask) {
+			if len(tasks) == 0 {
+				return
+			}
+			jobs := make(chan liveHoldingAddressLookupTask, len(tasks))
+			workerCount := min(a.liveHoldingsBucketConcurrency(tasks[0].provider, tasks[0].chain), len(tasks))
+			if workerCount < 1 {
+				workerCount = 1
+			}
+			var bucketWG sync.WaitGroup
+			bucketWG.Add(workerCount)
+			for i := 0; i < workerCount; i++ {
+				go func() {
+					defer bucketWG.Done()
+					for task := range jobs {
+						if err := lookupCtx.Err(); err != nil {
+							results <- addressResult{
+								taskKey:  task.key,
+								chain:    task.chain,
+								address:  task.address,
+								provider: task.provider,
+								err:      err,
+							}
+							continue
+						}
+						taskTimeout := a.liveHoldingsLookupTimeout(task.provider, task.chain)
+						taskCtx, taskCancel := context.WithTimeout(lookupCtx, taskTimeout)
+						startedAt := time.Now()
+
+						var (
+							holdings []liveHoldingValue
+							err      error
+						)
+						switch task.chain {
+						case "THOR":
+							holdings, err = a.fetchProtocolAddressLiveHoldings(taskCtx, sourceProtocolTHOR, task.address, prices, bondSnapshots[sourceProtocolTHOR].bondedByAddress)
+						case "MAYA":
+							holdings, err = a.fetchProtocolAddressLiveHoldings(taskCtx, sourceProtocolMAYA, task.address, prices, bondSnapshots[sourceProtocolMAYA].bondedByAddress)
+						default:
+							holdings, err = a.fetchAddressLiveHoldings(taskCtx, task.chain, task.address, prices)
+						}
+
 						results <- addressResult{
 							taskKey:  task.key,
 							chain:    task.chain,
 							address:  task.address,
 							provider: task.provider,
+							holdings: holdings,
 							err:      err,
+							elapsed:  time.Since(startedAt),
 						}
-						continue
+						taskCancel()
 					}
-					taskTimeout := a.liveHoldingsLookupTimeout(task.provider, task.chain)
-					taskCtx, taskCancel := context.WithTimeout(lookupCtx, taskTimeout)
-					startedAt := time.Now()
+				}()
+			}
+			for _, task := range tasks {
+				jobs <- task
+			}
+			close(jobs)
+			bucketWG.Wait()
+		}
 
-					var (
-						holdings []liveHoldingValue
-						err      error
-					)
-					if task.chain == "THOR" {
-						holdings, err = a.fetchTHORAddressLiveHoldings(taskCtx, task.address, prices, thorBondedByAddress)
-					} else {
-						holdings, err = a.fetchAddressLiveHoldings(taskCtx, task.chain, task.address, prices)
-					}
-
-					results <- addressResult{
-						taskKey:  task.key,
-						chain:    task.chain,
-						address:  task.address,
-						provider: task.provider,
-						holdings: holdings,
-						err:      err,
-						elapsed:  time.Since(startedAt),
-					}
-					taskCancel()
-				}
+		var lookupWG sync.WaitGroup
+		for _, tasks := range buckets {
+			bucketTasks := append([]liveHoldingAddressLookupTask(nil), tasks...)
+			lookupWG.Add(1)
+			go func() {
+				defer lookupWG.Done()
+				runBucket(bucketTasks)
 			}()
 		}
-		for _, task := range tasks {
-			jobs <- task
-		}
-		close(jobs)
-		bucketWG.Wait()
-	}
-
-	var lookupWG sync.WaitGroup
-	for _, tasks := range buckets {
-		bucketTasks := append([]addressLookupTask(nil), tasks...)
-		lookupWG.Add(1)
 		go func() {
-			defer lookupWG.Done()
-			runBucket(bucketTasks)
+			lookupWG.Wait()
+			close(results)
 		}()
-	}
-	go func() {
-		lookupWG.Wait()
-		close(results)
-	}()
 
-	var failed []string
-	for result := range results {
-		task, ok := addressLookupTasks[result.taskKey]
-		if !ok {
-			continue
-		}
-		refs := task.refs
-		if result.err != nil {
-			failed = append(failed, fmt.Sprintf("%s:%s", task.chain, shortAddress(task.address)))
-			budgetExceeded := errors.Is(lookupCtx.Err(), context.DeadlineExceeded) &&
-				(errors.Is(result.err, context.DeadlineExceeded) || errors.Is(result.err, context.Canceled))
-			if !budgetExceeded {
-				fields := map[string]any{
-					"chain":      task.chain,
-					"address":    task.address,
-					"provider":   result.provider,
-					"elapsed_ms": result.elapsed.Milliseconds(),
+		for result := range results {
+			task, ok := addressLookupTasks[result.taskKey]
+			if !ok {
+				continue
+			}
+			refs := task.refs
+			if result.err != nil {
+				failed = append(failed, fmt.Sprintf("%s:%s", task.chain, shortAddress(task.address)))
+				budgetExceeded := errors.Is(lookupCtx.Err(), context.DeadlineExceeded) &&
+					(errors.Is(result.err, context.DeadlineExceeded) || errors.Is(result.err, context.Canceled))
+				if !budgetExceeded {
+					fields := map[string]any{
+						"chain":      task.chain,
+						"address":    task.address,
+						"provider":   result.provider,
+						"elapsed_ms": result.elapsed.Milliseconds(),
+					}
+					if task.chain == "THOR" {
+						fields["provider_candidates"] = "thornode,midgard"
+					} else if task.chain == "MAYA" {
+						fields["provider_candidates"] = "mayanode,midgard"
+					} else if providers := strings.Join(a.cfg.trackerProvidersForChain(task.chain), ","); providers != "" {
+						fields["provider_candidates"] = providers
+					}
+					logError(baseLookupCtx, "actor_tracker_live_holdings_lookup_failed", result.err, fields)
 				}
-				if task.chain == "THOR" {
-					fields["provider_candidates"] = "thornode,midgard"
-				} else if providers := strings.Join(a.cfg.trackerProvidersForChain(task.chain), ","); providers != "" {
-					fields["provider_candidates"] = providers
+				for _, ref := range refs {
+					if nodes[ref.index].Metrics == nil {
+						nodes[ref.index].Metrics = map[string]any{}
+					}
+					nodes[ref.index].Metrics["live_holdings_available"] = false
+					nodes[ref.index].Metrics["live_holdings_status"] = "error"
 				}
-				logError(baseLookupCtx, "actor_tracker_live_holdings_lookup_failed", result.err, fields)
+				continue
 			}
 			for _, ref := range refs {
-				if nodes[ref.index].Metrics == nil {
-					nodes[ref.index].Metrics = map[string]any{}
+				source := "external_live_balance"
+				if task.chain == "THOR" {
+					source = "thornode_midgard"
+				} else if task.chain == "MAYA" {
+					source = "mayanode_midgard"
 				}
-				nodes[ref.index].Metrics["live_holdings_available"] = false
-				nodes[ref.index].Metrics["live_holdings_status"] = "error"
+				applyLiveHoldingMetrics(&nodes[ref.index], result.holdings, source, now)
 			}
-			continue
 		}
-		for _, ref := range refs {
-			source := "external_live_balance"
-			if task.chain == "THOR" {
-				source = "thornode_midgard"
-			}
-			applyLiveHoldingMetrics(&nodes[ref.index], result.holdings, source, now)
+	}
+	for _, phaseTasks := range planAddressLookupPhases(nodes, addressLookupTasks) {
+		runTaskPhase(phaseTasks)
+		if errors.Is(lookupCtx.Err(), context.DeadlineExceeded) {
+			break
 		}
 	}
 	if len(failed) > 0 {
@@ -2205,6 +2415,9 @@ func (a *App) liveHoldingsProviderForChain(chain string) string {
 	if chain == "THOR" {
 		return "thornode"
 	}
+	if chain == "MAYA" {
+		return "mayanode"
+	}
 	if provider := strings.ToLower(strings.TrimSpace(a.cfg.trackerProviderForChain(chain))); provider != "" {
 		return provider
 	}
@@ -2217,11 +2430,11 @@ func (a *App) liveHoldingsLookupTimeout(provider, chain string) time.Duration {
 	switch {
 	case provider == "utxo":
 		return a.clampLiveHoldingsLookupTimeout(8 * time.Second)
-	case provider == "solana" || provider == "xrpl" || provider == "cosmos":
+	case provider == "solana" || provider == "xrpl" || provider == "cosmos" || provider == "radix":
 		return a.clampLiveHoldingsLookupTimeout(6 * time.Second)
 	case provider == "etherscan" || provider == "blockscout" || provider == "nodereal" || provider == "trongrid":
 		return a.clampLiveHoldingsLookupTimeout(12 * time.Second)
-	case provider == "thornode" || provider == "midgard" || chain == "THOR":
+	case provider == "thornode" || provider == "mayanode" || provider == "midgard" || chain == "THOR" || chain == "MAYA":
 		return a.clampLiveHoldingsLookupTimeout(12 * time.Second)
 	default:
 		return a.clampLiveHoldingsLookupTimeout(10 * time.Second)
@@ -2314,6 +2527,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 	action, consumedExternalTransfers := b.stitchMidgardAction(action, externalTransfers)
 	actionMeta := describeMidgardAction(action)
 	actionClass := actionMeta.ActionClass
+	actionProtocol := sourceProtocolFromAction(action)
 	if !b.allowed(actionClass) {
 		return nil, nil, nil, consumedExternalTransfers
 	}
@@ -2370,6 +2584,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			ActionDomain:     actionMeta.ActionDomain,
 			ContractType:     actionMeta.ContractType,
 			ContractProtocol: actionMeta.ContractProtocol,
+			SourceProtocol:   actionProtocol,
 			Asset:            normalizeAsset(asset),
 			AmountRaw:        amount,
 			USDSpot:          b.prices.usdFor(asset, amount),
@@ -2380,7 +2595,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			ActorIDs:         mergeInt64s(mergeInt64s(source.ActorIDs, target.ActorIDs), actionActorIDs),
 		}
 		if actionClass == "swaps" {
-			seg.CanonicalKey = canonicalSwapSegmentKey(firstNonEmpty(swapTxID, seg.TxID), source.Address, target.Address, seg.Asset)
+			seg.CanonicalKey = canonicalSwapSegmentKey(firstNonEmpty(swapTxID, seg.TxID), source.Address, target.Address, seg.Asset, actionProtocol)
 		}
 		if b.minUSD > 0 && seg.USDSpot > 0 && seg.USDSpot < b.minUSD && !hasActorIDs(seg.ActorIDs) {
 			return
@@ -2562,7 +2777,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 					return asset, amount
 				}
 			}
-			return "THOR.RUNE", "0"
+			return nativeAssetForProtocol(actionProtocol), "0"
 		}
 		isOutboundBondFlow := strings.Contains(actionType, "unbond") || actionType == "leave" || strings.Contains(actionType, "slash") || strings.Contains(actionType, "reward")
 		isRebondFlow := actionType == "rebond"
@@ -2577,7 +2792,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			if bondProviderAddress != "" {
 				walletAddress = bondProviderAddress
 			}
-			walletRef := b.makeBondWalletRef(walletAddress, baseDepth)
+			walletRef := b.makeBondWalletRef(walletAddress, actionProtocol, baseDepth)
 			if walletRef.ID == "" || isAsgardModuleAddress(walletRef.Address) || isBondModuleAddress(walletRef.Address) {
 				continue
 			}
@@ -2594,7 +2809,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			}
 			asset, amount := pickCoin(inLeg.Coins, fallbackCoins)
 			if isRebondFlow {
-				targetRef := b.makeBondWalletRef(midgardRebondNewBondAddress(action), baseDepth+1)
+				targetRef := b.makeBondWalletRef(midgardRebondNewBondAddress(action), actionProtocol, baseDepth+1)
 				if targetRef.ID == "" || targetRef.Key == walletRef.Key {
 					continue
 				}
@@ -2602,11 +2817,11 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				addSegment(walletRef, targetRef, asset, amount, 0.9, txID)
 				for i := before; i < len(segments); i++ {
 					segments[i].ValidatorAddress = nodeAddress
-					segments[i].ValidatorLabel = thorNodeDisplayLabel(nodeAddress, "")
+					segments[i].ValidatorLabel = protocolBondDisplayLabel(actionProtocol, nodeAddress, "")
 				}
 				continue
 			}
-			nodeRef := b.makeNodeRef(nodeAddress, baseDepth+1)
+			nodeRef := b.makeNodeRef(nodeAddress, actionProtocol, baseDepth+1)
 			if nodeRef.ID == "" {
 				continue
 			}
@@ -2620,7 +2835,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 	}
 
 	if actionClass == "swaps" {
-		swapOutLegs, suppressedFeeLegs := selectMidgardSwapOutLegs(legsOut)
+		swapOutLegs, suppressedFeeLegs := selectMidgardSwapOutLegs(actionProtocol, legsOut)
 		if suppressedFeeLegs > 0 {
 			b.feeActionDrop += suppressedFeeLegs
 		}
@@ -2679,7 +2894,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 	}
 
 	if actionClass == "liquidity" {
-		poolRef := b.makePoolRef(midgardActionPool(action), baseDepth+1)
+		poolRef := b.makePoolRef(midgardActionPool(action), actionProtocol, baseDepth+1)
 		if poolRef.ID != "" {
 			for _, inLeg := range legsIn {
 				source := b.makeAddressRef(inLeg.Address, chainFromMidgardCoins(inLeg.Coins), baseDepth)
@@ -2688,7 +2903,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 					if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, inLeg, midgardActionLeg{}); ok {
 						addSegment(source, poolRef, inferredAsset, inferredAmount, 0.72, txID)
 					} else {
-						addSegment(source, poolRef, "THOR.RUNE", "0", 0.62, txID)
+						addSegment(source, poolRef, nativeAssetForProtocol(actionProtocol), "0", 0.62, txID)
 					}
 					continue
 				}
@@ -2703,7 +2918,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 					if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, midgardActionLeg{}, outLeg); ok {
 						addSegment(poolRef, target, inferredAsset, inferredAmount, 0.7, txID)
 					} else {
-						addSegment(poolRef, target, "THOR.RUNE", "0", 0.6, txID)
+						addSegment(poolRef, target, nativeAssetForProtocol(actionProtocol), "0", 0.6, txID)
 					}
 					continue
 				}
@@ -2730,7 +2945,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, inLeg, outLeg); ok {
 					addSegment(source, target, inferredAsset, inferredAmount, 0.68, txID)
 				} else {
-					addSegment(source, target, "THOR.RUNE", "0", 0.62, txID)
+					addSegment(source, target, nativeAssetForProtocol(actionProtocol), "0", 0.62, txID)
 				}
 				continue
 			}
@@ -2743,7 +2958,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 	return segments, uniqueFrontierAddresses(nextAddresses), nil, consumedExternalTransfers
 }
 
-func selectMidgardSwapOutLegs(legsOut []midgardActionLeg) ([]midgardActionLeg, int) {
+func selectMidgardSwapOutLegs(protocol string, legsOut []midgardActionLeg) ([]midgardActionLeg, int) {
 	if len(legsOut) <= 1 {
 		return legsOut, 0
 	}
@@ -2760,7 +2975,7 @@ func selectMidgardSwapOutLegs(legsOut []midgardActionLeg) ([]midgardActionLeg, i
 	filtered := make([]midgardActionLeg, 0, len(legsOut))
 	suppressed := 0
 	for _, leg := range legsOut {
-		if cleanTxID(leg.TxID) == "" && isMidgardFeeLikeSwapOutLeg(leg) {
+		if cleanTxID(leg.TxID) == "" && isMidgardFeeLikeSwapOutLegForProtocol(protocol, leg) {
 			suppressed++
 			continue
 		}
@@ -2773,14 +2988,18 @@ func selectMidgardSwapOutLegs(legsOut []midgardActionLeg) ([]midgardActionLeg, i
 }
 
 func isMidgardFeeLikeSwapOutLeg(leg midgardActionLeg) bool {
-	if normalizeChain("", leg.Address) != "THOR" {
+	return isMidgardFeeLikeSwapOutLegForProtocol(sourceProtocolTHOR, leg)
+}
+
+func isMidgardFeeLikeSwapOutLegForProtocol(protocol string, leg midgardActionLeg) bool {
+	if normalizeChain("", leg.Address) != normalizeChain("", protocolAddressPrefix(protocol)+"1dummy") {
 		return false
 	}
 	if len(leg.Coins) == 0 {
 		return false
 	}
 	for _, coin := range leg.Coins {
-		if normalizeAsset(coin.Asset) != "THOR.RUNE" {
+		if normalizeAsset(coin.Asset) != nativeAssetForProtocol(protocol) {
 			return false
 		}
 		if !hasGraphableLiquidity(coin.Amount) {
@@ -2943,6 +3162,14 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 	if source.ID == "" || target.ID == "" {
 		return
 	}
+	mergeNodeSourceProtocol(source, seg.SourceProtocol)
+	mergeNodeSourceProtocol(target, seg.SourceProtocol)
+	if b.sourceProtocols == nil {
+		b.sourceProtocols = map[string]struct{}{}
+	}
+	if protocol := normalizeSourceProtocol(seg.SourceProtocol); protocol != "" {
+		b.sourceProtocols[protocol] = struct{}{}
+	}
 	if seg.ActionClass != "ownership" {
 		canonical := strings.TrimSpace(seg.CanonicalKey)
 		if canonical != "" {
@@ -2965,7 +3192,7 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 	validatorAddress := normalizeAddress(seg.ValidatorAddress)
 	validatorLabel := strings.TrimSpace(seg.ValidatorLabel)
 	if validatorAddress != "" && validatorLabel == "" {
-		validatorLabel = thorNodeDisplayLabel(validatorAddress, "")
+		validatorLabel = protocolBondDisplayLabel(seg.SourceProtocol, validatorAddress, "")
 	}
 	meta := mergeAssetMetadata(assetMetadata{
 		AssetKind:     seg.AssetKind,
@@ -2994,10 +3221,14 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 			ContractType:     seg.ContractType,
 			ContractProtocol: seg.ContractProtocol,
 			Confidence:       seg.Confidence,
+			SourceProtocols:  nil,
 		}
 		b.edges[edgeKey] = edge
 	}
 	edge.ActorIDs = mergeInt64s(edge.ActorIDs, seg.ActorIDs)
+	if protocol := normalizeSourceProtocol(seg.SourceProtocol); protocol != "" {
+		edge.SourceProtocols = appendUniqueString(edge.SourceProtocols, protocol)
+	}
 	if edge.ActionLabel == "" {
 		edge.ActionLabel = firstNonEmpty(seg.ActionLabel, edge.ActionLabel)
 	}
@@ -3025,19 +3256,19 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 
 		if inAsset != "" && hasGraphableLiquidity(inAmount) {
 			inMeta := assetMetadataFromAsset(inAsset)
-			mergeEdgeTransactionAsset(edge, seg.TxID, seg.Height, seg.Time, inAsset, inAmount, b.prices.usdFor(inAsset, inAmount), inMeta, "in")
+			mergeEdgeTransactionAsset(edge, seg.TxID, seg.SourceProtocol, seg.Height, seg.Time, inAsset, inAmount, b.prices.usdFor(inAsset, inAmount), inMeta, "in")
 			added = true
 		}
 		if outAsset != "" && hasGraphableLiquidity(outAmount) {
 			outMeta := assetMetadataFromAsset(outAsset)
-			mergeEdgeTransactionAsset(edge, seg.TxID, seg.Height, seg.Time, outAsset, outAmount, b.prices.usdFor(outAsset, outAmount), outMeta, "out")
+			mergeEdgeTransactionAsset(edge, seg.TxID, seg.SourceProtocol, seg.Height, seg.Time, outAsset, outAmount, b.prices.usdFor(outAsset, outAmount), outMeta, "out")
 			added = true
 		}
 		if !added {
-			mergeEdgeTransactionAsset(edge, seg.TxID, seg.Height, seg.Time, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
+			mergeEdgeTransactionAsset(edge, seg.TxID, seg.SourceProtocol, seg.Height, seg.Time, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
 		}
 	} else {
-		mergeEdgeTransactionAsset(edge, seg.TxID, seg.Height, seg.Time, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
+		mergeEdgeTransactionAsset(edge, seg.TxID, seg.SourceProtocol, seg.Height, seg.Time, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
 	}
 	recomputeEdgeAggregate(edge)
 
@@ -3047,7 +3278,7 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 	if seg.ActionClass == "ownership" {
 		return
 	}
-	actionID := strings.Join([]string{seg.TxID, actionKey, source.ID, target.ID}, "|")
+	actionID := strings.Join([]string{seg.TxID, normalizeSourceProtocol(seg.SourceProtocol), actionKey, source.ID, target.ID}, "|")
 	if validatorAddress != "" && isRebondActionKey(actionKey) {
 		actionID = actionID + "|validator:" + validatorAddress
 	}
@@ -3077,6 +3308,7 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 			FromNode:         source.ID,
 			ToNode:           target.ID,
 			ActorIDs:         seg.ActorIDs,
+			SourceProtocol:   normalizeSourceProtocol(seg.SourceProtocol),
 		}
 		b.actions[actionID] = action
 	} else {
@@ -3123,6 +3355,9 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 		}
 		if action.AmountRaw == "" {
 			action.AmountRaw = seg.AmountRaw
+		}
+		if action.SourceProtocol == "" {
+			action.SourceProtocol = normalizeSourceProtocol(seg.SourceProtocol)
 		}
 	}
 }
@@ -3330,20 +3565,24 @@ func (b *graphBuilder) makeContractRef(address string, descriptor contractCallDe
 	return ref
 }
 
-func (b *graphBuilder) makePoolRef(pool string, depth int) flowRef {
+func (b *graphBuilder) makePoolRef(pool, protocol string, depth int) flowRef {
 	pool = normalizeAsset(strings.TrimSpace(pool))
 	if pool == "" {
 		return flowRef{}
 	}
+	protocol = normalizeSourceProtocol(protocol)
 	return flowRef{
-		ID:      fmt.Sprintf("pool:%s:pool:%d", normalizeAsset(pool), depth),
-		Key:     normalizeAsset(pool),
-		Kind:    "pool",
-		Label:   poolDisplayLabel(pool),
-		Chain:   chainFromAsset(pool),
-		Stage:   "pool",
-		Depth:   depth,
-		Metrics: map[string]any{"pool": pool},
+		ID:    fmt.Sprintf("pool:%s:%s:pool:%d", normalizeAsset(pool), strings.ToLower(protocol), depth),
+		Key:   protocolPoolSnapshotKey(protocol, pool),
+		Kind:  "pool",
+		Label: poolDisplayLabel(pool) + " (" + protocol + ")",
+		Chain: chainFromAsset(pool),
+		Stage: "pool",
+		Depth: depth,
+		Metrics: map[string]any{
+			"pool":            pool,
+			"source_protocol": protocol,
+		},
 	}
 }
 
@@ -3395,21 +3634,23 @@ func midgardRebondValidatorAddress(action midgardAction) string {
 	return ""
 }
 
-func (b *graphBuilder) makeNodeRef(nodeAddress string, depth int) flowRef {
+func (b *graphBuilder) makeNodeRef(nodeAddress, protocol string, depth int) flowRef {
 	nodeAddress = strings.TrimSpace(nodeAddress)
 	if nodeAddress == "" {
 		return flowRef{}
 	}
 	normalized := normalizeAddress(nodeAddress)
+	protocol = normalizeSourceProtocol(protocol)
 	metrics := map[string]any{
-		"address": nodeAddress,
+		"address":         nodeAddress,
+		"source_protocol": protocol,
 	}
 	return flowRef{
-		ID:      fmt.Sprintf("node:%s:node_bond:%d", normalized, depth),
+		ID:      fmt.Sprintf("node:%s:%s:node_bond:%d", normalized, strings.ToLower(protocol), depth),
 		Key:     normalized,
 		Kind:    "node",
-		Label:   thorNodeDisplayLabel(nodeAddress, ""),
-		Chain:   "THOR",
+		Label:   protocolBondDisplayLabel(protocol, nodeAddress, ""),
+		Chain:   normalizeChain(protocol, nodeAddress),
 		Stage:   "node_bond",
 		Depth:   depth,
 		Address: normalized,
@@ -3417,27 +3658,29 @@ func (b *graphBuilder) makeNodeRef(nodeAddress string, depth int) flowRef {
 	}
 }
 
-func (b *graphBuilder) makeBondRef(address string, depth int) flowRef {
+func (b *graphBuilder) makeBondRef(address, protocol string, depth int) flowRef {
 	address = strings.TrimSpace(address)
 	if address == "" {
 		return flowRef{}
 	}
-	ref := b.makeAddressRef(address, "THOR", depth)
+	protocol = normalizeSourceProtocol(protocol)
+	ref := b.makeAddressRef(address, protocol, depth)
 	if ref.Kind == "external_address" {
 		ref.Kind = "bond_address"
 		ref.Stage = "node_bond"
-		ref.ID = fmt.Sprintf("bond_address:%s:node_bond:%d", normalizeAddress(address), depth)
+		ref.ID = fmt.Sprintf("bond_address:%s:%s:node_bond:%d", normalizeAddress(address), strings.ToLower(protocol), depth)
 		ref.Label = "Bond " + shortAddress(address)
 	}
 	return ref
 }
 
-func (b *graphBuilder) makeBondWalletRef(address string, depth int) flowRef {
+func (b *graphBuilder) makeBondWalletRef(address, protocol string, depth int) flowRef {
 	address = strings.TrimSpace(address)
 	if address == "" {
 		return flowRef{}
 	}
-	ref := b.makeAddressRef(address, "THOR", depth)
+	protocol = normalizeSourceProtocol(protocol)
+	ref := b.makeAddressRef(address, protocol, depth)
 	if ref.ID == "" || ref.Kind == "actor_address" {
 		return ref
 	}
@@ -3445,18 +3688,19 @@ func (b *graphBuilder) makeBondWalletRef(address string, depth int) flowRef {
 		return ref
 	}
 	norm := normalizeAddress(address)
-	ref.ID = fmt.Sprintf("external_address:%s:external:%d", norm, depth)
+	ref.ID = fmt.Sprintf("external_address:%s:%s:external:%d", norm, strings.ToLower(protocol), depth)
 	ref.Key = norm
 	ref.Kind = "external_address"
 	ref.Stage = "external"
 	ref.Label = "Bond Wallet " + shortAddress(address)
-	ref.Chain = "THOR"
+	ref.Chain = normalizeChain(protocol, address)
 	ref.Collapsed = true
 	ref.Address = norm
 	if ref.Metrics == nil {
 		ref.Metrics = map[string]any{}
 	}
 	ref.Metrics["address"] = address
+	ref.Metrics["source_protocol"] = protocol
 	return ref
 }
 
@@ -3515,7 +3759,7 @@ func (b *graphBuilder) applyNodeLabelsToValidatorMetadata(nodes []FlowNode) {
 		}
 		label := strings.TrimSpace(node.Label)
 		if label == "" {
-			label = thorNodeDisplayLabel(address, getString(node.Metrics, "node_status"))
+			label = protocolBondDisplayLabel(getString(node.Metrics, "source_protocol"), address, getString(node.Metrics, "node_status"))
 		}
 		labelByAddress[address] = label
 	}
@@ -3579,6 +3823,20 @@ func (b *graphBuilder) actionList() []SupportingAction {
 		}
 		return out[i].Time.Before(out[j].Time)
 	})
+	return out
+}
+
+func (b *graphBuilder) sourceProtocolList() []string {
+	if b == nil || len(b.sourceProtocols) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(b.sourceProtocols))
+	for protocol := range b.sourceProtocols {
+		if protocol = normalizeSourceProtocol(protocol); protocol != "" {
+			out = append(out, protocol)
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -3651,6 +3909,7 @@ func midgardActionClass(action midgardAction) string {
 }
 
 func midgardActionPool(action midgardAction) string {
+	nativeAsset := nativeAssetForProtocol(sourceProtocolFromAction(action))
 	for _, candidate := range action.Pools {
 		if pool := normalizeAsset(candidate); pool != "" {
 			return pool
@@ -3667,7 +3926,7 @@ func midgardActionPool(action midgardAction) string {
 				if firstAsset == "" {
 					firstAsset = asset
 				}
-				if asset != "THOR.RUNE" {
+				if asset != nativeAsset {
 					return asset
 				}
 			}
@@ -3688,7 +3947,7 @@ func inferContractActionClass(action midgardAction) string {
 	if contract == nil {
 		return "liquidity"
 	}
-	if _, _, ok := findContractSwapAmount(contract.Msg); ok {
+	if _, _, ok := findSwapAmountInValue(contract.Msg, sourceProtocolFromAction(action)); ok {
 		return "swaps"
 	}
 
@@ -3696,7 +3955,7 @@ func inferContractActionClass(action midgardAction) string {
 		return class
 	}
 
-	if _, _, ok := parseContractFunds(contract.Funds); ok {
+	if _, _, ok := parseContractFunds(contract.Funds, sourceProtocolFromAction(action)); ok {
 		return "liquidity"
 	}
 	return "liquidity"
@@ -4388,20 +4647,21 @@ func inferContractLegAmount(action midgardAction, inLeg, outLeg midgardActionLeg
 	if contract == nil {
 		return "", "", false
 	}
+	protocol := sourceProtocolFromAction(action)
 	if strings.TrimSpace(outLeg.TxID) != "" &&
 		strings.TrimSpace(inLeg.TxID) != "" &&
 		!strings.EqualFold(strings.TrimSpace(outLeg.TxID), strings.TrimSpace(inLeg.TxID)) {
 		return "", "", false
 	}
 	if preferContractFundsAmount(contract.ContractType) {
-		if asset, amount, ok := parseContractFunds(contract.Funds); ok {
+		if asset, amount, ok := parseContractFunds(contract.Funds, protocol); ok {
 			return asset, amount, true
 		}
 	}
-	if asset, amount, ok := findContractSwapAmount(contract.Msg); ok {
+	if asset, amount, ok := findSwapAmountInValue(contract.Msg, protocol); ok {
 		return asset, amount, true
 	}
-	if asset, amount, ok := parseContractFunds(contract.Funds); ok {
+	if asset, amount, ok := parseContractFunds(contract.Funds, protocol); ok {
 		return asset, amount, true
 	}
 	return "", "", false
@@ -4411,29 +4671,29 @@ func findContractSwapAmount(msg map[string]any) (string, string, bool) {
 	if len(msg) == 0 {
 		return "", "", false
 	}
-	return findSwapAmountInValue(msg)
+	return findSwapAmountInValue(msg, sourceProtocolTHOR)
 }
 
-func findSwapAmountInValue(value any) (string, string, bool) {
+func findSwapAmountInValue(value any, protocol string) (string, string, bool) {
 	switch typed := value.(type) {
 	case map[string]any:
 		if rawSwap, ok := typed["swap_amount"]; ok {
 			if swapMap, ok := rawSwap.(map[string]any); ok {
 				amount := stringifyAny(swapMap["amount"])
-				denom := normalizeContractDenom(stringifyAny(swapMap["denom"]))
+				denom := normalizeProtocolDenomAsset(protocol, stringifyAny(swapMap["denom"]))
 				if denom != "" && amount != "" {
 					return denom, amount, true
 				}
 			}
 		}
 		for _, child := range typed {
-			if asset, amount, ok := findSwapAmountInValue(child); ok {
+			if asset, amount, ok := findSwapAmountInValue(child, protocol); ok {
 				return asset, amount, true
 			}
 		}
 	case []any:
 		for _, child := range typed {
-			if asset, amount, ok := findSwapAmountInValue(child); ok {
+			if asset, amount, ok := findSwapAmountInValue(child, protocol); ok {
 				return asset, amount, true
 			}
 		}
@@ -4441,7 +4701,7 @@ func findSwapAmountInValue(value any) (string, string, bool) {
 	return "", "", false
 }
 
-func parseContractFunds(raw string) (string, string, bool) {
+func parseContractFunds(raw, protocol string) (string, string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", "", false
@@ -4460,7 +4720,7 @@ func parseContractFunds(raw string) (string, string, bool) {
 			continue
 		}
 		amount := strings.TrimSpace(part[:idx])
-		denom := normalizeContractDenom(part[idx:])
+		denom := normalizeProtocolDenomAsset(protocol, part[idx:])
 		if amount == "" || denom == "" {
 			continue
 		}
@@ -4470,14 +4730,14 @@ func parseContractFunds(raw string) (string, string, bool) {
 }
 
 func normalizeContractDenom(denom string) string {
-	denom = strings.TrimSpace(denom)
-	if denom == "" {
-		return ""
-	}
-	return normalizeTHORDenomAsset(denom)
+	return normalizeProtocolDenomAsset(sourceProtocolTHOR, denom)
 }
 
 func normalizeTHORDenomAsset(denom string) string {
+	return normalizeProtocolDenomAsset(sourceProtocolTHOR, denom)
+}
+
+func normalizeProtocolDenomAsset(protocol, denom string) string {
 	denom = strings.TrimSpace(denom)
 	if denom == "" {
 		return ""
@@ -4486,8 +4746,15 @@ func normalizeTHORDenomAsset(denom string) string {
 	switch lower {
 	case "rune":
 		return "THOR.RUNE"
+	case "cacao":
+		return "MAYA.CACAO"
 	case "tcy":
 		return "THOR.TCY"
+	}
+	protocol = normalizeSourceProtocol(protocol)
+	prefix := protocol
+	if prefix == "" {
+		prefix = sourceProtocolTHOR
 	}
 	if strings.HasPrefix(lower, "x/") {
 		symbol := strings.TrimSpace(denom[2:])
@@ -4497,13 +4764,13 @@ func normalizeTHORDenomAsset(denom string) string {
 		if asset := normalizeAsset(symbol); strings.Contains(asset, ".") {
 			return asset
 		}
-		return "THOR." + strings.ToUpper(symbol)
+		return prefix + "." + strings.ToUpper(symbol)
 	}
 	asset := normalizeAsset(denom)
 	if strings.Contains(asset, ".") {
 		return asset
 	}
-	return "THOR." + strings.ToUpper(denom)
+	return prefix + "." + strings.ToUpper(denom)
 }
 
 func stringifyAny(value any) string {
@@ -4547,8 +4814,10 @@ func parseMemoDestination(memo string) string {
 	lower := strings.ToLower(candidate)
 	if isLikelyEVMAddress(candidate) ||
 		strings.HasPrefix(lower, "thor") ||
+		strings.HasPrefix(lower, "maya") ||
 		strings.HasPrefix(lower, "bc1") ||
 		strings.HasPrefix(lower, "ltc") ||
+		strings.HasPrefix(lower, "account_rdx") ||
 		strings.HasPrefix(lower, "bitcoincash:") ||
 		strings.HasPrefix(candidate, "T") ||
 		isLikelyDOGEAddress(candidate) {
@@ -4576,7 +4845,7 @@ func parseBondMemoNodeAddress(memo string) string {
 		return ""
 	}
 	candidate := normalizeAddress(strings.TrimSpace(parts[1]))
-	if candidate == "" || !strings.HasPrefix(candidate, "thor") {
+	if candidate == "" || (!strings.HasPrefix(candidate, "thor") && !strings.HasPrefix(candidate, "maya")) {
 		return ""
 	}
 	return candidate
@@ -4678,7 +4947,7 @@ func midgardSwapCorrelationTxID(action midgardAction, fallback string) string {
 	return cleanTxID(fallback)
 }
 
-func canonicalSwapSegmentKey(txID, source, target, asset string) string {
+func canonicalSwapSegmentKey(txID, source, target, asset, protocol string) string {
 	txID = cleanTxID(txID)
 	source = normalizeAddress(source)
 	target = normalizeAddress(target)
@@ -4687,7 +4956,7 @@ func canonicalSwapSegmentKey(txID, source, target, asset string) string {
 		return ""
 	}
 	if asset == "" {
-		asset = "THOR.RUNE"
+		asset = nativeAssetForProtocol(protocol)
 	}
 	return strings.Join([]string{"swap", txID, source, target, asset}, "|")
 }
@@ -4699,8 +4968,14 @@ func normalizeAsset(asset string) string {
 		return upper
 	}
 	lower := strings.ToLower(trimmed)
+	switch lower {
+	case "rune":
+		return "THOR.RUNE"
+	case "cacao":
+		return "MAYA.CACAO"
+	}
 	if strings.HasPrefix(lower, "x/") {
-		return normalizeTHORDenomAsset(trimmed)
+		return normalizeContractDenom(trimmed)
 	}
 	parts := strings.SplitN(upper, "-", 2)
 	if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
@@ -4732,6 +5007,8 @@ func normalizeChain(chain, address string) string {
 	lower := strings.ToLower(address)
 	inferred := ""
 	switch {
+	case strings.HasPrefix(lower, "maya"):
+		inferred = "MAYA"
 	case strings.HasPrefix(lower, "thor"):
 		inferred = "THOR"
 	case isLikelyEVMAddress(address):
@@ -4746,6 +5023,10 @@ func normalizeChain(chain, address string) string {
 		inferred = "BCH"
 	case strings.HasPrefix(lower, "cosmos1"):
 		inferred = "GAIA"
+	case strings.HasPrefix(lower, "account_rdx"),
+		strings.HasPrefix(lower, "component_rdx"),
+		strings.HasPrefix(lower, "resource_rdx"):
+		inferred = "XRD"
 	case strings.HasPrefix(address, "T"):
 		inferred = "TRON"
 	case strings.HasPrefix(address, "r"):
@@ -4860,11 +5141,48 @@ func mergeEdgeAsset(edge *FlowEdge, asset, amountRaw string, usd float64, meta a
 	mergeAssetValues(&edge.Assets, asset, amountRaw, usd, meta, direction)
 }
 
-func mergeEdgeTransactionAsset(edge *FlowEdge, txID string, height int64, when time.Time, asset, amountRaw string, usd float64, meta assetMetadata, direction string) {
+func mergeNodeSourceProtocol(node *FlowNode, protocol string) {
+	if node == nil {
+		return
+	}
+	protocol = normalizeSourceProtocol(protocol)
+	if protocol == "" {
+		return
+	}
+	if node.Metrics == nil {
+		node.Metrics = map[string]any{}
+	}
+	values := stringSliceMetric(node.Metrics["source_protocols"])
+	values = appendUniqueString(values, protocol)
+	node.Metrics["source_protocols"] = values
+	if existing := strings.TrimSpace(getString(node.Metrics, "source_protocol")); existing == "" {
+		node.Metrics["source_protocol"] = protocol
+	}
+}
+
+func stringSliceMetric(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string{}, typed...)
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text := strings.TrimSpace(stringifyAny(item)); text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func mergeEdgeTransactionAsset(edge *FlowEdge, txID, sourceProtocol string, height int64, when time.Time, asset, amountRaw string, usd float64, meta assetMetadata, direction string) {
 	txID = strings.TrimSpace(txID)
+	sourceProtocol = normalizeSourceProtocol(sourceProtocol)
 	for i := range edge.Transactions {
 		tx := &edge.Transactions[i]
-		if tx.TxID != txID {
+		if tx.TxID != txID || normalizeSourceProtocol(tx.SourceProtocol) != sourceProtocol {
 			continue
 		}
 		if tx.Height == 0 || (height > 0 && height < tx.Height) {
@@ -4878,11 +5196,12 @@ func mergeEdgeTransactionAsset(edge *FlowEdge, txID string, height int64, when t
 		return
 	}
 	tx := FlowEdgeTransaction{
-		TxID:    txID,
-		Height:  height,
-		Time:    when,
-		USDSpot: usd,
-		Assets:  []FlowAssetValue{},
+		TxID:           txID,
+		SourceProtocol: sourceProtocol,
+		Height:         height,
+		Time:           when,
+		USDSpot:        usd,
+		Assets:         []FlowAssetValue{},
 	}
 	mergeAssetValues(&tx.Assets, asset, amountRaw, usd, meta, direction)
 	edge.Transactions = append(edge.Transactions, tx)

@@ -18,6 +18,7 @@ export function SupportingActionsTable({ actions, onLookup }: SupportingActionsT
           <tr>
             <th>Time</th>
             <th>Action</th>
+            <th>Source</th>
             <th>TX</th>
             <th>Asset</th>
             <th>Amount</th>
@@ -26,9 +27,10 @@ export function SupportingActionsTable({ actions, onLookup }: SupportingActionsT
         </thead>
         <tbody>
           {actions.map((action) => (
-            <tr key={[action.tx_id, action.action_key, action.from_node, action.to_node].join("|")}>
+            <tr key={[action.source_protocol || "", action.tx_id, action.action_key, action.from_node, action.to_node].join("|")}>
               <td>{formatDateTime(action.time)}</td>
               <td>{action.action_label || action.action_class}</td>
+              <td>{action.source_protocol || "THOR"}</td>
               <td>
                 <button type="button" className="table-link" onClick={() => onLookup(action.tx_id)}>
                   {shortHash(action.tx_id)}

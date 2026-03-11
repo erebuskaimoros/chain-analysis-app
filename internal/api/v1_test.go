@@ -37,6 +37,12 @@ func TestV1HealthRoute(t *testing.T) {
 	if !resp.OK {
 		t.Fatalf("expected ok health snapshot, got %#v", resp)
 	}
+	if _, ok := resp.LiquidityEngines["THOR"]; !ok {
+		t.Fatalf("expected THOR engine in health snapshot, got %#v", resp.LiquidityEngines)
+	}
+	if _, ok := resp.LiquidityEngines["MAYA"]; !ok {
+		t.Fatalf("expected MAYA engine in health snapshot, got %#v", resp.LiquidityEngines)
+	}
 }
 
 func TestV1ActorCRUD(t *testing.T) {

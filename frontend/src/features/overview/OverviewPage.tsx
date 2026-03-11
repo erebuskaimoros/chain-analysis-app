@@ -33,7 +33,7 @@ export function OverviewPage() {
           </article>
           <article>
             <strong>Actor Graph</strong>
-            <p>Graphs, expansions, run history, and live holdings refresh now execute from React against `/api/v1`.</p>
+            <p>Graphs, expansions, run history, and live holdings refresh now execute from React against `/api/v1` across THOR and MAYA liquidity engines.</p>
           </article>
           <article>
             <strong>Explorer</strong>

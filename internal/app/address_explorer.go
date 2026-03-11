@@ -15,7 +15,7 @@ const (
 	explorerModeGraph        = "graph"
 )
 
-var explorerCompatibleEVMChains = []string{"ETH", "BSC", "BASE", "AVAX"}
+var explorerCompatibleEVMChains = []string{"ETH", "ARB", "BSC", "BASE", "AVAX"}
 
 type explorerPreparedRequest struct {
 	rawAddress string
@@ -136,6 +136,7 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 		actions:              map[string]*SupportingAction{},
 		warnings:             append([]string{}, response.Warnings...),
 		seenCanonicalKey:     map[string]struct{}{},
+		sourceProtocols:      map[string]struct{}{},
 	}
 	if priceErr != nil {
 		builder.warnings = append(builder.warnings, "spot USD normalization unavailable; falling back to asset-native values")
@@ -251,6 +252,8 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 		"edge_count":              len(edges),
 		"supporting_action_count": len(supportingActions),
 		"active_chain_count":      len(activeChains),
+		"source_protocol_count":   len(builder.sourceProtocolList()),
+		"source_protocols":        builder.sourceProtocolList(),
 		"elapsed_ms":              time.Since(started).Milliseconds(),
 	}
 
@@ -410,13 +413,75 @@ func compatibleExplorerChains(protocols protocolDirectory, address string) []str
 }
 
 func (a *App) fetchAddressExplorerActions(ctx context.Context, address, direction string, offset, batchSize int, start, end time.Time) ([]midgardAction, bool, int, int, error) {
+	seed := normalizeFrontierAddress(address)
+	protocols := a.actionSourceProtocolsForSeed(seed)
+	if len(protocols) == 0 {
+		return nil, false, 0, -1, nil
+	}
+	if len(protocols) == 1 {
+		return a.fetchAddressExplorerActionsForProtocol(ctx, protocols[0], seed, direction, offset, batchSize, start, end)
+	}
+
+	totalEstimate := -1
+	if direction == "" {
+		direction = "newest"
+	}
+	var (
+		groups   [][]midgardAction
+		hasMore  bool
+		firstErr error
+	)
+	for _, protocol := range protocols {
+		startPage := offset
+		protocolHasMore := false
+		if direction == "oldest" {
+			totalPages, err := a.probeMidgardTotalPagesForProtocol(ctx, protocol, seed.Address, start, end)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			if totalEstimate < 0 {
+				totalEstimate = 0
+			}
+			totalEstimate += totalPages * midgardActionsPageLimit
+			startPage = totalPages - (offset + batchSize)
+			if startPage < 0 {
+				startPage = 0
+			}
+			protocolHasMore = totalPages > offset+batchSize
+		}
+
+		actions, truncated, err := a.fetchActionHistoryForAddressPagedFromProtocol(ctx, protocol, seed, start, end, startPage, batchSize)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		groups = append(groups, actions)
+		if direction == "newest" {
+			protocolHasMore = truncated
+		}
+		hasMore = hasMore || protocolHasMore
+	}
+	merged := mergeSourcedMidgardActions(groups...)
+	if len(merged) == 0 && firstErr != nil {
+		return nil, false, 0, totalEstimate, firstErr
+	}
+	nextOffset := offset + batchSize
+	return merged, hasMore, nextOffset, totalEstimate, nil
+}
+
+func (a *App) fetchAddressExplorerActionsForProtocol(ctx context.Context, protocol string, seed frontierAddress, direction string, offset, batchSize int, start, end time.Time) ([]midgardAction, bool, int, int, error) {
 	totalEstimate := -1
 	startPage := offset
 	if direction == "" {
 		direction = "newest"
 	}
 	if direction == "oldest" && offset == 0 {
-		totalPages, err := a.probeMidgardTotalPages(ctx, address, start, end)
+		totalPages, err := a.probeMidgardTotalPagesForProtocol(ctx, protocol, seed.Address, start, end)
 		if err != nil {
 			return nil, false, 0, 0, err
 		}
@@ -429,10 +494,11 @@ func (a *App) fetchAddressExplorerActions(ctx context.Context, address, directio
 			"total_pages":    totalPages,
 			"total_estimate": totalEstimate,
 			"start_page":     startPage,
+			"protocol":       protocol,
 		})
 	}
 
-	actions, truncated, err := a.fetchMidgardActionsForAddressPaged(ctx, address, start, end, startPage, batchSize)
+	actions, truncated, err := a.fetchActionHistoryForAddressPagedFromProtocol(ctx, protocol, seed, start, end, startPage, batchSize)
 	if err != nil {
 		return actions, false, 0, totalEstimate, err
 	}
@@ -451,12 +517,13 @@ func (a *App) fetchAddressExplorerActions(ctx context.Context, address, directio
 	}
 
 	logInfo(ctx, "address_explorer_actions_fetched", map[string]any{
-		"address":      address,
+		"address":      seed.Address,
 		"action_count": len(actions),
 		"direction":    direction,
 		"has_more":     hasMore,
 		"start_page":   startPage,
 		"batch_size":   batchSize,
+		"protocol":     protocol,
 	})
 
 	return actions, hasMore, nextOffset, totalEstimate, nil

@@ -622,7 +622,7 @@ func TestFetchAddressLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 			"BASE.ETH": {},
 		},
 		PoolSnapshots: map[string]MidgardPool{
-			"BASE.ETH": {
+			protocolPoolSnapshotKey(sourceProtocolTHOR, "BASE.ETH"): {
 				Asset:          "BASE.ETH",
 				AssetDepth:     "400000000",
 				RuneDepth:      "800000000",
@@ -672,6 +672,14 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 		switch r.URL.Path {
 		case "/pools":
 			_ = json.NewEncoder(w).Encode([]MidgardPool{
+				{
+					Asset:          "ETH.USDC",
+					Status:         "available",
+					AssetDepth:     "400000000",
+					RuneDepth:      "200000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "1",
+				},
 				{
 					Asset:          "BASE.ETH",
 					Status:         "available",
@@ -741,7 +749,7 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 			"BASE.ETH": {},
 		},
 		PoolSnapshots: map[string]MidgardPool{
-			"BASE.ETH": {
+			protocolPoolSnapshotKey(sourceProtocolTHOR, "BASE.ETH"): {
 				Asset:          "BASE.ETH",
 				Status:         "available",
 				AssetDepth:     "400000000",
@@ -759,6 +767,109 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 	}
 	if got, ok := nodes[0].Metrics["live_holdings_usd_spot"].(float64); !ok || got != 6014 {
 		t.Fatalf("expected THOR live_holdings_usd_spot=6014, got %#v", nodes[0].Metrics["live_holdings_usd_spot"])
+	}
+}
+
+func TestRefreshActorTrackerLiveHoldingsTHORAddressNodesPopulateLiveValue(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{
+				{
+					Asset:          "BASE.ETH",
+					Status:         "available",
+					AssetDepth:     "400000000",
+					RuneDepth:      "800000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "1000",
+				},
+			})
+		case "/cosmos/bank/v1beta1/balances/thor1watch":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"balances": []map[string]any{
+					{"denom": "rune", "amount": "100000000"},
+					{"denom": "x/ruji", "amount": "200000000"},
+				},
+			})
+		case "/member/thor1watch":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pools": []map[string]any{
+					{"pool": "BASE.ETH", "liquidityUnits": "25000000"},
+				},
+			})
+		case "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"node_address": "thor1validator",
+					"status":       "Active",
+					"total_bond":   "500000000",
+					"bond_providers": map[string]any{
+						"providers": []map[string]any{
+							{"bond_address": "thor1watch", "bond": "300000000"},
+						},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		thor:          NewThorClient([]string{server.URL}, 10*time.Second),
+		mid:           NewThorClient([]string{server.URL}, 10*time.Second),
+		httpClient:    server.Client(),
+		trackerHealth: newTrackerHealthStore(),
+	}
+
+	nodes := []FlowNode{
+		{
+			ID:      "actor_address:thor1watch:actor_address:1",
+			Kind:    "actor_address",
+			Label:   "Treasury Addr thor1watch",
+			Chain:   "THOR",
+			Stage:   "actor_address",
+			Depth:   1,
+			Metrics: map[string]any{"address": "thor1watch"},
+		},
+		{
+			ID:      "external_address:thor1watch:external:1",
+			Kind:    "external_address",
+			Label:   "thor1watch",
+			Chain:   "THOR",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": "thor1watch"},
+		},
+		{
+			ID:      "bond_address:thor1watch:node_bond:1",
+			Kind:    "bond_address",
+			Label:   "Bond Wallet thor1watch",
+			Chain:   "THOR",
+			Stage:   "node_bond",
+			Depth:   1,
+			Metrics: map[string]any{"address": "thor1watch"},
+		},
+	}
+
+	warnings, err := app.refreshActorTrackerLiveHoldings(context.Background(), nodes)
+	if err != nil {
+		t.Fatalf("refresh THOR address live holdings: %v", err)
+	}
+	for _, node := range nodes {
+		if got := node.Metrics["live_holdings_available"]; got != true {
+			t.Fatalf("expected %s live holdings available=true, got %#v", node.Kind, got)
+		}
+		if got := node.Metrics["live_holdings_status"]; got != "available" {
+			t.Fatalf("expected %s live holdings status=available, got %#v", node.Kind, got)
+		}
+		if got, ok := node.Metrics["live_holdings_usd_spot"].(float64); !ok || got <= 0 {
+			t.Fatalf("expected %s live_holdings_usd_spot to be positive, got %#v", node.Kind, node.Metrics["live_holdings_usd_spot"])
+		}
+	}
+	if len(warnings) > 1 {
+		t.Fatalf("unexpected warnings: %#v", warnings)
 	}
 }
 
@@ -873,6 +984,49 @@ func TestEnrichNodesWithLiveHoldingsWhitelistedNodeNotMarkedValidator(t *testing
 	}
 	if got := nodes[0].Label; got != "Whitelisted Node "+shortAddress("thor1whitelisted") {
 		t.Fatalf("expected whitelisted label, got %#v", got)
+	}
+}
+
+func TestEVMChainIDSupportsARB(t *testing.T) {
+	if got := evmChainID("ARB"); got != "42161" {
+		t.Fatalf("expected ARB chain id 42161, got %q", got)
+	}
+	if got := evmNativeAsset("ARB"); got != "ARB.ETH" {
+		t.Fatalf("expected ARB native asset ARB.ETH, got %q", got)
+	}
+}
+
+func TestInferRadixTransfersSplitsOutgoingXRDByCounterparty(t *testing.T) {
+	watched := "account_rdx1watch000000000000000000000000000000000000000000000"
+	alpha := "account_rdx1alpha00000000000000000000000000000000000000000000"
+	beta := "account_rdx1beta000000000000000000000000000000000000000000000"
+	transfers := inferRadixTransfers(watched, "XRD-TX", 42, time.Unix(1_700_000_000, 0).UTC(), []struct {
+		EntityAddress   string `json:"entity_address"`
+		ResourceAddress string `json:"resource_address"`
+		BalanceChange   string `json:"balance_change"`
+	}{
+		{EntityAddress: watched, ResourceAddress: radixMainnetXRDResourceAddr, BalanceChange: "-3.00000000"},
+		{EntityAddress: alpha, ResourceAddress: radixMainnetXRDResourceAddr, BalanceChange: "+1.00000000"},
+		{EntityAddress: beta, ResourceAddress: radixMainnetXRDResourceAddr, BalanceChange: "+2.00000000"},
+	})
+
+	if len(transfers) != 2 {
+		t.Fatalf("expected 2 inferred transfers, got %#v", transfers)
+	}
+	if got := decimalAmountToGraphRaw("1.23456789"); got != "123456789" {
+		t.Fatalf("expected decimal normalization to 1e8 graph units, got %q", got)
+	}
+	if got := transfers[0].AmountRaw; got != "100000000" {
+		t.Fatalf("expected first inferred amount 100000000, got %q", got)
+	}
+	if got := transfers[1].AmountRaw; got != "200000000" {
+		t.Fatalf("expected second inferred amount 200000000, got %q", got)
+	}
+	if transfers[0].From != normalizeAddress(watched) || transfers[1].From != normalizeAddress(watched) {
+		t.Fatalf("expected watched address as transfer source, got %#v", transfers)
+	}
+	if transfers[0].To != normalizeAddress(alpha) || transfers[1].To != normalizeAddress(beta) {
+		t.Fatalf("expected sorted counterparties alpha/beta, got %#v", transfers)
 	}
 }
 
@@ -1150,6 +1304,113 @@ func TestEnrichNodesWithLiveHoldingsBoundsTotalBatchDuration(t *testing.T) {
 	if len(warnings) == 0 {
 		t.Fatalf("expected warnings for canceled live holdings lookups, got none")
 	}
+}
+
+func TestPlanAddressLookupPhasesPrioritizesActorOwnedAndExplorerNodes(t *testing.T) {
+	nodes := []FlowNode{
+		{
+			ID:      "external-address",
+			Kind:    "external_address",
+			Label:   "0xexternal",
+			Chain:   "ETH",
+			Stage:   "external",
+			Depth:   2,
+			Metrics: map[string]any{"address": "0xexternal"},
+		},
+		{
+			ID:       "actor-address",
+			Kind:     "actor_address",
+			Label:    "Treasury Addr",
+			Chain:    "ETH",
+			Stage:    "actor_address",
+			Depth:    1,
+			ActorIDs: []int64{2},
+			Metrics:  map[string]any{"address": "0xactor"},
+		},
+		{
+			ID:      "explorer-target",
+			Kind:    "explorer_target",
+			Label:   "bc1seed",
+			Chain:   "BTC",
+			Stage:   "seed",
+			Depth:   0,
+			Metrics: map[string]any{"address": "bc1seed"},
+		},
+		{
+			ID:      "doge-external",
+			Kind:    "external_address",
+			Label:   "Dexternal",
+			Chain:   "DOGE",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": "Dexternal"},
+		},
+	}
+	tasks := map[string]*liveHoldingAddressLookupTask{
+		"ETH|0xexternal": {
+			key:       "ETH|0xexternal",
+			chain:     "ETH",
+			address:   "0xexternal",
+			provider:  "etherscan",
+			bucketKey: "etherscan|ETH",
+			refs:      []liveHoldingNodeRef{{index: 0}},
+		},
+		"ETH|0xactor": {
+			key:       "ETH|0xactor",
+			chain:     "ETH",
+			address:   "0xactor",
+			provider:  "etherscan",
+			bucketKey: "etherscan|ETH",
+			refs:      []liveHoldingNodeRef{{index: 1}},
+		},
+		"BTC|bc1seed": {
+			key:       "BTC|bc1seed",
+			chain:     "BTC",
+			address:   "bc1seed",
+			provider:  "utxo",
+			bucketKey: "utxo|BTC",
+			refs:      []liveHoldingNodeRef{{index: 2}},
+		},
+		"DOGE|Dexternal": {
+			key:       "DOGE|Dexternal",
+			chain:     "DOGE",
+			address:   "Dexternal",
+			provider:  "utxo",
+			bucketKey: "utxo|DOGE",
+			refs:      []liveHoldingNodeRef{{index: 3}},
+		},
+	}
+
+	phases := planAddressLookupPhases(nodes, tasks)
+	if len(phases) != 2 {
+		t.Fatalf("expected two lookup phases, got %d", len(phases))
+	}
+	if got := liveHoldingTaskKeys(phases[0]); !sameStrings(got, []string{"BTC|bc1seed", "ETH|0xactor"}) {
+		t.Fatalf("priority phase = %v, want explorer/actor tasks first", got)
+	}
+	if got := liveHoldingTaskKeys(phases[1]); !sameStrings(got, []string{"DOGE|Dexternal", "ETH|0xexternal"}) {
+		t.Fatalf("background phase = %v, want external tail last", got)
+	}
+}
+
+func liveHoldingTaskKeys(tasks []liveHoldingAddressLookupTask) []string {
+	out := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		out = append(out, task.key)
+	}
+	return out
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestEnrichNodesWithLiveHoldingsSkipsPoolSnapshotWithoutPoolNodes(t *testing.T) {

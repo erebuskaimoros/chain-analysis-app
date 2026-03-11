@@ -20,8 +20,8 @@ const views: ViewDef[] = [
     key: "overview",
     label: "Overview",
     eyebrow: "System",
-    title: "Typed Analysis Workspace",
-    description: "The React frontend now owns the analysis workflow directly against `/api/v1`, with the legacy app left as an optional fallback.",
+    title: "Liquidity Flow Workspace",
+    description: "The typed React frontend drives the unified THOR + MAYA flow-analysis workflow directly against `/api/v1`, with `/legacy/` left untouched.",
   },
   {
     key: "actors",
@@ -35,7 +35,7 @@ const views: ViewDef[] = [
     label: "Actor Graph",
     eyebrow: "Analysis",
     title: "Actor-Centered Flow Graph",
-    description: "Build graphs, replay saved runs, expand nodes one hop, and refresh live holdings without leaving the typed workspace.",
+    description: "Build merged liquidity graphs, replay saved runs, expand nodes one hop, and refresh live holdings without leaving the typed workspace.",
   },
   {
     key: "explorer",
@@ -86,9 +86,9 @@ function App() {
     <div className="shell">
       <aside className="shell-sidebar">
         <div className="brand-block">
-          <span className="eyebrow">THORChain</span>
+          <span className="eyebrow">Liquidity Flow</span>
           <h1>Chain Analysis</h1>
-          <p>Typed backend routes and native React analysis screens now drive the workflow end to end.</p>
+          <p>Typed backend routes and native React screens now analyze THOR, MAYA, and connected-chain flows end to end.</p>
         </div>
         <nav className="nav-list" aria-label="Primary">
           {views.map((view) => (

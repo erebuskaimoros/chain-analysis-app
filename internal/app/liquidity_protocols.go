@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -87,29 +86,36 @@ func protocolInboundAddressesPath(protocol string) string {
 }
 
 func protocolBondDisplayLabel(protocol, address, status string) string {
-	labelPrefix := "Validator"
-	switch normalizeSourceProtocol(protocol) {
-	case sourceProtocolMAYA:
-		labelPrefix = "MAYA Validator"
-	}
+	protocol = normalizeSourceProtocol(protocol)
 	address = normalizeAddress(address)
 	if address == "" {
 		return ""
 	}
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "active":
-		return labelPrefix + " " + shortAddress(address)
-	case "whitelisted":
-		return "Whitelisted " + labelPrefix + " " + shortAddress(address)
-	case "standby":
-		return "Standby " + labelPrefix + " " + shortAddress(address)
-	case "disabled":
-		return "Disabled " + labelPrefix + " " + shortAddress(address)
-	default:
-		if labelPrefix == "Validator" {
+	if protocol == sourceProtocolTHOR {
+		switch strings.ToLower(strings.TrimSpace(status)) {
+		case "active":
+			return "Validator " + shortAddress(address)
+		case "whitelisted":
+			return "Whitelisted Node " + shortAddress(address)
+		case "standby":
+			return "Standby Node " + shortAddress(address)
+		case "disabled":
+			return "Disabled Node " + shortAddress(address)
+		default:
 			return "Node " + shortAddress(address)
 		}
-		return labelPrefix + " " + shortAddress(address)
+	}
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active":
+		return "MAYA Validator " + shortAddress(address)
+	case "whitelisted":
+		return "Whitelisted MAYA Validator " + shortAddress(address)
+	case "standby":
+		return "Standby MAYA Validator " + shortAddress(address)
+	case "disabled":
+		return "Disabled MAYA Validator " + shortAddress(address)
+	default:
+		return "MAYA Validator " + shortAddress(address)
 	}
 }
 
@@ -155,7 +161,7 @@ func (a *App) availableLiquidityEngines() []liquidityEngine {
 		return nil
 	}
 	out := make([]liquidityEngine, 0, 2)
-	if a.mid != nil {
+	if thorMidgardConfigured := a.mid != nil && len(a.mid.endpoints) > 0; thorMidgardConfigured {
 		out = append(out, liquidityEngine{
 			Protocol:           sourceProtocolTHOR,
 			NodeClient:         a.thor,
@@ -164,7 +170,7 @@ func (a *App) availableLiquidityEngines() []liquidityEngine {
 			SupportedChains:    thorLiquiditySupportedChains,
 		})
 	}
-	if a.mayaMid != nil {
+	if mayaMidgardConfigured := a.mayaMid != nil && len(a.mayaMid.endpoints) > 0; mayaMidgardConfigured {
 		out = append(out, liquidityEngine{
 			Protocol:        sourceProtocolMAYA,
 			NodeClient:      a.mayaNode,
@@ -189,6 +195,18 @@ func (a *App) actionSourceProtocolsForSeed(seed frontierAddress) []string {
 	if address == "" {
 		return nil
 	}
+	switch {
+	case strings.HasPrefix(address, "thor"):
+		if _, ok := a.liquidityEngine(sourceProtocolTHOR); ok {
+			return []string{sourceProtocolTHOR}
+		}
+		return nil
+	case strings.HasPrefix(address, "maya"):
+		if _, ok := a.liquidityEngine(sourceProtocolMAYA); ok {
+			return []string{sourceProtocolMAYA}
+		}
+		return nil
+	}
 	chain := normalizeChain(seed.Chain, address)
 	seen := map[string]struct{}{}
 	out := make([]string, 0, 2)
@@ -201,7 +219,6 @@ func (a *App) actionSourceProtocolsForSeed(seed frontierAddress) []string {
 			out = append(out, engine.Protocol)
 		}
 	}
-	sort.Strings(out)
 	return out
 }
 

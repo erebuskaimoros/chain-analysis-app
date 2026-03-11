@@ -266,6 +266,74 @@ describe("graph merges", () => {
     expect(merged.stats.supporting_action_count).toBe(1);
   });
 
+  it("keeps supporting actions distinct when the source protocol differs", () => {
+    const current = makeActorGraphResponse({
+      supporting_actions: [
+        makeSupportingAction({
+          tx_id: "dup-tx",
+          source_protocol: "THOR",
+          from_node: "node-a",
+          to_node: "node-b",
+        }),
+      ],
+    });
+    const incoming = makeActorGraphResponse({
+      supporting_actions: [
+        makeSupportingAction({
+          tx_id: "dup-tx",
+          source_protocol: "MAYA",
+          from_node: "node-a",
+          to_node: "node-b",
+        }),
+      ],
+    });
+
+    const merged = mergeActorGraphResponse(current, incoming);
+
+    expect(merged.supporting_actions).toHaveLength(2);
+    expect(merged.supporting_actions.map((action) => action.source_protocol).sort()).toEqual(["MAYA", "THOR"]);
+  });
+
+  it("keeps duplicate transaction ids separate when they come from different liquidity engines", () => {
+    const current = makeActorGraphResponse({
+      nodes: [
+        makeNode({ id: "node-a", metrics: { address: "thor1same" } }),
+        makeNode({ id: "node-b", metrics: { address: "bc1same" } }),
+      ],
+      edges: [
+        makeEdge({
+          id: "edge-thor",
+          from: "node-a",
+          to: "node-b",
+          source_protocols: ["THOR"],
+          transactions: [makeTransaction({ tx_id: "same-tx", source_protocol: "THOR", usd_spot: 10 })],
+        }),
+      ],
+    });
+    const incoming = makeActorGraphResponse({
+      nodes: [
+        makeNode({ id: "node-a", metrics: { address: "thor1same" } }),
+        makeNode({ id: "node-b", metrics: { address: "bc1same" } }),
+      ],
+      edges: [
+        makeEdge({
+          id: "edge-maya",
+          from: "node-a",
+          to: "node-b",
+          source_protocols: ["MAYA"],
+          transactions: [makeTransaction({ tx_id: "same-tx", source_protocol: "MAYA", usd_spot: 20 })],
+        }),
+      ],
+    });
+
+    const merged = mergeActorGraphResponse(current, incoming);
+
+    expect(merged.edges).toHaveLength(1);
+    expect(merged.edges[0]?.transactions).toHaveLength(2);
+    expect(merged.edges[0]?.source_protocols?.sort()).toEqual(["MAYA", "THOR"]);
+    expect(merged.edges[0]?.transactions.map((tx) => tx.source_protocol).sort()).toEqual(["MAYA", "THOR"]);
+  });
+
   it("applies node updates by merging metrics onto the existing node list", () => {
     const currentNodes = [
       makeNode({

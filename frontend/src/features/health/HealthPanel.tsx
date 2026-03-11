@@ -38,6 +38,7 @@ export function HealthPanel() {
 
   const trackerStates = Object.keys(data.tracker_health || {}).length;
   const trackerSources = sourceCount(data.tracker_sources);
+  const engines = Object.values(data.liquidity_engines || {});
 
   return (
     <section className="panel shell-panel">
@@ -55,20 +56,32 @@ export function HealthPanel() {
           <small>{data.build.build_time}</small>
         </article>
         <article className="metric-card">
-          <span className="metric-label">THORNode Sources</span>
-          <strong>{data.thornode_sources.length}</strong>
-          <small>{data.thornode_sources.join(" • ")}</small>
-        </article>
-        <article className="metric-card">
-          <span className="metric-label">Midgard Sources</span>
-          <strong>{data.midgard_sources.length}</strong>
-          <small>{data.midgard_sources.join(" • ")}</small>
+          <span className="metric-label">Liquidity Engines</span>
+          <strong>{engines.length}</strong>
+          <small>{engines.map((engine) => engine.protocol).join(" • ") || "None configured"}</small>
         </article>
         <article className="metric-card">
           <span className="metric-label">Tracker State</span>
           <strong>{trackerStates}</strong>
           <small>{trackerSources} configured source groups</small>
         </article>
+        {engines.map((engine) => {
+          const nodeLabel = engine.protocol === "MAYA" ? "MAYANode" : "THORNode";
+          const summary = [
+            `${nodeLabel} ${engine.thornode_sources.length}`,
+            `Midgard ${engine.midgard_sources.length}`,
+            engine.legacy_action_sources.length ? `Legacy ${engine.legacy_action_sources.length}` : "",
+          ]
+            .filter(Boolean)
+            .join(" • ");
+          return (
+            <article key={engine.protocol} className="metric-card">
+              <span className="metric-label">{engine.protocol}</span>
+              <strong>{engine.thornode_sources.length + engine.midgard_sources.length + engine.legacy_action_sources.length}</strong>
+              <small>{summary || "No sources configured"}</small>
+            </article>
+          );
+        })}
       </div>
     </section>
   );

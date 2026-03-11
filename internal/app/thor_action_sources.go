@@ -37,7 +37,7 @@ func (a *App) lookupActionByTxID(ctx context.Context, txID string) (ActionLookup
 		}
 		for _, action := range actions {
 			rows = append(rows, ActionLookupAction{
-				midgardAction:   action,
+				midgardAction:  action,
 				SourceProtocol: sourceProtocolFromAction(action),
 			})
 		}

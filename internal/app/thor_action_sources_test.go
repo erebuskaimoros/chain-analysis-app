@@ -71,7 +71,7 @@ func TestFetchMidgardActionsForAddressMergesLegacyTHORHistoryDespiteMidgardOnlyC
 	start := time.Unix(0, 0).UTC()
 	end := time.Unix(1_800_000_000, 0).UTC()
 	startTS, endTS := actionHistoryQueryBounds(start, end)
-	if err := insertMidgardActionCache(context.Background(), app.db, address, startTS, endTS, 1, false, []midgardAction{recent}); err != nil {
+	if err := insertMidgardActionCache(context.Background(), app.db, protocolActionCacheKey(sourceProtocolTHOR, address), startTS, endTS, 1, false, []midgardAction{recent}); err != nil {
 		t.Fatalf("insert stale cache: %v", err)
 	}
 

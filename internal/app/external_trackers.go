@@ -62,7 +62,10 @@ func (a *App) fetchAddressLiveHoldings(ctx context.Context, chain, address strin
 		return nil, nil
 	}
 	if chain == "THOR" {
-		return a.fetchTHORAddressLiveHoldings(ctx, address, prices, nil)
+		return a.fetchProtocolAddressLiveHoldings(ctx, sourceProtocolTHOR, address, prices, nil)
+	}
+	if chain == "MAYA" {
+		return a.fetchProtocolAddressLiveHoldings(ctx, sourceProtocolMAYA, address, prices, nil)
 	}
 
 	providers := a.cfg.trackerProvidersForChain(chain)
@@ -103,6 +106,22 @@ func (a *App) thornodeClient() *ThorClient {
 	return nil
 }
 
+func (a *App) protocolNodeClient(protocol string) *ThorClient {
+	engine, ok := a.liquidityEngine(protocol)
+	if !ok {
+		return nil
+	}
+	return engine.NodeClient
+}
+
+func (a *App) protocolMidgardClient(protocol string) *ThorClient {
+	engine, ok := a.liquidityEngine(protocol)
+	if !ok {
+		return nil
+	}
+	return engine.MidgardClient
+}
+
 type thorBankBalanceResponse struct {
 	Balances []struct {
 		Denom  string `json:"denom"`
@@ -121,6 +140,8 @@ type thornodeNodeAccount struct {
 	NodeAddress   string `json:"node_address"`
 	Status        string `json:"status"`
 	TotalBond     string `json:"total_bond"`
+	Bond          string `json:"bond"`
+	BondAddress   string `json:"bond_address"`
 	BondProviders struct {
 		Providers []struct {
 			BondAddress string `json:"bond_address"`
@@ -130,26 +151,30 @@ type thornodeNodeAccount struct {
 }
 
 func (a *App) fetchTHORAddressLiveHoldings(ctx context.Context, address string, prices priceBook, bondedByAddress map[string]string) ([]liveHoldingValue, error) {
+	return a.fetchProtocolAddressLiveHoldings(ctx, sourceProtocolTHOR, address, prices, bondedByAddress)
+}
+
+func (a *App) fetchProtocolAddressLiveHoldings(ctx context.Context, protocol, address string, prices priceBook, bondedByAddress map[string]string) ([]liveHoldingValue, error) {
 	var (
 		holdings []liveHoldingValue
 		errs     []error
 	)
 
-	bankHoldings, err := a.fetchTHORBankHoldings(ctx, address, prices)
+	bankHoldings, err := a.fetchProtocolBankHoldings(ctx, protocol, address, prices)
 	if err != nil {
 		errs = append(errs, err)
 	} else {
 		holdings = append(holdings, bankHoldings...)
 	}
 
-	lpHoldings, err := a.fetchTHORLPHoldings(ctx, address, prices)
+	lpHoldings, err := a.fetchProtocolLPHoldings(ctx, protocol, address, prices)
 	if err != nil {
 		errs = append(errs, err)
 	} else {
 		holdings = append(holdings, lpHoldings...)
 	}
 
-	bondHoldings, err := a.fetchTHORBondHoldings(ctx, address, prices, bondedByAddress)
+	bondHoldings, err := a.fetchProtocolBondHoldings(ctx, protocol, address, prices, bondedByAddress)
 	if err != nil {
 		errs = append(errs, err)
 	} else {
@@ -167,7 +192,11 @@ func (a *App) fetchTHORAddressLiveHoldings(ctx context.Context, address string, 
 }
 
 func (a *App) fetchTHORBankHoldings(ctx context.Context, address string, prices priceBook) ([]liveHoldingValue, error) {
-	client := a.thornodeClient()
+	return a.fetchProtocolBankHoldings(ctx, sourceProtocolTHOR, address, prices)
+}
+
+func (a *App) fetchProtocolBankHoldings(ctx context.Context, protocol, address string, prices priceBook) ([]liveHoldingValue, error) {
+	client := a.protocolNodeClient(protocol)
 	if client == nil {
 		return nil, errExternalTrackerUnavailable
 	}
@@ -178,7 +207,7 @@ func (a *App) fetchTHORBankHoldings(ctx context.Context, address string, prices 
 	}
 	holdings := make([]liveHoldingValue, 0, len(resp.Balances))
 	for _, balance := range resp.Balances {
-		asset := thorDenomToAsset(balance.Denom)
+		asset := normalizeProtocolDenomAsset(protocol, balance.Denom)
 		amountRaw := strings.TrimSpace(balance.Amount)
 		if asset == "" || !hasGraphableLiquidity(amountRaw) {
 			continue
@@ -193,7 +222,12 @@ func (a *App) fetchTHORBankHoldings(ctx context.Context, address string, prices 
 }
 
 func (a *App) fetchTHORLPHoldings(ctx context.Context, address string, prices priceBook) ([]liveHoldingValue, error) {
-	if a == nil || a.mid == nil {
+	return a.fetchProtocolLPHoldings(ctx, sourceProtocolTHOR, address, prices)
+}
+
+func (a *App) fetchProtocolLPHoldings(ctx context.Context, protocol, address string, prices priceBook) ([]liveHoldingValue, error) {
+	midgardClient := a.protocolMidgardClient(protocol)
+	if a == nil || midgardClient == nil {
 		return nil, errExternalTrackerUnavailable
 	}
 	var (
@@ -201,7 +235,7 @@ func (a *App) fetchTHORLPHoldings(ctx context.Context, address string, prices pr
 		lastStatus int
 	)
 	path := "/member/" + url.PathEscape(address)
-	err := a.mid.GetJSONObserved(ctx, path, &resp, func(meta RequestAttemptMeta) {
+	err := midgardClient.GetJSONObserved(ctx, path, &resp, func(meta RequestAttemptMeta) {
 		if meta.StatusCode > 0 {
 			lastStatus = meta.StatusCode
 		}
@@ -218,7 +252,7 @@ func (a *App) fetchTHORLPHoldings(ctx context.Context, address string, prices pr
 	holdings := make([]liveHoldingValue, 0, len(resp.Pools)*2)
 	for _, memberPool := range resp.Pools {
 		poolAsset := normalizeAsset(memberPool.Pool)
-		pool, ok := prices.PoolSnapshots[poolAsset]
+		pool, ok := prices.PoolSnapshots[protocolPoolSnapshotKey(protocol, poolAsset)]
 		if !ok {
 			continue
 		}
@@ -226,9 +260,9 @@ func (a *App) fetchTHORLPHoldings(ctx context.Context, address string, prices pr
 		assetShareRaw := mulDivAmounts(memberPool.LiquidityUnits, pool.AssetDepth, pool.LiquidityUnits)
 		if hasGraphableLiquidity(runeShareRaw) {
 			holdings = append(holdings, liveHoldingValue{
-				Asset:     "THOR.RUNE",
+				Asset:     nativeAssetForProtocol(protocol),
 				AmountRaw: runeShareRaw,
-				USDSpot:   prices.usdFor("THOR.RUNE", runeShareRaw),
+				USDSpot:   prices.usdFor(nativeAssetForProtocol(protocol), runeShareRaw),
 			})
 		}
 		if hasGraphableLiquidity(assetShareRaw) {
@@ -243,9 +277,13 @@ func (a *App) fetchTHORLPHoldings(ctx context.Context, address string, prices pr
 }
 
 func (a *App) fetchTHORBondHoldings(ctx context.Context, address string, prices priceBook, bondedByAddress map[string]string) ([]liveHoldingValue, error) {
+	return a.fetchProtocolBondHoldings(ctx, sourceProtocolTHOR, address, prices, bondedByAddress)
+}
+
+func (a *App) fetchProtocolBondHoldings(ctx context.Context, protocol, address string, prices priceBook, bondedByAddress map[string]string) ([]liveHoldingValue, error) {
 	if bondedByAddress == nil {
 		var err error
-		bondedByAddress, err = a.fetchTHORBondedRuneIndex(ctx)
+		bondedByAddress, err = a.fetchProtocolBondedNativeIndex(ctx, protocol)
 		if err != nil {
 			return nil, err
 		}
@@ -255,14 +293,22 @@ func (a *App) fetchTHORBondHoldings(ctx context.Context, address string, prices 
 		return nil, nil
 	}
 	return []liveHoldingValue{{
-		Asset:     "THOR.RUNE",
+		Asset:     nativeAssetForProtocol(protocol),
 		AmountRaw: amountRaw,
-		USDSpot:   prices.usdFor("THOR.RUNE", amountRaw),
+		USDSpot:   prices.usdFor(nativeAssetForProtocol(protocol), amountRaw),
 	}}, nil
 }
 
 func (a *App) fetchTHORBondedRuneIndex(ctx context.Context) (map[string]string, error) {
-	bondedByAddress, _, _, err := a.fetchTHORBondIndexes(ctx)
+	bondedByAddress, _, _, err := a.fetchProtocolBondIndexes(ctx, sourceProtocolTHOR)
+	if err != nil {
+		return nil, err
+	}
+	return bondedByAddress, nil
+}
+
+func (a *App) fetchProtocolBondedNativeIndex(ctx context.Context, protocol string) (map[string]string, error) {
+	bondedByAddress, _, _, err := a.fetchProtocolBondIndexes(ctx, protocol)
 	if err != nil {
 		return nil, err
 	}
@@ -270,12 +316,16 @@ func (a *App) fetchTHORBondedRuneIndex(ctx context.Context) (map[string]string, 
 }
 
 func (a *App) fetchTHORBondIndexes(ctx context.Context) (map[string]string, map[string]string, map[string]string, error) {
-	client := a.thornodeClient()
+	return a.fetchProtocolBondIndexes(ctx, sourceProtocolTHOR)
+}
+
+func (a *App) fetchProtocolBondIndexes(ctx context.Context, protocol string) (map[string]string, map[string]string, map[string]string, error) {
+	client := a.protocolNodeClient(protocol)
 	if client == nil {
 		return nil, nil, nil, errExternalTrackerUnavailable
 	}
 	var nodes []thornodeNodeAccount
-	if err := client.GetJSON(ctx, "/thorchain/nodes", &nodes); err != nil {
+	if err := client.GetJSON(ctx, protocolNodesPath(protocol), &nodes); err != nil {
 		return nil, nil, nil, err
 	}
 	bondedByAddress := map[string]string{}
@@ -283,7 +333,7 @@ func (a *App) fetchTHORBondIndexes(ctx context.Context) (map[string]string, map[
 	statusByNode := map[string]string{}
 	for _, node := range nodes {
 		nodeAddress := normalizeAddress(node.NodeAddress)
-		totalBond := strings.TrimSpace(node.TotalBond)
+		totalBond := firstNonEmpty(strings.TrimSpace(node.TotalBond), strings.TrimSpace(node.Bond))
 		nodeStatus := strings.TrimSpace(node.Status)
 		if nodeAddress != "" && nodeStatus != "" {
 			statusByNode[nodeAddress] = nodeStatus
@@ -298,6 +348,9 @@ func (a *App) fetchTHORBondIndexes(ctx context.Context) (map[string]string, map[
 				continue
 			}
 			bondedByAddress[address] = addRawAmounts(bondedByAddress[address], bond)
+		}
+		if address := normalizeAddress(node.BondAddress); address != "" && hasGraphableLiquidity(totalBond) {
+			bondedByAddress[address] = addRawAmounts(bondedByAddress[address], totalBond)
 		}
 	}
 	return bondedByAddress, totalBondByNode, statusByNode, nil
@@ -361,6 +414,8 @@ func (a *App) fetchAddressLiveHoldingsWithProvider(ctx context.Context, provider
 		return a.fetchXRPLAddressLiveHoldings(ctx, address, prices)
 	case "cosmos":
 		return a.fetchGaiaAddressLiveHoldings(ctx, address, prices)
+	case "radix":
+		return a.fetchRadixAddressLiveHoldings(ctx, address, prices)
 	default:
 		return nil, errExternalTrackerUnavailable
 	}
@@ -1070,6 +1125,256 @@ func (a *App) fetchXRPLAddressLiveHoldings(ctx context.Context, address string, 
 	}}, nil
 }
 
+type radixFungiblesPageResponse struct {
+	Address    string `json:"address"`
+	NextCursor string `json:"next_cursor"`
+	Items      []struct {
+		ResourceAddress string `json:"resource_address"`
+		Amount          string `json:"amount"`
+	} `json:"items"`
+}
+
+type radixStreamTransactionsResponse struct {
+	NextCursor string `json:"next_cursor"`
+	Items      []struct {
+		IntentHash     string `json:"intent_hash"`
+		StateVersion   int64  `json:"state_version"`
+		ConfirmedAt    string `json:"confirmed_at"`
+		BalanceChanges struct {
+			FungibleBalanceChanges []struct {
+				EntityAddress   string `json:"entity_address"`
+				ResourceAddress string `json:"resource_address"`
+				BalanceChange   string `json:"balance_change"`
+			} `json:"fungible_balance_changes"`
+		} `json:"balance_changes"`
+	} `json:"items"`
+}
+
+func (a *App) fetchRadixAddressLiveHoldings(ctx context.Context, address string, prices priceBook) ([]liveHoldingValue, error) {
+	baseURLs := a.cfg.radixGatewayURLs()
+	if len(baseURLs) == 0 {
+		return nil, errExternalTrackerUnavailable
+	}
+	address = normalizeAddress(address)
+	payload := map[string]any{
+		"address":           address,
+		"aggregation_level": "Global",
+		"limit":             100,
+	}
+	var resp radixFungiblesPageResponse
+	rawURLs := mapTrackerURLs(baseURLs, func(baseURL string) string {
+		return strings.TrimRight(baseURL, "/") + "/state/entity/page/fungibles/"
+	})
+	if err := a.postJSONAbsoluteMulti(ctx, rawURLs, nil, payload, &resp); err != nil {
+		return nil, err
+	}
+	for _, item := range resp.Items {
+		if !strings.EqualFold(strings.TrimSpace(item.ResourceAddress), radixMainnetXRDResourceAddr) {
+			continue
+		}
+		amountRaw := decimalAmountToGraphRaw(item.Amount)
+		if !hasGraphableLiquidity(amountRaw) {
+			continue
+		}
+		return []liveHoldingValue{{
+			Asset:     "XRD.XRD",
+			AmountRaw: amountRaw,
+			USDSpot:   prices.usdFor("XRD.XRD", amountRaw),
+		}}, nil
+	}
+	return nil, nil
+}
+
+func (a *App) fetchRadixTransfers(ctx context.Context, address string, start, end time.Time, maxPages int) ([]externalTransfer, bool, error) {
+	baseURLs := a.cfg.radixGatewayURLs()
+	if len(baseURLs) == 0 {
+		return nil, false, errExternalTrackerUnavailable
+	}
+	address = normalizeAddress(address)
+	cursor := ""
+	var all []externalTransfer
+	truncated := false
+	for page := 0; page < maxPages; page++ {
+		payload := map[string]any{
+			"affected_global_entities_filter": []string{address},
+			"limit":                           externalTrackerPageSize,
+			"opt_ins": map[string]any{
+				"balance_changes": true,
+			},
+		}
+		if strings.TrimSpace(cursor) != "" {
+			payload["cursor"] = cursor
+		}
+		var resp radixStreamTransactionsResponse
+		rawURLs := mapTrackerURLs(baseURLs, func(baseURL string) string {
+			return strings.TrimRight(baseURL, "/") + "/stream/transactions"
+		})
+		if err := a.postJSONAbsoluteMulti(ctx, rawURLs, nil, payload, &resp); err != nil {
+			return nil, false, err
+		}
+		if len(resp.Items) == 0 {
+			break
+		}
+		for _, item := range resp.Items {
+			ts, _ := time.Parse(time.RFC3339, strings.TrimSpace(item.ConfirmedAt))
+			if !ts.IsZero() && ts.Before(start) {
+				return dedupeExternalTransfers(all), truncated, nil
+			}
+			if !ts.IsZero() && ts.After(end) {
+				continue
+			}
+			all = append(all, inferRadixTransfers(address, item.IntentHash, item.StateVersion, ts, item.BalanceChanges.FungibleBalanceChanges)...)
+		}
+		cursor = strings.TrimSpace(resp.NextCursor)
+		if cursor == "" {
+			break
+		}
+		if page+1 >= maxPages {
+			truncated = true
+		}
+	}
+	return dedupeExternalTransfers(all), truncated, nil
+}
+
+func inferRadixTransfers(address, txID string, height int64, ts time.Time, changes []struct {
+	EntityAddress   string `json:"entity_address"`
+	ResourceAddress string `json:"resource_address"`
+	BalanceChange   string `json:"balance_change"`
+}) []externalTransfer {
+	address = normalizeAddress(address)
+	if address == "" || len(changes) == 0 {
+		return nil
+	}
+	positives := map[string]int64{}
+	negatives := map[string]int64{}
+	for _, change := range changes {
+		if !strings.EqualFold(strings.TrimSpace(change.ResourceAddress), radixMainnetXRDResourceAddr) {
+			continue
+		}
+		entity := normalizeAddress(change.EntityAddress)
+		amount, sign := signedDecimalAmountToGraphRaw(change.BalanceChange)
+		if entity == "" || amount <= 0 || sign == 0 {
+			continue
+		}
+		if sign > 0 {
+			positives[entity] += amount
+		} else {
+			negatives[entity] += amount
+		}
+	}
+	if negatives[address] > 0 {
+		recipients := map[string]int64{}
+		for entity, amount := range positives {
+			if entity == address {
+				continue
+			}
+			recipients[entity] += amount
+		}
+		return inferRadixDirectionalTransfers(address, txID, height, ts, negatives[address], recipients, true)
+	}
+	if positives[address] > 0 {
+		senders := map[string]int64{}
+		for entity, amount := range negatives {
+			if entity == address {
+				continue
+			}
+			senders[entity] += amount
+		}
+		return inferRadixDirectionalTransfers(address, txID, height, ts, positives[address], senders, false)
+	}
+	return nil
+}
+
+func inferRadixDirectionalTransfers(watched, txID string, height int64, ts time.Time, watchedAmount int64, counterparties map[string]int64, outgoing bool) []externalTransfer {
+	if watchedAmount <= 0 || len(counterparties) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(counterparties))
+	total := int64(0)
+	for entity, amount := range counterparties {
+		if amount <= 0 {
+			continue
+		}
+		keys = append(keys, entity)
+		total += amount
+	}
+	if len(keys) == 0 || total <= 0 {
+		return nil
+	}
+	sort.Strings(keys)
+	out := make([]externalTransfer, 0, len(keys))
+	remaining := watchedAmount
+	for i, entity := range keys {
+		share := (watchedAmount * counterparties[entity]) / total
+		if i == len(keys)-1 {
+			share = remaining
+		} else {
+			remaining -= share
+		}
+		if share <= 0 {
+			continue
+		}
+		transfer := externalTransfer{
+			Chain:       "XRD",
+			Asset:       "XRD.XRD",
+			AmountRaw:   strconv.FormatInt(share, 10),
+			TxID:        txID,
+			Height:      height,
+			Time:        ts,
+			ActionKey:   "tracker.xrd.transfer",
+			ActionLabel: "XRD Transfer (Inferred)",
+			Confidence:  0.7,
+		}
+		if outgoing {
+			transfer.From = watched
+			transfer.To = entity
+		} else {
+			transfer.From = entity
+			transfer.To = watched
+			transfer.Confidence = 0.78
+		}
+		out = append(out, transfer)
+	}
+	return out
+}
+
+func decimalAmountToGraphRaw(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "+")
+	raw = strings.TrimPrefix(raw, "-")
+	if raw == "" {
+		return ""
+	}
+	parts := strings.SplitN(raw, ".", 2)
+	whole := ""
+	fractional := ""
+	if len(parts) > 0 {
+		whole = parts[0]
+	}
+	if len(parts) > 1 {
+		fractional = parts[1]
+	}
+	return strconv.FormatInt(humanPartsToRaw(whole, fractional, 8), 10)
+}
+
+func signedDecimalAmountToGraphRaw(raw string) (int64, int) {
+	raw = strings.TrimSpace(raw)
+	sign := 1
+	switch {
+	case strings.HasPrefix(raw, "-"):
+		sign = -1
+	case strings.HasPrefix(raw, "+"):
+		sign = 1
+	default:
+		sign = 1
+	}
+	amountRaw := parseInt64(decimalAmountToGraphRaw(raw))
+	if amountRaw <= 0 {
+		return 0, 0
+	}
+	return amountRaw, sign
+}
+
 func (a *App) fetchExternalTransfersForAddress(ctx context.Context, chain, address string, start, end time.Time, maxPages int) ([]externalTransfer, bool, string, error) {
 	chain = normalizeChain(chain, address)
 	address = normalizeAddress(address)
@@ -1166,6 +1471,8 @@ func externalTrackerUnavailableWarning(chain, provider string) string {
 		return fmt.Sprintf("%s tracker unavailable; configure CHAIN_ANALYSIS_SOLANA_RPC_URL to follow native-chain flows", chain)
 	case "xrpl":
 		return fmt.Sprintf("%s tracker unavailable; configure CHAIN_ANALYSIS_XRP_RPC_URL to follow native-chain flows", chain)
+	case "radix":
+		return fmt.Sprintf("%s tracker unavailable; configure CHAIN_ANALYSIS_RADIX_GATEWAY_URL to follow native-chain flows", chain)
 	default:
 		return fmt.Sprintf("%s tracker unavailable", chain)
 	}
@@ -1205,6 +1512,9 @@ func (a *App) fetchExternalTransfersWithProvider(ctx context.Context, provider, 
 		return a.fetchXRPLTransfers(ctx, address, start, end, maxPages)
 	case "cosmos":
 		transfers, truncated, err := a.fetchGaiaTransfers(ctx, address, start, end, maxPages)
+		return transfers, truncated, "", err
+	case "radix":
+		transfers, truncated, err := a.fetchRadixTransfers(ctx, address, start, end, maxPages)
 		return transfers, truncated, "", err
 	default:
 		return nil, false, fmt.Sprintf("%s tracker provider %q unavailable", firstNonEmpty(chain, "external"), provider), errExternalTrackerUnavailable
@@ -2969,6 +3279,8 @@ func evmChainID(chain string) string {
 		return "8453"
 	case "AVAX":
 		return "43114"
+	case "ARB":
+		return "42161"
 	default:
 		return ""
 	}
@@ -2984,6 +3296,8 @@ func evmNativeAsset(chain string) string {
 		return "BASE.ETH"
 	case "AVAX":
 		return "AVAX.AVAX"
+	case "ARB":
+		return "ARB.ETH"
 	default:
 		return strings.ToUpper(strings.TrimSpace(chain)) + "." + strings.ToUpper(strings.TrimSpace(chain))
 	}
@@ -3007,6 +3321,10 @@ func nativeAssetForChain(chain string) string {
 		return "XRP.XRP"
 	case "GAIA":
 		return "GAIA.ATOM"
+	case "MAYA":
+		return "MAYA.CACAO"
+	case "XRD":
+		return "XRD.XRD"
 	default:
 		return evmNativeAsset(chain)
 	}

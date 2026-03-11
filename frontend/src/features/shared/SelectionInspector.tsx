@@ -7,6 +7,14 @@ interface SelectionInspectorProps {
   onLookupTx?: (txID: string) => void;
 }
 
+function stringValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)));
+  }
+  const single = String(value || "").trim().toUpperCase();
+  return single ? [single] : [];
+}
+
 export function SelectionInspector({ selection, emptyMessage, onLookupTx }: SelectionInspectorProps) {
   if (!selection) {
     return <div className="empty-state">{emptyMessage}</div>;
@@ -15,6 +23,13 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
   if (selection.kind === "nodes") {
     const addresses = selection.nodes.map((node) => nodeAddress(node)).filter(Boolean);
     const chains = Array.from(new Set(selection.nodes.map((node) => node.chain).filter(Boolean)));
+    const sourceProtocols = Array.from(
+      new Set(
+        selection.nodes.flatMap((node) =>
+          stringValues(node.metrics?.source_protocols).concat(stringValues(node.metrics?.source_protocol))
+        )
+      )
+    );
     return (
       <div className="detail-stack">
         <div>
@@ -29,6 +44,10 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
           <div>
             <dt>Addresses</dt>
             <dd>{addresses.length}</dd>
+          </div>
+          <div>
+            <dt>Source Protocols</dt>
+            <dd>{sourceProtocols.length ? sourceProtocols.join(", ") : "n/a"}</dd>
           </div>
         </dl>
         <div>
@@ -51,6 +70,9 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
 
   if (selection.kind === "node") {
     const address = nodeAddress(selection.node);
+    const sourceProtocols = Array.from(
+      new Set(stringValues(selection.node.metrics?.source_protocols).concat(stringValues(selection.node.metrics?.source_protocol)))
+    );
     return (
       <div className="detail-stack">
         <div>
@@ -78,6 +100,10 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
             <dt>Actor IDs</dt>
             <dd>{selection.node.actor_ids.length ? selection.node.actor_ids.join(", ") : "None"}</dd>
           </div>
+          <div>
+            <dt>Source Protocols</dt>
+            <dd>{sourceProtocols.length ? sourceProtocols.join(", ") : "n/a"}</dd>
+          </div>
         </dl>
         <div>
           <span className="section-label">Metrics</span>
@@ -88,6 +114,9 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
   }
 
   const edge = selection.edge;
+  const sourceProtocols = Array.from(
+    new Set(stringValues(edge.source_protocols).concat(stringValues(edge.inspect?.source_protocols)))
+  );
 
   return (
     <div className="detail-stack">
@@ -120,6 +149,10 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
           <dt>Transactions</dt>
           <dd>{edge.tx_ids.length}</dd>
         </div>
+        <div>
+          <dt>Source Protocols</dt>
+          <dd>{sourceProtocols.length ? sourceProtocols.join(", ") : "n/a"}</dd>
+        </div>
       </dl>
       <div className="chip-list">
         {edge.tx_ids.slice(0, 6).map((txID) => (
@@ -141,14 +174,16 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
             <thead>
               <tr>
                 <th>Time</th>
+                <th>Source</th>
                 <th>TX</th>
                 <th>USD</th>
               </tr>
             </thead>
             <tbody>
               {edge.transactions.map((transaction) => (
-                <tr key={`${edge.id}:${transaction.tx_id}`}>
+                <tr key={`${edge.id}:${transaction.source_protocol || "THOR"}:${transaction.tx_id}`}>
                   <td>{formatDateTime(transaction.time)}</td>
+                  <td>{transaction.source_protocol || "THOR"}</td>
                   <td>
                     <button
                       type="button"

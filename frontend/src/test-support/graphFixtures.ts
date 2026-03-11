@@ -128,6 +128,7 @@ export function makeEdge(overrides: FlowEdgeOverrides = {}): FlowEdge {
     heights,
     usd_spot: usdSpot,
     actor_ids: overrides.actor_ids ? [...overrides.actor_ids] : [],
+    source_protocols: overrides.source_protocols ? [...overrides.source_protocols] : undefined,
   };
 }
 
@@ -195,6 +196,7 @@ export function makeActorGraphResponse(overrides: ActorGraphResponseOverrides = 
   const edges = (overrides.edges ?? []).map((edge) => ({
     ...edge,
     actor_ids: [...edge.actor_ids],
+    source_protocols: edge.source_protocols ? [...edge.source_protocols] : undefined,
     assets: edge.assets.map((asset) => ({ ...asset })),
     transactions: edge.transactions.map((transaction) => ({
       ...transaction,
@@ -241,6 +243,7 @@ export function makeExplorerResponse(overrides: AddressExplorerResponseOverrides
   const edges = (overrides.edges ?? []).map((edge) => ({
     ...edge,
     actor_ids: [...edge.actor_ids],
+    source_protocols: edge.source_protocols ? [...edge.source_protocols] : undefined,
     assets: edge.assets.map((asset) => ({ ...asset })),
     transactions: edge.transactions.map((transaction) => ({
       ...transaction,

@@ -64,42 +64,7 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":   true,
-		"time": time.Now().UTC().Format(time.RFC3339),
-		"build": map[string]any{
-			"version":    a.cfg.BuildVersion,
-			"commit":     a.cfg.BuildCommit,
-			"build_time": a.cfg.BuildTime,
-		},
-		"thornode_sources":      a.cfg.ThornodeEndpoints,
-		"midgard_sources":       a.cfg.MidgardEndpoints,
-		"legacy_action_sources": a.cfg.LegacyActionEndpoints,
-		"tracker_providers":     a.cfg.ChainTrackerProviders,
-		"tracker_overrides":     a.cfg.ChainTrackerOverrides,
-		"tracker_candidates":    a.cfg.ChainTrackerCandidates,
-		"tracker_health":        a.trackerHealth.snapshot(),
-		"tracker_sources": map[string]any{
-			"utxo":                  a.cfg.UtxoTrackerURLs,
-			"utxo_expanded":         expandChainURLMap(a.cfg.UtxoTrackerURLs),
-			"cosmos":                a.cfg.CosmosTrackerURLs,
-			"cosmos_expanded":       expandChainURLMap(a.cfg.CosmosTrackerURLs),
-			"etherscan":             a.cfg.EtherscanAPIURL,
-			"etherscan_expanded":    a.cfg.etherscanAPIURLs(),
-			"blockscout_urls":       a.cfg.BlockscoutAPIURLs,
-			"blockscout_expanded":   expandChainURLMap(a.cfg.BlockscoutAPIURLs),
-			"avacloud_base":         a.cfg.AvaCloudBaseURL,
-			"avacloud_expanded":     a.cfg.avaCloudBaseURLs(),
-			"nodereal_bsc":          a.cfg.NodeRealBSCURL,
-			"nodereal_bsc_expanded": a.cfg.nodeRealBSCURLs(),
-			"solana_rpc":            a.cfg.SolanaRPCURL,
-			"solana_rpc_expanded":   a.cfg.solanaRPCURLs(),
-			"trongrid":              a.cfg.TronGridURL,
-			"trongrid_expanded":     a.cfg.tronGridURLs(),
-			"xrp_rpc":               a.cfg.XRPRPCURL,
-			"xrp_rpc_expanded":      a.cfg.xrplRPCURLs(),
-		},
-	})
+	writeJSON(w, http.StatusOK, a.HealthSnapshot())
 }
 
 func (a *App) handleActionByTxID(w http.ResponseWriter, r *http.Request) {

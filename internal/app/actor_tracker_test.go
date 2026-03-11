@@ -64,10 +64,158 @@ func TestUpsertActorPersistsAddresses(t *testing.T) {
 	}
 }
 
+func TestBuildActorTrackerPopulatesLiveValuesForAddressNodes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/actions":
+			_ = json.NewEncoder(w).Encode(midgardActionsResponse{
+				Actions: []midgardAction{},
+				Meta:    midgardActionsMeta{},
+			})
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{
+				{
+					Asset:          "ETH.USDC",
+					Status:         "available",
+					AssetDepth:     "400000000",
+					RuneDepth:      "200000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "1",
+				},
+				{
+					Asset:          "ETH.ETH",
+					Status:         "available",
+					AssetDepth:     "100000000",
+					RuneDepth:      "100000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "2000",
+				},
+			})
+		case r.URL.Path == "/cosmos/bank/v1beta1/balances/thor1watch":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"balances": []map[string]any{
+					{"denom": "rune", "amount": "100000000"},
+				},
+			})
+		case r.URL.Path == "/member/thor1watch":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pools": []map[string]any{},
+			})
+		case r.URL.Path == "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"node_address": "thor1validator",
+					"status":       "Active",
+					"total_bond":   "300000000",
+					"bond_providers": map[string]any{
+						"providers": []map[string]any{
+							{"bond_address": "thor1watch", "bond": "300000000"},
+						},
+					},
+				},
+			})
+		case r.URL.Path == "/thorchain/inbound_addresses":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Query().Get("action") == "balance":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":  "1",
+				"message": "OK",
+				"result":  "500000000000000000",
+			})
+		case r.URL.Query().Get("action") == "addresstokenbalance":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":  "1",
+				"message": "OK",
+				"result":  []map[string]any{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	db := openTestDB(t)
+	defer db.Close()
+
+	actor, err := upsertActor(context.Background(), db, 0, ActorUpsertRequest{
+		Name:  "Treasury",
+		Color: "#123456",
+		Addresses: []ActorAddressInput{
+			{Address: "thor1watch", ChainHint: "THOR", Label: "TC Wallet"},
+			{Address: "0xwatch", ChainHint: "ETH", Label: "ETH Wallet"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsert actor: %v", err)
+	}
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout:  time.Second,
+			MidgardTimeout:  time.Second,
+			EtherscanAPIURL: server.URL,
+			EtherscanAPIKey: "test-key",
+		},
+		db:              db,
+		thor:            NewThorClient([]string{server.URL}, time.Second),
+		mid:             NewThorClient([]string{server.URL}, time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerFeatures: newTrackerFeatureStore(),
+	}
+
+	resp, err := app.buildActorTracker(context.Background(), ActorTrackerRequest{
+		ActorIDs:  []int64{actor.ID},
+		StartTime: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		EndTime:   time.Unix(1_800_000_000, 0).UTC().Format(time.RFC3339),
+		MaxHops:   1,
+	})
+	if err != nil {
+		t.Fatalf("build actor tracker: %v", err)
+	}
+
+	findNode := func(address string) *FlowNode {
+		for i := range resp.Nodes {
+			if normalizeAddress(getString(resp.Nodes[i].Metrics, "address")) == normalizeAddress(address) {
+				return &resp.Nodes[i]
+			}
+		}
+		return nil
+	}
+
+	thorNode := findNode("thor1watch")
+	if thorNode == nil {
+		t.Fatal("expected THOR actor address node in response")
+	}
+	if got := thorNode.Metrics["live_holdings_available"]; got != true {
+		t.Fatalf("expected THOR actor address live holdings available=true, got %#v", got)
+	}
+	if got := thorNode.Metrics["live_holdings_status"]; got != "available" {
+		t.Fatalf("expected THOR actor address live holdings status=available, got %#v", got)
+	}
+	if got, ok := thorNode.Metrics["live_holdings_usd_spot"].(float64); !ok || got != 8 {
+		t.Fatalf("expected THOR actor address live_holdings_usd_spot=8, got %#v", thorNode.Metrics["live_holdings_usd_spot"])
+	}
+
+	ethNode := findNode("0xwatch")
+	if ethNode == nil {
+		t.Fatal("expected ETH actor address node in response")
+	}
+	if got := ethNode.Metrics["live_holdings_available"]; got != true {
+		t.Fatalf("expected ETH actor address live holdings available=true, got %#v", got)
+	}
+	if got := ethNode.Metrics["live_holdings_status"]; got != "available" {
+		t.Fatalf("expected ETH actor address live holdings status=available, got %#v", got)
+	}
+	if got, ok := ethNode.Metrics["live_holdings_usd_spot"].(float64); !ok || got != 1000 {
+		t.Fatalf("expected ETH actor address live_holdings_usd_spot=1000, got %#v", ethNode.Metrics["live_holdings_usd_spot"])
+	}
+}
+
 func TestMakePoolRefKeepsDistinctPoolsSeparate(t *testing.T) {
 	builder := &graphBuilder{}
-	solPool := builder.makePoolRef("sol.sol", 2)
-	btcPool := builder.makePoolRef("btc.btc", 2)
+	solPool := builder.makePoolRef("sol.sol", sourceProtocolTHOR, 2)
+	btcPool := builder.makePoolRef("btc.btc", sourceProtocolTHOR, 2)
 
 	if solPool.Key == "" || btcPool.Key == "" {
 		t.Fatal("expected non-empty pool keys")
@@ -75,10 +223,10 @@ func TestMakePoolRefKeepsDistinctPoolsSeparate(t *testing.T) {
 	if solPool.Key == btcPool.Key {
 		t.Fatalf("expected distinct pool keys, got %q", solPool.Key)
 	}
-	if solPool.Label != "Pool SOL.SOL" {
+	if solPool.Label != "Pool SOL.SOL (THOR)" {
 		t.Fatalf("unexpected SOL pool label: %q", solPool.Label)
 	}
-	if btcPool.Label != "Pool BTC.BTC" {
+	if btcPool.Label != "Pool BTC.BTC (THOR)" {
 		t.Fatalf("unexpected BTC pool label: %q", btcPool.Label)
 	}
 }
@@ -177,6 +325,18 @@ func TestNormalizeChainPrefersAddressFormatForNonEVM(t *testing.T) {
 			hint:    "THOR",
 			address: "0xnotanaddress",
 			want:    "THOR",
+		},
+		{
+			name:    "maya address infers maya",
+			hint:    "",
+			address: "maya1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqp6g7mk",
+			want:    "MAYA",
+		},
+		{
+			name:    "radix address infers xrd",
+			hint:    "",
+			address: "account_rdx1c9k5t6m0c9k5t6m0c9k5t6m0c9k5t6m0c9k5t6m0c9k5",
+			want:    "XRD",
 		},
 		{
 			name:    "unknown format keeps hint",
@@ -1411,7 +1571,7 @@ func TestProjectMidgardAddLiquidityCreatesPoolSegments(t *testing.T) {
 		if seg.Target.Kind != "pool" {
 			t.Fatalf("expected pool target, got %s", seg.Target.Kind)
 		}
-		if seg.Target.Label != "Pool TRON.USDT-TR7NHQJEKQXGTCI8Q8ZY4PL8OTSZGJLJ6T" {
+		if seg.Target.Label != "Pool TRON.USDT-TR7NHQJEKQXGTCI8Q8ZY4PL8OTSZGJLJ6T (THOR)" {
 			t.Fatalf("unexpected pool label: %q", seg.Target.Label)
 		}
 		sources[seg.Source.Address] = struct{}{}
@@ -2597,7 +2757,7 @@ func TestAddProjectedSegmentDedupesCanonicalSwap(t *testing.T) {
 		TxID:         "ABC123",
 		Height:       1,
 		Time:         time.Now().UTC(),
-		CanonicalKey: canonicalSwapSegmentKey("ABC123", source.Address, target.Address, "BTC.BTC"),
+		CanonicalKey: canonicalSwapSegmentKey("ABC123", source.Address, target.Address, "BTC.BTC", sourceProtocolTHOR),
 	}
 
 	builder.addProjectedSegment(seg)
