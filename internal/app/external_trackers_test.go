@@ -1093,6 +1093,133 @@ func TestEnrichNodesWithLiveHoldingsSlowProviderDoesNotLoseFastBucket(t *testing
 	}
 }
 
+func TestEnrichNodesWithLiveHoldingsBoundsTotalBatchDuration(t *testing.T) {
+	var balanceHits atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case r.URL.Query().Get("action") == "balance":
+			balanceHits.Add(1)
+			<-r.Context().Done()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout:  150 * time.Millisecond,
+			EtherscanAPIURL: server.URL,
+			EtherscanAPIKey: "test-key",
+		},
+		mid:             NewThorClient([]string{server.URL}, 10*time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerThrottle: newTrackerThrottleStore(),
+	}
+
+	nodes := make([]FlowNode, 0, 6)
+	for i := 0; i < 6; i++ {
+		addr := "0xslow" + string(rune('a'+i))
+		nodes = append(nodes, FlowNode{
+			ID:      "external_address:" + addr + ":external:1",
+			Kind:    "external_address",
+			Label:   addr,
+			Chain:   "ETH",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": addr},
+		})
+	}
+
+	started := time.Now()
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{"ETH.ETH": 2000},
+	}, protocolDirectory{})
+	elapsed := time.Since(started)
+
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("expected live holdings enrichment to stop within a bounded batch budget, took %s", elapsed)
+	}
+	if balanceHits.Load() == 0 {
+		t.Fatal("expected slow balance lookups to be attempted")
+	}
+	if len(warnings) == 0 {
+		t.Fatalf("expected warnings for canceled live holdings lookups, got none")
+	}
+}
+
+func TestEnrichNodesWithLiveHoldingsSkipsPoolSnapshotWithoutPoolNodes(t *testing.T) {
+	var (
+		poolHits    atomic.Int64
+		balanceHits atomic.Int64
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/pools":
+			poolHits.Add(1)
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case r.URL.Query().Get("action") == "balance":
+			balanceHits.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":  "1",
+				"message": "OK",
+				"result":  "500000000000000000",
+			})
+		case r.URL.Query().Get("action") == "addresstokenbalance":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":  "1",
+				"message": "OK",
+				"result":  []map[string]any{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout:  time.Second,
+			EtherscanAPIURL: server.URL,
+			EtherscanAPIKey: "test-key",
+		},
+		mid:           NewThorClient([]string{server.URL}, 10*time.Second),
+		httpClient:    server.Client(),
+		trackerHealth: newTrackerHealthStore(),
+	}
+
+	nodes := []FlowNode{
+		{
+			ID:      "external_address:0xwatch:external:1",
+			Kind:    "external_address",
+			Label:   "0xwatch",
+			Chain:   "ETH",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": "0xwatch"},
+		},
+	}
+
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{"ETH.ETH": 2000},
+	}, protocolDirectory{})
+
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %#v", warnings)
+	}
+	if got := poolHits.Load(); got != 0 {
+		t.Fatalf("expected no pool snapshot lookups without pool nodes, got %d", got)
+	}
+	if got := balanceHits.Load(); got == 0 {
+		t.Fatalf("expected address balance lookup to run, got %d", got)
+	}
+}
+
 func TestLiveHoldingsLookupTimeoutHonorsSmallerRequestTimeout(t *testing.T) {
 	app := &App{
 		cfg: Config{

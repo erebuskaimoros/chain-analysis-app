@@ -19,6 +19,7 @@ import {
   deriveActorVisibleGraph,
   filterSupportingActions,
   mergeActorGraphResponse,
+  refreshableLiveValueNodes,
   type GraphSelection,
 } from "../../../lib/graph";
 import type {
@@ -292,8 +293,13 @@ export function useActorGraphController() {
     if (!graph) {
       return;
     }
+    const refreshableNodes = refreshableLiveValueNodes(graph.nodes);
+    if (!refreshableNodes.length) {
+      setStatusText("All graph live values are already computed inline.");
+      return;
+    }
     try {
-      const response = await refreshLiveHoldings(graph.nodes);
+      const response = await refreshLiveHoldings(refreshableNodes);
       setGraph((current) => {
         if (!current) {
           return current;

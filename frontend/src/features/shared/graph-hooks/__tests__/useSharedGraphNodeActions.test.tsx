@@ -189,4 +189,36 @@ describe("useSharedGraphNodeActions", () => {
     expect(result.current.statusText).toBe("Selected node does not resolve to a single address.");
     expect(window.navigator.clipboard.writeText).not.toHaveBeenCalled();
   });
+
+  it("skips manual live-value refresh for inline-computed pool nodes", async () => {
+    const initialGraph = makeExplorerResponse({
+      nodes: [
+        makeNode({
+          id: "pool-node",
+          kind: "pool",
+          chain: "THOR",
+          metrics: {
+            pool: "THOR.RUNE",
+            live_holdings_status: "available",
+          },
+        }),
+      ],
+    });
+    const visibleNode = makeVisibleNode({
+      id: "pool-node",
+      kind: "pool",
+      chain: "THOR",
+      raw_node_ids: ["pool-node"],
+      metrics: { pool: "THOR.RUNE" },
+    });
+
+    const { result } = renderNodeActionsHook(initialGraph);
+
+    await act(async () => {
+      await result.current.actions.onRefreshLiveValue(visibleNode);
+    });
+
+    expect(apiMocks.refreshLiveHoldings).not.toHaveBeenCalled();
+    expect(result.current.statusText).toBe("Selected node live value is already computed inline.");
+  });
 });

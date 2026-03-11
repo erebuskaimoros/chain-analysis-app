@@ -22,6 +22,8 @@ type Config struct {
 	BuildTime              string
 	ThornodeEndpoints      []string
 	MidgardEndpoints       []string
+	MayanodeEndpoints      []string
+	MayaMidgardEndpoints   []string
 	LegacyActionEndpoints  []string
 	ChainTrackerProviders  map[string]string
 	ChainTrackerOverrides  map[string]string
@@ -42,6 +44,7 @@ type Config struct {
 	TronGridURL            string
 	TronGridAPIKey         string
 	XRPRPCURL              string
+	RadixGatewayURL        string
 	RequestTimeout         time.Duration
 	MidgardTimeout         time.Duration
 }
@@ -121,6 +124,7 @@ func LoadConfigFromEnv() Config {
 		TronGridURL:            strings.TrimRight(getEnv("CHAIN_ANALYSIS_TRONGRID_URL", "https://api.trongrid.io"), "/"),
 		TronGridAPIKey:         strings.TrimSpace(os.Getenv("CHAIN_ANALYSIS_TRONGRID_API_KEY")),
 		XRPRPCURL:              strings.TrimRight(getEnv("CHAIN_ANALYSIS_XRP_RPC_URL", "https://s1.ripple.com:51234|https://s2.ripple.com:51234|https://xrplcluster.com"), "/"),
+		RadixGatewayURL:        strings.TrimRight(getEnv("CHAIN_ANALYSIS_RADIX_GATEWAY_URL", "https://mainnet.radixdlt.com"), "/"),
 		RequestTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_TIMEOUT_SECONDS", 20)) * time.Second,
 		MidgardTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_MIDGARD_TIMEOUT_SECONDS", 10)) * time.Second,
 	}
@@ -144,6 +148,24 @@ func LoadConfigFromEnv() Config {
 			continue
 		}
 		cfg.MidgardEndpoints = append(cfg.MidgardEndpoints, strings.TrimRight(v, "/"))
+	}
+
+	mayanodeEndpoints := getEnv("MAYANODE_ENDPOINTS", "https://mayanode.mayachain.info")
+	for _, raw := range strings.Split(mayanodeEndpoints, ",") {
+		v := strings.TrimSpace(raw)
+		if v == "" {
+			continue
+		}
+		cfg.MayanodeEndpoints = append(cfg.MayanodeEndpoints, strings.TrimRight(v, "/"))
+	}
+
+	mayaMidgardEndpoints := getEnv("MAYA_MIDGARD_ENDPOINTS", "https://midgard.mayachain.info/v2")
+	for _, raw := range strings.Split(mayaMidgardEndpoints, ",") {
+		v := strings.TrimSpace(raw)
+		if v == "" {
+			continue
+		}
+		cfg.MayaMidgardEndpoints = append(cfg.MayaMidgardEndpoints, strings.TrimRight(v, "/"))
 	}
 
 	legacyActionEndpoints := getEnv("CHAIN_ANALYSIS_LEGACY_ACTION_ENDPOINTS", "https://vanaheimex.com")
@@ -408,6 +430,7 @@ func defaultChainTrackerProviders() map[string]string {
 		"BSC":  "nodereal",
 		"AVAX": "avacloud",
 		"BASE": "blockscout",
+		"ARB":  "etherscan",
 		"BTC":  "utxo",
 		"LTC":  "utxo",
 		"BCH":  "utxo",
@@ -416,6 +439,7 @@ func defaultChainTrackerProviders() map[string]string {
 		"SOL":  "solana",
 		"TRON": "trongrid",
 		"XRP":  "xrpl",
+		"XRD":  "radix",
 	}
 }
 
@@ -425,6 +449,7 @@ func defaultChainTrackerCandidates() map[string][]string {
 		"BSC":  {"nodereal"},
 		"AVAX": {"avacloud", "etherscan"},
 		"BASE": {"blockscout", "etherscan"},
+		"ARB":  {"etherscan"},
 		"BTC":  {"utxo"},
 		"LTC":  {"utxo"},
 		"BCH":  {"utxo"},
@@ -433,6 +458,7 @@ func defaultChainTrackerCandidates() map[string][]string {
 		"SOL":  {"solana"},
 		"TRON": {"trongrid"},
 		"XRP":  {"xrpl"},
+		"XRD":  {"radix"},
 	}
 }
 
@@ -509,6 +535,8 @@ func providerSupportsChain(provider, chain string) bool {
 	switch provider {
 	case "etherscan":
 		return chain != "BSC"
+	case "radix":
+		return chain == "XRD"
 	default:
 		return true
 	}

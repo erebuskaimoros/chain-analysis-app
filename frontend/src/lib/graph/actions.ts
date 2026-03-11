@@ -25,6 +25,26 @@ export function rawNodesForVisibleNode(
   return out;
 }
 
+export function isInlineLiveValueNode(node: Pick<FlowNode, "kind">) {
+  return node.kind === "pool" || node.kind === "node";
+}
+
+export function refreshableLiveValueNodes(nodes: FlowNode[]) {
+  const seen = new Set<string>();
+  const out: FlowNode[] = [];
+
+  nodes.forEach((node) => {
+    const nodeID = String(node.id || "").trim();
+    if (!nodeID || seen.has(nodeID) || isInlineLiveValueNode(node)) {
+      return;
+    }
+    seen.add(nodeID);
+    out.push(node);
+  });
+
+  return out;
+}
+
 export function unavailableRawNodes(graph: Pick<ActorGraphResponse | AddressExplorerResponse, "nodes"> | null) {
   if (!graph) {
     return [];
@@ -36,7 +56,7 @@ export function unavailableRawNodes(graph: Pick<ActorGraphResponse | AddressExpl
   graph.nodes.forEach((node) => {
     const nodeID = String(node.id || "").trim();
     const status = stringMetric(node.metrics, "live_holdings_status").toLowerCase();
-    if (!nodeID || seen.has(nodeID) || !unavailableStatuses.has(status)) {
+    if (!nodeID || seen.has(nodeID) || isInlineLiveValueNode(node) || !unavailableStatuses.has(status)) {
       return;
     }
     seen.add(nodeID);

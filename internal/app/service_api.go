@@ -17,9 +17,7 @@ type HealthSnapshot struct {
 	OK                bool                `json:"ok"`
 	Time              time.Time           `json:"time"`
 	Build             BuildInfo           `json:"build"`
-	ThornodeSources   []string            `json:"thornode_sources"`
-	MidgardSources    []string            `json:"midgard_sources"`
-	LegacySources     []string            `json:"legacy_action_sources"`
+	LiquidityEngines  map[string]HealthEngineSnapshot `json:"liquidity_engines"`
 	TrackerProviders  map[string]string   `json:"tracker_providers"`
 	TrackerOverrides  map[string]string   `json:"tracker_overrides"`
 	TrackerCandidates map[string][]string `json:"tracker_candidates"`
@@ -27,9 +25,21 @@ type HealthSnapshot struct {
 	TrackerSources    map[string]any      `json:"tracker_sources"`
 }
 
+type HealthEngineSnapshot struct {
+	Protocol        string   `json:"protocol"`
+	ThornodeSources []string `json:"thornode_sources"`
+	MidgardSources  []string `json:"midgard_sources"`
+	LegacySources   []string `json:"legacy_action_sources"`
+}
+
+type ActionLookupAction struct {
+	midgardAction
+	SourceProtocol string `json:"source_protocol,omitempty"`
+}
+
 type ActionLookupResult struct {
-	TxID    string          `json:"tx_id"`
-	Actions []MidgardAction `json:"actions"`
+	TxID    string             `json:"tx_id"`
+	Actions []ActionLookupAction `json:"actions"`
 }
 
 func (a *App) ConfigSnapshot() Config {
@@ -54,9 +64,19 @@ func (a *App) HealthSnapshot() HealthSnapshot {
 			Commit:    a.cfg.BuildCommit,
 			BuildTime: a.cfg.BuildTime,
 		},
-		ThornodeSources:   append([]string{}, a.cfg.ThornodeEndpoints...),
-		MidgardSources:    append([]string{}, a.cfg.MidgardEndpoints...),
-		LegacySources:     append([]string{}, a.cfg.LegacyActionEndpoints...),
+		LiquidityEngines: map[string]HealthEngineSnapshot{
+			sourceProtocolTHOR: {
+				Protocol:        sourceProtocolTHOR,
+				ThornodeSources: append([]string{}, a.cfg.ThornodeEndpoints...),
+				MidgardSources:  append([]string{}, a.cfg.MidgardEndpoints...),
+				LegacySources:   append([]string{}, a.cfg.LegacyActionEndpoints...),
+			},
+			sourceProtocolMAYA: {
+				Protocol:        sourceProtocolMAYA,
+				ThornodeSources: append([]string{}, a.cfg.MayanodeEndpoints...),
+				MidgardSources:  append([]string{}, a.cfg.MayaMidgardEndpoints...),
+			},
+		},
 		TrackerProviders:  copyStringMap(a.cfg.ChainTrackerProviders),
 		TrackerOverrides:  copyStringMap(a.cfg.ChainTrackerOverrides),
 		TrackerCandidates: copyStringSliceMap(a.cfg.ChainTrackerCandidates),
@@ -80,6 +100,8 @@ func (a *App) HealthSnapshot() HealthSnapshot {
 			"trongrid_expanded":     a.cfg.tronGridURLs(),
 			"xrp_rpc":               a.cfg.XRPRPCURL,
 			"xrp_rpc_expanded":      a.cfg.xrplRPCURLs(),
+			"radix_gateway":         a.cfg.RadixGatewayURL,
+			"radix_gateway_expanded": parseURLListValue(a.cfg.RadixGatewayURL),
 		},
 	}
 }

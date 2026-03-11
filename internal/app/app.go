@@ -20,6 +20,8 @@ type App struct {
 	db                *sql.DB
 	thor              *ThorClient
 	mid               *ThorClient
+	mayaNode          *ThorClient
+	mayaMid           *ThorClient
 	legacyActions     *ThorClient
 	httpClient        *http.Client
 	trackerHealth     *trackerHealthStore
@@ -61,6 +63,8 @@ func New(cfg Config) (*App, error) {
 		db:               db,
 		thor:             NewThorClient(cfg.ThornodeEndpoints, cfg.MidgardTimeout),
 		mid:              NewThorClient(cfg.MidgardEndpoints, cfg.MidgardTimeout),
+		mayaNode:         NewThorClient(cfg.MayanodeEndpoints, cfg.MidgardTimeout),
+		mayaMid:          NewThorClient(cfg.MayaMidgardEndpoints, cfg.MidgardTimeout),
 		legacyActions:    NewThorClient(cfg.LegacyActionEndpoints, cfg.MidgardTimeout),
 		httpClient:       &http.Client{Timeout: cfg.RequestTimeout},
 		trackerHealth:    newTrackerHealthStore(),
@@ -101,9 +105,13 @@ func (a *App) saveLastRunLog(capture *runLogCapture) error {
 	return os.WriteFile(path, []byte(body), 0o644)
 }
 
-func (a *App) fetchPools(ctx context.Context) ([]MidgardPool, error) {
+func (a *App) fetchPoolsForProtocol(ctx context.Context, protocol string) ([]MidgardPool, error) {
+	engine, ok := a.liquidityEngine(protocol)
+	if !ok || engine.MidgardClient == nil {
+		return nil, fmt.Errorf("%s liquidity midgard unavailable", normalizeSourceProtocol(protocol))
+	}
 	var pools []MidgardPool
-	if err := a.mid.GetJSON(ctx, "/pools", &pools); err != nil {
+	if err := engine.MidgardClient.GetJSON(ctx, "/pools", &pools); err != nil {
 		return nil, err
 	}
 	return pools, nil

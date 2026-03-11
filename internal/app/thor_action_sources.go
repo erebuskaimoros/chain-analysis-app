@@ -11,8 +11,7 @@ import (
 )
 
 const (
-	legacyActionPageDelay     = 250 * time.Millisecond
-	mergedTHORActionCachePref = "__thor_merged__|"
+	legacyActionPageDelay = 250 * time.Millisecond
 )
 
 func (a *App) lookupActionByTxID(ctx context.Context, txID string) (ActionLookupResult, error) {
@@ -24,39 +23,45 @@ func (a *App) lookupActionByTxID(ctx context.Context, txID string) (ActionLookup
 		return ActionLookupResult{}, fmt.Errorf("txid is required")
 	}
 
-	var midgardResp midgardActionsResponse
-	midgardPath := "/actions?txid=" + txID
-	midgardErr := a.mid.GetJSON(ctx, midgardPath, &midgardResp)
-	if midgardErr == nil && len(midgardResp.Actions) > 0 {
-		return ActionLookupResult{
-			TxID:    txID,
-			Actions: canonicalizeMidgardLookupActions(midgardResp.Actions),
-		}, nil
-	}
-
-	if !a.hasLegacyActionSource() {
-		if midgardErr != nil {
-			return ActionLookupResult{}, midgardErr
+	var (
+		rows     []ActionLookupAction
+		firstErr error
+	)
+	for _, engine := range a.availableLiquidityEngines() {
+		actions, err := a.lookupActionByTxIDFromProtocol(ctx, engine.Protocol, txID)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
-		return ActionLookupResult{
-			TxID:    txID,
-			Actions: canonicalizeMidgardLookupActions(midgardResp.Actions),
-		}, nil
-	}
-
-	var legacyResp midgardActionsResponse
-	legacyPath := "/actions?txid=" + txID
-	legacyErr := a.legacyActions.GetJSON(ctx, legacyPath, &legacyResp)
-	if legacyErr != nil {
-		if midgardErr != nil {
-			return ActionLookupResult{}, midgardErr
+		for _, action := range actions {
+			rows = append(rows, ActionLookupAction{
+				midgardAction:   action,
+				SourceProtocol: sourceProtocolFromAction(action),
+			})
 		}
-		return ActionLookupResult{}, legacyErr
 	}
-
+	sort.SliceStable(rows, func(i, j int) bool {
+		left := parseMidgardActionTime(rows[i].Date)
+		right := parseMidgardActionTime(rows[j].Date)
+		if !left.Equal(right) {
+			if left.IsZero() {
+				return false
+			}
+			if right.IsZero() {
+				return true
+			}
+			return left.After(right)
+		}
+		return parseInt64(rows[i].Height) > parseInt64(rows[j].Height)
+	})
+	if len(rows) == 0 && firstErr != nil {
+		return ActionLookupResult{}, firstErr
+	}
 	return ActionLookupResult{
 		TxID:    txID,
-		Actions: canonicalizeMidgardLookupActions(mergeMidgardActions(midgardResp.Actions, legacyResp.Actions)),
+		Actions: rows,
 	}, nil
 }
 
@@ -65,53 +70,39 @@ func (a *App) fetchActionHistoryForAddress(ctx context.Context, address string, 
 	if seed.Address == "" {
 		return nil, false, nil
 	}
-	if !a.shouldUseLegacyTHORActionHistory(seed) {
-		return a.fetchMidgardActionsForAddressOnly(ctx, seed.Address, start, end, maxPages)
+	protocols := a.actionSourceProtocolsForSeed(seed)
+	if len(protocols) == 0 {
+		return nil, false, nil
 	}
-
-	if maxPages < 1 {
-		maxPages = 1
-	}
-	if maxPages > midgardMaxPagesPerAddress {
-		maxPages = midgardMaxPagesPerAddress
-	}
-
-	fromTimestamp, endTimestamp := actionHistoryQueryBounds(start, end)
-	cacheKey := mergedTHORActionCacheKey(seed.Address)
-	if cached, truncated, found, err := lookupMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages); err == nil && found {
-		cached = canonicalizeMidgardLookupActions(cached)
-		logInfo(ctx, "thor_action_cache_hit", map[string]any{
-			"address":   seed.Address,
-			"actions":   len(cached),
-			"truncated": truncated,
-			"max_pages": maxPages,
-		})
-		return cached, truncated, nil
-	}
-
-	midgardActions, midgardTruncated, err := a.fetchMidgardActionsForAddressOnly(ctx, seed.Address, start, end, maxPages)
-	midgardErr := err
-	legacyActions, legacyTruncated, err := a.fetchLegacyActionsForAddress(ctx, seed.Address, start, end, maxPages)
-	legacyErr := err
-
-	merged, truncated, cacheable, err := resolveTHORActionHistorySources(
-		midgardActions,
-		midgardTruncated,
-		midgardErr,
-		legacyActions,
-		legacyTruncated,
-		legacyErr,
+	var (
+		groups    [][]midgardAction
+		truncated bool
+		firstErr  error
+		hadError  bool
 	)
-	if err != nil {
-		return merged, false, err
-	}
-
-	if cacheable {
-		if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, truncated, merged); err != nil {
-			logError(ctx, "thor_action_cache_write_failed", err, map[string]any{"address": seed.Address})
+	for _, protocol := range protocols {
+		actions, protocolTruncated, err := a.fetchActionHistoryForAddressFromProtocol(ctx, protocol, seed, start, end, maxPages)
+		if err != nil {
+			hadError = true
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
+		groups = append(groups, actions)
+		truncated = truncated || protocolTruncated
 	}
-	return merged, truncated, nil
+	merged := mergeSourcedMidgardActions(groups...)
+	if len(merged) > 0 {
+		if hadError {
+			truncated = true
+		}
+		return merged, truncated, nil
+	}
+	if firstErr != nil {
+		return nil, false, firstErr
+	}
+	return nil, false, nil
 }
 
 func (a *App) fetchActionHistoryForAddressPaged(ctx context.Context, address string, start, end time.Time, startPage, pageCount int) ([]midgardAction, bool, error) {
@@ -119,8 +110,126 @@ func (a *App) fetchActionHistoryForAddressPaged(ctx context.Context, address str
 	if seed.Address == "" {
 		return nil, false, nil
 	}
-	if !a.shouldUseLegacyTHORActionHistory(seed) {
-		return a.fetchMidgardActionsForAddressPagedOnly(ctx, seed.Address, start, end, startPage, pageCount)
+	protocols := a.actionSourceProtocolsForSeed(seed)
+	if len(protocols) == 0 {
+		return nil, false, nil
+	}
+	var (
+		groups    [][]midgardAction
+		truncated bool
+		firstErr  error
+		hadError  bool
+	)
+	for _, protocol := range protocols {
+		actions, protocolTruncated, err := a.fetchActionHistoryForAddressPagedFromProtocol(ctx, protocol, seed, start, end, startPage, pageCount)
+		if err != nil {
+			hadError = true
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		groups = append(groups, actions)
+		truncated = truncated || protocolTruncated
+	}
+	merged := mergeSourcedMidgardActions(groups...)
+	if len(merged) > 0 {
+		if hadError {
+			truncated = true
+		}
+		return merged, truncated, nil
+	}
+	if firstErr != nil {
+		return nil, false, firstErr
+	}
+	return nil, false, nil
+}
+
+func (a *App) lookupActionByTxIDFromProtocol(ctx context.Context, protocol, txID string) ([]midgardAction, error) {
+	engine, ok := a.liquidityEngine(protocol)
+	if !ok || engine.MidgardClient == nil {
+		return nil, fmt.Errorf("%s liquidity engine unavailable", normalizeSourceProtocol(protocol))
+	}
+
+	var midgardResp midgardActionsResponse
+	midgardPath := "/actions?txid=" + txID
+	midgardErr := engine.MidgardClient.GetJSON(ctx, midgardPath, &midgardResp)
+	midgardActions := annotateMidgardActions(canonicalizeMidgardLookupActions(midgardResp.Actions), protocol)
+	if normalizeSourceProtocol(protocol) != sourceProtocolTHOR || engine.LegacyActionClient == nil {
+		if midgardErr != nil {
+			return nil, midgardErr
+		}
+		return midgardActions, nil
+	}
+
+	var legacyResp midgardActionsResponse
+	legacyPath := "/actions?txid=" + txID
+	legacyErr := engine.LegacyActionClient.GetJSON(ctx, legacyPath, &legacyResp)
+	legacyActions := annotateMidgardActions(canonicalizeMidgardLookupActions(legacyResp.Actions), protocol)
+	switch {
+	case midgardErr == nil && legacyErr == nil:
+		return annotateMidgardActions(canonicalizeMidgardLookupActions(mergeMidgardActions(midgardResp.Actions, legacyResp.Actions)), protocol), nil
+	case midgardErr == nil:
+		return midgardActions, nil
+	case legacyErr == nil:
+		return legacyActions, nil
+	default:
+		return nil, midgardErr
+	}
+}
+
+func (a *App) fetchActionHistoryForAddressFromProtocol(ctx context.Context, protocol string, seed frontierAddress, start, end time.Time, maxPages int) ([]midgardAction, bool, error) {
+	if a.shouldUseLegacyTHORActionHistory(protocol, seed) {
+		if maxPages < 1 {
+			maxPages = 1
+		}
+		if maxPages > midgardMaxPagesPerAddress {
+			maxPages = midgardMaxPagesPerAddress
+		}
+
+		fromTimestamp, endTimestamp := actionHistoryQueryBounds(start, end)
+		cacheKey := mergedTHORActionCacheKey(seed.Address)
+		if cached, truncated, found, err := lookupMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages); err == nil && found {
+			cached = annotateMidgardActions(canonicalizeMidgardLookupActions(cached), protocol)
+			logInfo(ctx, "thor_action_cache_hit", map[string]any{
+				"address":   seed.Address,
+				"actions":   len(cached),
+				"truncated": truncated,
+				"max_pages": maxPages,
+			})
+			return cached, truncated, nil
+		}
+
+		midgardActions, midgardTruncated, err := a.fetchMidgardActionsForAddressOnlyFromProtocol(ctx, protocol, seed.Address, start, end, maxPages)
+		midgardErr := err
+		legacyActions, legacyTruncated, err := a.fetchLegacyActionsForAddress(ctx, seed.Address, start, end, maxPages)
+		legacyErr := err
+
+		merged, truncated, cacheable, err := resolveTHORActionHistorySources(
+			midgardActions,
+			midgardTruncated,
+			midgardErr,
+			legacyActions,
+			legacyTruncated,
+			legacyErr,
+		)
+		if err != nil {
+			return merged, false, err
+		}
+		merged = annotateMidgardActions(merged, protocol)
+		if cacheable {
+			if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, truncated, merged); err != nil {
+				logError(ctx, "thor_action_cache_write_failed", err, map[string]any{"address": seed.Address})
+			}
+		}
+		return merged, truncated, nil
+	}
+	return a.fetchMidgardActionsForAddressOnlyFromProtocol(ctx, protocol, seed.Address, start, end, maxPages)
+}
+
+func (a *App) fetchActionHistoryForAddressPagedFromProtocol(ctx context.Context, protocol string, seed frontierAddress, start, end time.Time, startPage, pageCount int) ([]midgardAction, bool, error) {
+	if !a.shouldUseLegacyTHORActionHistory(protocol, seed) {
+		return a.fetchMidgardActionsForAddressPagedOnlyFromProtocol(ctx, protocol, seed.Address, start, end, startPage, pageCount)
 	}
 
 	if startPage < 0 {
@@ -135,7 +244,7 @@ func (a *App) fetchActionHistoryForAddressPaged(ctx context.Context, address str
 		totalPages = 1
 	}
 
-	midgardActions, midgardTruncated, err := a.fetchMidgardActionsForAddressPagedOnly(ctx, seed.Address, start, end, 0, totalPages)
+	midgardActions, midgardTruncated, err := a.fetchMidgardActionsForAddressPagedOnlyFromProtocol(ctx, protocol, seed.Address, start, end, 0, totalPages)
 	midgardErr := err
 	legacyActions, legacyTruncated, err := a.fetchLegacyActionsForAddress(ctx, seed.Address, start, end, totalPages)
 	legacyErr := err
@@ -151,6 +260,7 @@ func (a *App) fetchActionHistoryForAddressPaged(ctx context.Context, address str
 	if err != nil {
 		return merged, false, err
 	}
+	merged = annotateMidgardActions(merged, protocol)
 
 	startIndex := startPage * midgardActionsPageLimit
 	if startIndex >= len(merged) {
@@ -284,8 +394,8 @@ func legacyActionQueryParams(address string, fromTimestamp, endTimestamp int64, 
 	return params
 }
 
-func (a *App) shouldUseLegacyTHORActionHistory(seed frontierAddress) bool {
-	if a == nil || !a.hasLegacyActionSource() {
+func (a *App) shouldUseLegacyTHORActionHistory(protocol string, seed frontierAddress) bool {
+	if a == nil || !a.hasLegacyActionSource() || normalizeSourceProtocol(protocol) != sourceProtocolTHOR {
 		return false
 	}
 	return normalizeChain(seed.Chain, seed.Address) == "THOR"

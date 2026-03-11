@@ -27,9 +27,11 @@ export {
   actorExpansionSeeds,
   explorerExpansionSeeds,
   explorerURLForAddress,
+  isInlineLiveValueNode,
   nodeAddress,
   nodeAddressForActions,
   rawNodesForVisibleNode,
+  refreshableLiveValueNodes,
   unavailableRawNodes,
 } from "./graph/actions";
 export {

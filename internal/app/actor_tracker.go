@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -116,10 +117,11 @@ type protocolAddress struct {
 }
 
 type priceBook struct {
-	RuneUSD       float64
+	NativeUSD     map[string]float64
 	AssetUSD      map[string]float64
 	PoolAssets    map[string]struct{}
 	PoolSnapshots map[string]MidgardPool
+	PoolProtocols map[string]string
 	HasPoolData   bool
 }
 
@@ -186,6 +188,7 @@ type flowRef struct {
 type projectedSegment struct {
 	Source           flowRef
 	Target           flowRef
+	SourceProtocol   string
 	ActionClass      string
 	ActionKey        string
 	ActionLabel      string
@@ -234,6 +237,7 @@ type midgardAction struct {
 	Out      []midgardActionLeg    `json:"out"`
 	Pools    []string              `json:"pools"`
 	Metadata midgardActionMetadata `json:"metadata"`
+	SourceProtocol string          `json:"-"`
 }
 
 type midgardActionLeg struct {
@@ -1238,9 +1242,17 @@ func (a *App) fetchMidgardActionsForAddress(ctx context.Context, address string,
 }
 
 func (a *App) fetchMidgardActionsForAddressOnly(ctx context.Context, address string, start, end time.Time, maxPages int) ([]midgardAction, bool, error) {
+	return a.fetchMidgardActionsForAddressOnlyFromProtocol(ctx, sourceProtocolTHOR, address, start, end, maxPages)
+}
+
+func (a *App) fetchMidgardActionsForAddressOnlyFromProtocol(ctx context.Context, protocol, address string, start, end time.Time, maxPages int) ([]midgardAction, bool, error) {
 	seed := normalizeFrontierAddress(address)
 	if seed.Address == "" {
 		return nil, false, nil
+	}
+	engine, ok := a.liquidityEngine(protocol)
+	if !ok || engine.MidgardClient == nil {
+		return nil, false, fmt.Errorf("%s liquidity midgard unavailable", normalizeSourceProtocol(protocol))
 	}
 	address = seed.Address
 	if maxPages < 1 {
@@ -1258,11 +1270,13 @@ func (a *App) fetchMidgardActionsForAddressOnly(ctx context.Context, address str
 	if endTimestamp < fromTimestamp {
 		endTimestamp = fromTimestamp
 	}
+	cacheKey := protocolActionCacheKey(protocol, address)
 
 	// Check disk cache (exact match, then superset range match).
-	if cached, truncated, found, err := lookupMidgardActionCache(ctx, a.db, address, fromTimestamp, endTimestamp, maxPages); err == nil && found {
-		cached = canonicalizeMidgardLookupActions(cached)
+	if cached, truncated, found, err := lookupMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages); err == nil && found {
+		cached = annotateMidgardActions(canonicalizeMidgardLookupActions(cached), protocol)
 		logInfo(ctx, "midgard_action_cache_hit", map[string]any{
+			"protocol":  normalizeSourceProtocol(protocol),
 			"address":   address,
 			"actions":   len(cached),
 			"truncated": truncated,
@@ -1283,8 +1297,9 @@ func (a *App) fetchMidgardActionsForAddressOnly(ctx context.Context, address str
 		var response midgardActionsResponse
 		path := "/actions?" + params.Encode()
 		offset := page * midgardActionsPageLimit
-		if err := a.mid.GetJSONObserved(ctx, path, &response, func(meta RequestAttemptMeta) {
+		if err := engine.MidgardClient.GetJSONObserved(ctx, path, &response, func(meta RequestAttemptMeta) {
 			fields := map[string]any{
+				"protocol":              normalizeSourceProtocol(protocol),
 				"address":               address,
 				"page":                  page,
 				"offset":                offset,
@@ -1326,9 +1341,12 @@ func (a *App) fetchMidgardActionsForAddressOnly(ctx context.Context, address str
 
 		actions = append(actions, response.Actions...)
 		if len(response.Actions) < midgardActionsPageLimit {
-			actions = canonicalizeMidgardLookupActions(actions)
-			if err := insertMidgardActionCache(ctx, a.db, address, fromTimestamp, endTimestamp, maxPages, false, actions); err != nil {
-				logError(ctx, "midgard_action_cache_write_failed", err, map[string]any{"address": address})
+			actions = annotateMidgardActions(canonicalizeMidgardLookupActions(actions), protocol)
+			if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, false, actions); err != nil {
+				logError(ctx, "midgard_action_cache_write_failed", err, map[string]any{
+					"address":  address,
+					"protocol": normalizeSourceProtocol(protocol),
+				})
 			}
 			return actions, false, nil
 		}
@@ -1337,9 +1355,12 @@ func (a *App) fetchMidgardActionsForAddressOnly(ctx context.Context, address str
 		}
 	}
 
-	actions = canonicalizeMidgardLookupActions(actions)
-	if err := insertMidgardActionCache(ctx, a.db, address, fromTimestamp, endTimestamp, maxPages, true, actions); err != nil {
-		logError(ctx, "midgard_action_cache_write_failed", err, map[string]any{"address": address})
+	actions = annotateMidgardActions(canonicalizeMidgardLookupActions(actions), protocol)
+	if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, true, actions); err != nil {
+		logError(ctx, "midgard_action_cache_write_failed", err, map[string]any{
+			"address":  address,
+			"protocol": normalizeSourceProtocol(protocol),
+		})
 	}
 	return actions, true, nil
 }
@@ -1353,9 +1374,17 @@ func (a *App) fetchMidgardActionsForAddressPaged(ctx context.Context, address st
 }
 
 func (a *App) fetchMidgardActionsForAddressPagedOnly(ctx context.Context, address string, start, end time.Time, startPage, pageCount int) ([]midgardAction, bool, error) {
+	return a.fetchMidgardActionsForAddressPagedOnlyFromProtocol(ctx, sourceProtocolTHOR, address, start, end, startPage, pageCount)
+}
+
+func (a *App) fetchMidgardActionsForAddressPagedOnlyFromProtocol(ctx context.Context, protocol, address string, start, end time.Time, startPage, pageCount int) ([]midgardAction, bool, error) {
 	seed := normalizeFrontierAddress(address)
 	if seed.Address == "" {
 		return nil, false, nil
+	}
+	engine, ok := a.liquidityEngine(protocol)
+	if !ok || engine.MidgardClient == nil {
+		return nil, false, fmt.Errorf("%s liquidity midgard unavailable", normalizeSourceProtocol(protocol))
 	}
 	address = seed.Address
 	if pageCount < 1 {
@@ -1384,8 +1413,9 @@ func (a *App) fetchMidgardActionsForAddressPagedOnly(ctx context.Context, addres
 		var response midgardActionsResponse
 		path := "/actions?" + params.Encode()
 		offset := page * midgardActionsPageLimit
-		if err := a.mid.GetJSONObserved(ctx, path, &response, func(meta RequestAttemptMeta) {
+		if err := engine.MidgardClient.GetJSONObserved(ctx, path, &response, func(meta RequestAttemptMeta) {
 			fields := map[string]any{
+				"protocol":              normalizeSourceProtocol(protocol),
 				"address":               address,
 				"page":                  page,
 				"offset":                offset,
@@ -1427,14 +1457,14 @@ func (a *App) fetchMidgardActionsForAddressPagedOnly(ctx context.Context, addres
 
 		actions = append(actions, response.Actions...)
 		if len(response.Actions) < midgardActionsPageLimit {
-			return canonicalizeMidgardLookupActions(actions), false, nil
+			return annotateMidgardActions(canonicalizeMidgardLookupActions(actions), protocol), false, nil
 		}
 		if i+1 < pageCount && !sleepWithContext(ctx, midgardActionPageDelay) {
 			return actions, false, ctx.Err()
 		}
 	}
 
-	return canonicalizeMidgardLookupActions(actions), true, nil
+	return annotateMidgardActions(canonicalizeMidgardLookupActions(actions), protocol), true, nil
 }
 
 // probeMidgardTotalPages does a binary search to find the last page with data
@@ -1837,27 +1867,39 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		return nil
 	}
 	// Live-holdings enrichment runs after the graph build has already spent most of
-	// the request budget. Detach it from the parent deadline, then enforce timeouts
-	// per upstream lookup so slow public trackers do not consume the entire batch.
+	// the request budget. Detach it from the parent deadline, then enforce both a
+	// batch budget and per-upstream timeouts so slow public trackers do not block
+	// the graph response for minutes.
 	baseLookupCtx := context.WithoutCancel(ctx)
+	lookupCtx, lookupCancel := context.WithTimeout(baseLookupCtx, a.liveHoldingsBatchTimeout())
+	defer lookupCancel()
 
 	warnings := []string{}
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	poolByAsset := map[string]MidgardPool{}
-	poolsCtx, poolsCancel := context.WithTimeout(baseLookupCtx, a.liveHoldingsLookupTimeout("midgard", "THOR"))
-	if pools, err := a.fetchPools(poolsCtx); err == nil {
-		for _, pool := range pools {
-			asset := normalizeAsset(pool.Asset)
-			if asset == "" {
-				continue
-			}
-			poolByAsset[asset] = pool
+	hasPoolLookups := false
+	for i := range nodes {
+		if nodes[i].Kind == "pool" {
+			hasPoolLookups = true
+			break
 		}
-	} else {
-		warnings = append(warnings, "live holdings for pool nodes unavailable")
 	}
-	poolsCancel()
+	if hasPoolLookups {
+		poolsCtx, poolsCancel := context.WithTimeout(lookupCtx, a.liveHoldingsLookupTimeout("midgard", "THOR"))
+		if pools, err := a.fetchPools(poolsCtx); err == nil {
+			for _, pool := range pools {
+				asset := normalizeAsset(pool.Asset)
+				if asset == "" {
+					continue
+				}
+				poolByAsset[asset] = pool
+			}
+		} else {
+			warnings = append(warnings, "live holdings for pool nodes unavailable")
+		}
+		poolsCancel()
+	}
 
 	type nodeRef struct {
 		index int
@@ -1951,7 +1993,7 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		}
 	}
 	if hasTHORLookups || len(nodeLookupRefs) > 0 {
-		bondLookupCtx, bondLookupCancel := context.WithTimeout(baseLookupCtx, a.liveHoldingsLookupTimeout("thornode", "THOR"))
+		bondLookupCtx, bondLookupCancel := context.WithTimeout(lookupCtx, a.liveHoldingsLookupTimeout("thornode", "THOR"))
 		bondedByAddress, bondedByNode, nodeStatusByNode, err := a.fetchTHORBondIndexes(bondLookupCtx)
 		bondLookupCancel()
 		if err != nil {
@@ -1998,6 +2040,14 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 	}
 
 	if len(addressLookupTasks) == 0 {
+		if errors.Is(lookupCtx.Err(), context.DeadlineExceeded) {
+			logInfo(baseLookupCtx, "actor_tracker_live_holdings_budget_exhausted", map[string]any{
+				"timeout_ms": a.liveHoldingsBatchTimeout().Milliseconds(),
+				"nodes":      len(nodes),
+				"lookups":    0,
+			})
+			warnings = append(warnings, "live holdings lookup budget exhausted; some live values were skipped")
+		}
 		return uniqueStrings(warnings)
 	}
 
@@ -2034,8 +2084,18 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 			go func() {
 				defer bucketWG.Done()
 				for task := range jobs {
+					if err := lookupCtx.Err(); err != nil {
+						results <- addressResult{
+							taskKey:  task.key,
+							chain:    task.chain,
+							address:  task.address,
+							provider: task.provider,
+							err:      err,
+						}
+						continue
+					}
 					taskTimeout := a.liveHoldingsLookupTimeout(task.provider, task.chain)
-					taskCtx, taskCancel := context.WithTimeout(baseLookupCtx, taskTimeout)
+					taskCtx, taskCancel := context.WithTimeout(lookupCtx, taskTimeout)
 					startedAt := time.Now()
 
 					var (
@@ -2091,18 +2151,22 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		refs := task.refs
 		if result.err != nil {
 			failed = append(failed, fmt.Sprintf("%s:%s", task.chain, shortAddress(task.address)))
-			fields := map[string]any{
-				"chain":      task.chain,
-				"address":    task.address,
-				"provider":   result.provider,
-				"elapsed_ms": result.elapsed.Milliseconds(),
+			budgetExceeded := errors.Is(lookupCtx.Err(), context.DeadlineExceeded) &&
+				(errors.Is(result.err, context.DeadlineExceeded) || errors.Is(result.err, context.Canceled))
+			if !budgetExceeded {
+				fields := map[string]any{
+					"chain":      task.chain,
+					"address":    task.address,
+					"provider":   result.provider,
+					"elapsed_ms": result.elapsed.Milliseconds(),
+				}
+				if task.chain == "THOR" {
+					fields["provider_candidates"] = "thornode,midgard"
+				} else if providers := strings.Join(a.cfg.trackerProvidersForChain(task.chain), ","); providers != "" {
+					fields["provider_candidates"] = providers
+				}
+				logError(baseLookupCtx, "actor_tracker_live_holdings_lookup_failed", result.err, fields)
 			}
-			if task.chain == "THOR" {
-				fields["provider_candidates"] = "thornode,midgard"
-			} else if providers := strings.Join(a.cfg.trackerProvidersForChain(task.chain), ","); providers != "" {
-				fields["provider_candidates"] = providers
-			}
-			logError(baseLookupCtx, "actor_tracker_live_holdings_lookup_failed", result.err, fields)
 			for _, ref := range refs {
 				if nodes[ref.index].Metrics == nil {
 					nodes[ref.index].Metrics = map[string]any{}
@@ -2124,6 +2188,14 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		sort.Strings(failed)
 		limit := min(3, len(failed))
 		warnings = append(warnings, fmt.Sprintf("live holdings unavailable for %d address nodes (%s)", len(failed), strings.Join(failed[:limit], ", ")))
+	}
+	if errors.Is(lookupCtx.Err(), context.DeadlineExceeded) {
+		logInfo(baseLookupCtx, "actor_tracker_live_holdings_budget_exhausted", map[string]any{
+			"timeout_ms": a.liveHoldingsBatchTimeout().Milliseconds(),
+			"nodes":      len(nodes),
+			"lookups":    len(addressLookupTasks),
+		})
+		warnings = append(warnings, "live holdings lookup budget exhausted; some live values were skipped")
 	}
 	return uniqueStrings(warnings)
 }
@@ -2154,6 +2226,10 @@ func (a *App) liveHoldingsLookupTimeout(provider, chain string) time.Duration {
 	default:
 		return a.clampLiveHoldingsLookupTimeout(10 * time.Second)
 	}
+}
+
+func (a *App) liveHoldingsBatchTimeout() time.Duration {
+	return a.clampLiveHoldingsLookupTimeout(6 * time.Second)
 }
 
 func (a *App) clampLiveHoldingsLookupTimeout(timeout time.Duration) time.Duration {

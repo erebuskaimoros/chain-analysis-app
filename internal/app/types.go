@@ -10,6 +10,7 @@ type MidgardPool struct {
 	LiquidityUnits string `json:"liquidityUnits"`
 	AssetPrice     string `json:"assetPrice"`
 	AssetPriceUSD  string `json:"assetPriceUSD"`
+	NativeDecimal  string `json:"nativeDecimal"`
 }
 
 type RebondLink struct {
@@ -127,11 +128,12 @@ type FlowNode struct {
 }
 
 type FlowEdgeTransaction struct {
-	TxID    string           `json:"tx_id"`
-	Height  int64            `json:"height"`
-	Time    time.Time        `json:"time"`
-	USDSpot float64          `json:"usd_spot"`
-	Assets  []FlowAssetValue `json:"assets"`
+	TxID           string           `json:"tx_id"`
+	SourceProtocol string           `json:"source_protocol,omitempty"`
+	Height         int64            `json:"height"`
+	Time           time.Time        `json:"time"`
+	USDSpot        float64          `json:"usd_spot"`
+	Assets         []FlowAssetValue `json:"assets"`
 }
 
 type FlowEdge struct {
@@ -153,6 +155,7 @@ type FlowEdge struct {
 	Heights          []int64               `json:"heights"`
 	ActorIDs         []int64               `json:"actor_ids"`
 	Confidence       float64               `json:"confidence"`
+	SourceProtocols  []string              `json:"source_protocols,omitempty"`
 }
 
 type SupportingAction struct {
@@ -179,6 +182,7 @@ type SupportingAction struct {
 	FromNode         string    `json:"from_node"`
 	ToNode           string    `json:"to_node"`
 	ActorIDs         []int64   `json:"actor_ids"`
+	SourceProtocol   string    `json:"source_protocol,omitempty"`
 }
 
 type ActorTrackerResponse struct {

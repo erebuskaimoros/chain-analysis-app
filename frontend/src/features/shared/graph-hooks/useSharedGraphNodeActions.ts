@@ -10,6 +10,7 @@ import {
   explorerURLForAddress,
   nodeAddressForActions,
   rawNodesForVisibleNode,
+  refreshableLiveValueNodes,
   unavailableRawNodes,
   type VisibleGraphNode,
 } from "../../../lib/graph";
@@ -86,10 +87,15 @@ export function useSharedGraphNodeActions<TGraph extends ActorGraphResponse | Ad
       setStatusText("Selected node has no live value context.");
       return;
     }
+    const refreshableNodes = refreshableLiveValueNodes(rawNodes);
+    if (!refreshableNodes.length) {
+      setStatusText("Selected node live value is already computed inline.");
+      return;
+    }
     try {
-      const response = await refreshLiveHoldings(rawNodes);
+      const response = await refreshLiveHoldings(refreshableNodes);
       mergeRefreshResult(response);
-      setStatusText(onRefreshNodeSuccess(rawNodes.length, response));
+      setStatusText(onRefreshNodeSuccess(refreshableNodes.length, response));
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Live value refresh failed.");
     }
@@ -99,7 +105,7 @@ export function useSharedGraphNodeActions<TGraph extends ActorGraphResponse | Ad
     if (!graph) {
       return;
     }
-    const rawNodes = unavailableRawNodes(graph);
+    const rawNodes = refreshableLiveValueNodes(unavailableRawNodes(graph));
     if (!rawNodes.length) {
       setStatusText(unavailableEmptyMessage);
       return;

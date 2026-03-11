@@ -274,9 +274,13 @@ func normalizeAddress(address string) string {
 	case isLikelyEVMAddress(address):
 		return "0x" + strings.ToLower(address[2:])
 	case strings.HasPrefix(lower, "thor"),
+		strings.HasPrefix(lower, "maya"),
 		strings.HasPrefix(lower, "bc1"),
 		strings.HasPrefix(lower, "ltc1"),
-		strings.HasPrefix(lower, "cosmos1"):
+		strings.HasPrefix(lower, "cosmos1"),
+		strings.HasPrefix(lower, "account_rdx"),
+		strings.HasPrefix(lower, "component_rdx"),
+		strings.HasPrefix(lower, "resource_rdx"):
 		return lower
 	case strings.HasPrefix(lower, "bitcoincash:"):
 		return strings.TrimPrefix(lower, "bitcoincash:")
