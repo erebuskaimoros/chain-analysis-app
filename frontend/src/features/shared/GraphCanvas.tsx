@@ -16,6 +16,7 @@ export function GraphCanvas({
   onNodeDoubleActivate,
   doubleActivateLabel = mode === "explorer" ? "Expand one edge" : "Expand one hop",
   graphResetKey = 0,
+  onSaveState,
   filters,
   nodeMenuActions,
   paneMenuActions,
@@ -71,6 +72,7 @@ export function GraphCanvas({
     isFullscreen,
     setIsFullscreen,
     onNodeDoubleActivate,
+    onSaveState,
     scheduleLabelRender,
   });
 
@@ -94,6 +96,7 @@ export function GraphCanvas({
             nodeMenuActions={nodeMenuActions}
             paneMenuActions={paneMenuActions}
             doubleActivateLabel={doubleActivateLabel}
+            showSaveState={Boolean(onSaveState)}
             onToolbarAction={handleToolbarAction}
             onContextMenuAction={handleContextMenuAction}
           />

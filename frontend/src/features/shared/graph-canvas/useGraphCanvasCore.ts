@@ -167,6 +167,9 @@ export function useGraphCanvasCore({
       return;
     }
 
+    const resetLayout = resetKeyRef.current !== graphResetKey;
+    const preservedPositions = resetLayout ? new Map<string, cytoscape.Position>() : captureNodePositions(cy, nodes);
+
     if (resetKeyRef.current !== graphResetKey) {
       resetKeyRef.current = graphResetKey;
       viewportRef.current = null;
@@ -201,7 +204,7 @@ export function useGraphCanvasCore({
     });
 
     const currentLayoutSeq = ++layoutSeqRef.current;
-    void applyElkLayout(cy, mode, nodes, elkRef.current).then(() => {
+    void applyElkLayout(cy, mode, nodes, elkRef.current, preservedPositions).then(() => {
       if (layoutSeqRef.current !== currentLayoutSeq || !cyRef.current) {
         return;
       }
@@ -253,4 +256,16 @@ export function useGraphCanvasCore({
     }
   }, [selection]);
 
+}
+
+function captureNodePositions(cy: cytoscape.Core, nodes: VisibleGraphNode[]) {
+  const positions = new Map<string, cytoscape.Position>();
+  for (const node of nodes) {
+    const element = cy.getElementById(node.id) as cytoscape.NodeSingular;
+    if (!element.nonempty() || typeof element.position !== "function") {
+      continue;
+    }
+    positions.set(node.id, element.position());
+  }
+  return positions;
 }

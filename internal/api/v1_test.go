@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -24,6 +25,9 @@ func TestV1HealthRoute(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("X-Request-ID") == "" {
+		t.Fatalf("expected request id header on v1 response")
 	}
 
 	var resp app.HealthSnapshot
@@ -120,5 +124,48 @@ func TestV1HealthContextToleratesRequestContext(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unexpected status %d", rec.Code)
+	}
+}
+
+func TestV1ActorGraphReturnsGraphWhenRunSaveFails(t *testing.T) {
+	v1 := &V1{
+		buildActorGraphFn: func(ctx context.Context, req app.ActorTrackerRequest) (app.ActorTrackerResponse, error) {
+			return app.ActorTrackerResponse{
+				Actors: []app.Actor{{ID: 2, Name: "Desk"}},
+				Nodes: []app.FlowNode{{
+					ID:    "actor:2",
+					Kind:  "actor",
+					Label: "Desk",
+				}},
+				Edges: []app.FlowEdge{},
+			}, nil
+		},
+		createActorGraphRunFn: func(ctx context.Context, req app.ActorTrackerRequest, summary string, nodeCount, edgeCount int) (int64, error) {
+			return 0, errors.New("insert failed")
+		},
+	}
+
+	mux := http.NewServeMux()
+	v1.Register(mux)
+
+	body := bytes.NewBufferString(`{"actor_ids":[2],"start_time":"2026-03-10T01:28","end_time":"2026-03-11T01:28","max_hops":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/analysis/actor-graph", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected actor graph to still return 200 when run save fails, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Actors []app.Actor    `json:"actors"`
+		Nodes  []app.FlowNode `json:"nodes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Actors) != 1 || len(resp.Nodes) != 1 {
+		t.Fatalf("expected graph payload, got %#v", resp)
 	}
 }

@@ -10,10 +10,12 @@ import {
   refreshLiveHoldings,
 } from "../../../lib/api";
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES, defaultActorGraphWindow } from "../../../lib/constants";
+import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
 import { formatShortDateTime, toLocalInputValue } from "../../../lib/format";
 import {
   actorExpansionSeeds,
   applyNodeUpdates,
+  cloneGraphFilterState,
   deriveActorVisibleGraph,
   filterSupportingActions,
   mergeActorGraphResponse,
@@ -324,6 +326,36 @@ export function useActorGraphController() {
     return false;
   }
 
+  function onSaveGraphState() {
+    if (!graph) {
+      return;
+    }
+    const filename = buildGraphStateFilename(
+      "actor-graph",
+      actorNames(graph.actors) || selectedActorIDs.join("-")
+    );
+    downloadJSON(filename, {
+      schema_version: 1,
+      kind: "actor-graph",
+      exported_at: new Date().toISOString(),
+      request: requestFromState(form, selectedActorIDs),
+      query: graph.query,
+      ui_state: {
+        selected_actor_ids: selectedActorIDs,
+        form,
+        filters: cloneGraphFilterState(graphFilters),
+        selection,
+        expanded_actor_ids: expandedActorIDs,
+        expanded_external_chains: expandedExternalChains,
+        expanded_hop_seeds: expandedHopSeeds,
+      },
+      graph,
+      visible_graph: visibleGraph,
+      filtered_actions: filteredActions,
+    });
+    setStatusText(`Saved graph state to ${filename}.`);
+  }
+
   const actorOptions = [...(actorsQuery.data ?? [])].sort((left, right) => left.name.localeCompare(right.name));
   const visibleNodeCount = visibleGraph?.nodes.length ?? 0;
   const visibleEdgeCount = visibleGraph?.edges.length ?? 0;
@@ -359,6 +391,7 @@ export function useActorGraphController() {
     selection,
     setSelection,
     graphResetKey,
+    onSaveGraphState,
     graphFilters,
     filtersActive,
     filterActions: {

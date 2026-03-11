@@ -1,6 +1,6 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type cytoscape from "cytoscape";
-import { graphNodeAtClientPoint, clamp, selectedGraphNodes } from "./utils";
+import { clusterGraphNodes, graphNodeAtClientPoint, clamp, selectedGraphNodes } from "./utils";
 import type { ContextMenuState, GraphCanvasFilters, GraphCanvasNodeMenuActions, GraphCanvasPaneMenuActions } from "./types";
 import type { GraphSelection, VisibleGraphNode } from "../../../lib/graph";
 
@@ -23,6 +23,7 @@ interface UseGraphCanvasInteractionsOptions {
   isFullscreen: boolean;
   setIsFullscreen: Dispatch<SetStateAction<boolean>>;
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
+  onSaveState?: () => void;
   scheduleLabelRender: () => void;
 }
 
@@ -45,6 +46,7 @@ export function useGraphCanvasInteractions({
   isFullscreen,
   setIsFullscreen,
   onNodeDoubleActivate,
+  onSaveState,
   scheduleLabelRender,
 }: UseGraphCanvasInteractionsOptions) {
   useEffect(() => {
@@ -409,11 +411,15 @@ export function useGraphCanvasInteractions({
     });
   }, [menuRef, menuState, setMenuState]);
 
-  function handleToolbarAction(action: "zoom-in" | "zoom-out" | "fit" | "fullscreen" | "filters") {
+  function handleToolbarAction(action: "zoom-in" | "zoom-out" | "fit" | "fullscreen" | "filters" | "save") {
     const cy = cyRef.current;
     const surface = surfaceRef.current;
     if (action === "filters") {
       filters?.onToggle();
+      return;
+    }
+    if (action === "save") {
+      onSaveState?.();
       return;
     }
     if (!cy || !surface) {
@@ -455,6 +461,11 @@ export function useGraphCanvasInteractions({
     if (menu.mode === "nodes") {
       if (action === "expand-nodes") {
         nodeMenuActions?.onExpandNodes?.(menu.nodes);
+      } else if (action === "cluster-nodes") {
+        const cy = cyRef.current;
+        if (cy && clusterGraphNodes(cy, menu.nodes.map((node) => node.id))) {
+          scheduleLabelRender();
+        }
       }
       return;
     }

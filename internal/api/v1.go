@@ -18,33 +18,68 @@ import (
 
 type V1 struct {
 	services *services.Container
+	buildActorGraphFn       func(ctx context.Context, req app.ActorTrackerRequest) (app.ActorTrackerResponse, error)
+	createActorGraphRunFn   func(ctx context.Context, req app.ActorTrackerRequest, summary string, nodeCount, edgeCount int) (int64, error)
+	buildAddressExplorerFn  func(ctx context.Context, req app.AddressExplorerRequest) (app.AddressExplorerResponse, error)
+	createExplorerRunFn     func(ctx context.Context, req app.AddressExplorerRequest, summary string, nodeCount, edgeCount int) (int64, error)
 }
 
 func NewV1(svcs *services.Container) *V1 {
 	return &V1{services: svcs}
 }
 
+func (h *V1) buildActorGraph(ctx context.Context, req app.ActorTrackerRequest) (app.ActorTrackerResponse, error) {
+	if h.buildActorGraphFn != nil {
+		return h.buildActorGraphFn(ctx, req)
+	}
+	return h.services.ActorGraph.Build(ctx, req)
+}
+
+func (h *V1) createActorGraphRun(ctx context.Context, req app.ActorTrackerRequest, summary string, nodeCount, edgeCount int) (int64, error) {
+	if h.createActorGraphRunFn != nil {
+		return h.createActorGraphRunFn(ctx, req, summary, nodeCount, edgeCount)
+	}
+	return h.services.Runs.CreateActorGraphRun(ctx, req, summary, nodeCount, edgeCount)
+}
+
+func (h *V1) buildAddressExplorer(ctx context.Context, req app.AddressExplorerRequest) (app.AddressExplorerResponse, error) {
+	if h.buildAddressExplorerFn != nil {
+		return h.buildAddressExplorerFn(ctx, req)
+	}
+	return h.services.AddressExplorer.Build(ctx, req)
+}
+
+func (h *V1) createAddressExplorerRun(ctx context.Context, req app.AddressExplorerRequest, summary string, nodeCount, edgeCount int) (int64, error) {
+	if h.createExplorerRunFn != nil {
+		return h.createExplorerRunFn(ctx, req, summary, nodeCount, edgeCount)
+	}
+	return h.services.Runs.CreateAddressExplorerRun(ctx, req, summary, nodeCount, edgeCount)
+}
+
 func (h *V1) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/health", h.handleHealth)
-	mux.HandleFunc("GET /api/v1/actions/{txid}", h.handleActionLookup)
-	mux.HandleFunc("GET /api/v1/actors", h.handleActors)
-	mux.HandleFunc("POST /api/v1/actors", h.handleActors)
-	mux.HandleFunc("PUT /api/v1/actors/{id}", h.handleActorByID)
-	mux.HandleFunc("DELETE /api/v1/actors/{id}", h.handleActorByID)
-	mux.HandleFunc("GET /api/v1/annotations", h.handleAnnotations)
-	mux.HandleFunc("PUT /api/v1/annotations", h.handleAnnotations)
-	mux.HandleFunc("DELETE /api/v1/annotations", h.handleAnnotations)
-	mux.HandleFunc("GET /api/v1/blocklist", h.handleBlocklist)
-	mux.HandleFunc("POST /api/v1/blocklist", h.handleBlocklist)
-	mux.HandleFunc("DELETE /api/v1/blocklist/{address}", h.handleBlocklistDelete)
-	mux.HandleFunc("POST /api/v1/analysis/actor-graph", h.handleActorGraph)
-	mux.HandleFunc("POST /api/v1/analysis/actor-graph/expand", h.handleActorGraphExpand)
-	mux.HandleFunc("POST /api/v1/analysis/actor-graph/live-holdings", h.handleActorGraphLiveHoldings)
-	mux.HandleFunc("POST /api/v1/analysis/address-explorer", h.handleAddressExplorer)
-	mux.HandleFunc("GET /api/v1/runs/actor-graph", h.handleActorGraphRuns)
-	mux.HandleFunc("DELETE /api/v1/runs/actor-graph/{id}", h.handleActorGraphRunDelete)
-	mux.HandleFunc("GET /api/v1/runs/address-explorer", h.handleAddressExplorerRuns)
-	mux.HandleFunc("DELETE /api/v1/runs/address-explorer/{id}", h.handleAddressExplorerRunDelete)
+	handle := func(pattern string, fn http.HandlerFunc) {
+		mux.HandleFunc(pattern, app.WithRequestLoggingFunc(fn))
+	}
+	handle("GET /api/v1/health", h.handleHealth)
+	handle("GET /api/v1/actions/{txid}", h.handleActionLookup)
+	handle("GET /api/v1/actors", h.handleActors)
+	handle("POST /api/v1/actors", h.handleActors)
+	handle("PUT /api/v1/actors/{id}", h.handleActorByID)
+	handle("DELETE /api/v1/actors/{id}", h.handleActorByID)
+	handle("GET /api/v1/annotations", h.handleAnnotations)
+	handle("PUT /api/v1/annotations", h.handleAnnotations)
+	handle("DELETE /api/v1/annotations", h.handleAnnotations)
+	handle("GET /api/v1/blocklist", h.handleBlocklist)
+	handle("POST /api/v1/blocklist", h.handleBlocklist)
+	handle("DELETE /api/v1/blocklist/{address}", h.handleBlocklistDelete)
+	handle("POST /api/v1/analysis/actor-graph", h.handleActorGraph)
+	handle("POST /api/v1/analysis/actor-graph/expand", h.handleActorGraphExpand)
+	handle("POST /api/v1/analysis/actor-graph/live-holdings", h.handleActorGraphLiveHoldings)
+	handle("POST /api/v1/analysis/address-explorer", h.handleAddressExplorer)
+	handle("GET /api/v1/runs/actor-graph", h.handleActorGraphRuns)
+	handle("DELETE /api/v1/runs/actor-graph/{id}", h.handleActorGraphRunDelete)
+	handle("GET /api/v1/runs/address-explorer", h.handleAddressExplorerRuns)
+	handle("DELETE /api/v1/runs/address-explorer/{id}", h.handleAddressExplorerRunDelete)
 }
 
 func (h *V1) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -192,14 +227,13 @@ func (h *V1) handleActorGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.services.ActorGraph.Build(r.Context(), req)
+	resp, err := h.buildActorGraph(r.Context(), req)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if _, err := h.services.Runs.CreateActorGraphRun(r.Context(), req, joinActorNames(resp.Actors), len(resp.Nodes), len(resp.Edges)); err != nil {
-		writeError(w, err)
-		return
+	if _, err := h.createActorGraphRun(r.Context(), req, joinActorNames(resp.Actors), len(resp.Nodes), len(resp.Edges)); err != nil {
+		app.LogError(r.Context(), "graph_run_save_failed", err, nil)
 	}
 	writeJSON(w, http.StatusOK, dto.ActorGraphResponse{
 		Query:             resp.Query,
@@ -258,15 +292,14 @@ func (h *V1) handleAddressExplorer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	resp, err := h.services.AddressExplorer.Build(r.Context(), req)
+	resp, err := h.buildAddressExplorer(r.Context(), req)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	if resp.Mode == "graph" {
-		if _, err := h.services.Runs.CreateAddressExplorerRun(r.Context(), req, firstNonEmpty(resp.RunLabel, shortAddress(resp.Address)), len(resp.Nodes), len(resp.Edges)); err != nil {
-			writeError(w, err)
-			return
+		if _, err := h.createAddressExplorerRun(r.Context(), req, firstNonEmpty(resp.RunLabel, shortAddress(resp.Address)), len(resp.Nodes), len(resp.Edges)); err != nil {
+			app.LogError(r.Context(), "address_explorer_run_save_failed", err, nil)
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)

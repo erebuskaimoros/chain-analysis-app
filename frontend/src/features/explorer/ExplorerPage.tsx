@@ -208,6 +208,7 @@ export function ExplorerPage() {
                 }}
                 doubleActivateLabel="Expand one edge"
                 graphResetKey={controller.graphResetKey}
+                onSaveState={controller.onSaveGraphState}
                 filters={{
                   isOpen: controller.graphFilters.isOpen,
                   isActive: controller.filtersActive,

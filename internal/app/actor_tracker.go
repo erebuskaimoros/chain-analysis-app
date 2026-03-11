@@ -960,7 +960,7 @@ func normalizeActorTrackerRequest(req ActorTrackerRequest) (ActorTrackerQuery, e
 	now := time.Now().UTC()
 	end := now
 	if strings.TrimSpace(req.EndTime) != "" {
-		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(req.EndTime))
+		parsed, err := parseActorTrackerTime(strings.TrimSpace(req.EndTime))
 		if err != nil {
 			return ActorTrackerQuery{}, fmt.Errorf("invalid end_time: %w", err)
 		}
@@ -969,7 +969,7 @@ func normalizeActorTrackerRequest(req ActorTrackerRequest) (ActorTrackerQuery, e
 
 	start := end.Add(-7 * 24 * time.Hour)
 	if strings.TrimSpace(req.StartTime) != "" {
-		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(req.StartTime))
+		parsed, err := parseActorTrackerTime(strings.TrimSpace(req.StartTime))
 		if err != nil {
 			return ActorTrackerQuery{}, fmt.Errorf("invalid start_time: %w", err)
 		}
@@ -1008,6 +1008,24 @@ func normalizeActorTrackerRequest(req ActorTrackerRequest) (ActorTrackerQuery, e
 		DisplayMode:      displayMode,
 		RequestedAt:      now,
 	}, nil
+}
+
+func parseActorTrackerTime(raw string) (time.Time, error) {
+	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+		return parsed, nil
+	}
+
+	for _, layout := range []string{
+		"2006-01-02T15:04",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04:05.999",
+	} {
+		if parsed, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
+			return parsed, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("expected RFC3339 or local datetime, got %q", raw)
 }
 
 func actorOwnerMap(actors []Actor) (map[string][]int64, map[int64]Actor, []frontierAddress) {
@@ -4457,7 +4475,7 @@ func parseMemoDestination(memo string) string {
 		strings.HasPrefix(lower, "ltc") ||
 		strings.HasPrefix(lower, "bitcoincash:") ||
 		strings.HasPrefix(candidate, "T") ||
-		strings.HasPrefix(candidate, "D") {
+		isLikelyDOGEAddress(candidate) {
 		return candidate
 	}
 	return ""
@@ -4599,15 +4617,37 @@ func canonicalSwapSegmentKey(txID, source, target, asset string) string {
 }
 
 func normalizeAsset(asset string) string {
-	asset = strings.ToUpper(strings.TrimSpace(asset))
-	if asset == "" || strings.Contains(asset, ".") {
-		return asset
+	trimmed := strings.TrimSpace(asset)
+	upper := strings.ToUpper(trimmed)
+	if upper == "" || strings.Contains(upper, ".") {
+		return upper
 	}
-	parts := strings.SplitN(asset, "-", 2)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "x/") {
+		return normalizeTHORDenomAsset(trimmed)
+	}
+	parts := strings.SplitN(upper, "-", 2)
 	if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
 		return parts[0] + "." + parts[1]
 	}
-	return asset
+	return upper
+}
+
+func isLikelyDOGEAddress(address string) bool {
+	address = strings.TrimSpace(address)
+	if len(address) < 26 || len(address) > 40 {
+		return false
+	}
+	if !strings.HasPrefix(address, "D") {
+		return false
+	}
+	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	for _, r := range address {
+		if !strings.ContainsRune(alphabet, r) {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeChain(chain, address string) string {
@@ -4620,6 +4660,8 @@ func normalizeChain(chain, address string) string {
 		inferred = "THOR"
 	case isLikelyEVMAddress(address):
 		inferred = "ETH"
+	case isLikelyDOGEAddress(address):
+		inferred = "DOGE"
 	case strings.HasPrefix(lower, "bc1"):
 		inferred = "BTC"
 	case strings.HasPrefix(lower, "ltc1"):

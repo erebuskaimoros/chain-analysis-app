@@ -215,4 +215,46 @@ describe("graph derivation", () => {
     expect(validator?.kind).toBe("node");
     expect(validator?.color).toBe("#c86b1f");
   });
+
+  it("propagates edge USD totals onto visible node metrics", () => {
+    const response = makeActorGraphResponse({
+      nodes: [
+        makeNode({ id: "ruji-source", chain: "THOR", metrics: { address: "thor1source" } }),
+        makeNode({ id: "ruji-target", chain: "THOR", metrics: { address: "thor1target" } }),
+      ],
+      edges: [
+        makeEdge({
+          id: "ruji-edge",
+          from: "ruji-source",
+          to: "ruji-target",
+          action_class: "transfers",
+          action_key: "transfer",
+          action_label: "Transfer",
+          assets: [
+            {
+              asset: "THOR.RUJI",
+              amount_raw: "800000000",
+              usd_spot: 2,
+              asset_kind: "native",
+            },
+          ],
+          transactions: [makeTransaction({ tx_id: "ruji-tx", usd_spot: 2 })],
+          usd_spot: 2,
+        }),
+      ],
+    });
+    const filters = createGraphFilterState();
+
+    syncGraphFilterStateWithResponse(filters, response, { reset: true });
+    const visible = deriveActorVisibleGraph(response, filters, makeMetadata(), {
+      expandedActorIDs: [],
+      expandedExternalChains: [],
+    });
+
+    const source = visible.nodes.find((node) => node.id === "ruji-source");
+    const target = visible.nodes.find((node) => node.id === "ruji-target");
+
+    expect(source?.metrics?.usd_spot).toBe(2);
+    expect(target?.metrics?.usd_spot).toBe(2);
+  });
 });

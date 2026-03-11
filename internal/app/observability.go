@@ -49,7 +49,7 @@ func (w *loggingResponseWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func (a *App) withRequestLogging(next http.Handler) http.Handler {
+func withRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := strings.TrimSpace(r.Header.Get(requestIDHeader))
 		if requestID == "" {
@@ -79,8 +79,24 @@ func (a *App) withRequestLogging(next http.Handler) http.Handler {
 	})
 }
 
+func WithRequestLogging(next http.Handler) http.Handler {
+	return withRequestLogging(next)
+}
+
+func WithRequestLoggingFunc(next http.HandlerFunc) http.HandlerFunc {
+	return WithRequestLogging(next).ServeHTTP
+}
+
+func LogError(ctx context.Context, event string, err error, fields map[string]any) {
+	logError(ctx, event, err, fields)
+}
+
 func (a *App) withRequestLoggingFunc(next http.HandlerFunc) http.HandlerFunc {
 	return a.withRequestLogging(next).ServeHTTP
+}
+
+func (a *App) withRequestLogging(next http.Handler) http.Handler {
+	return withRequestLogging(next)
 }
 
 func requestIDFromContext(ctx context.Context) string {

@@ -59,6 +59,7 @@ func (a *App) RegisterLegacyAPIRoutes(mux *http.ServeMux) {
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	http.ServeFile(w, r, a.cfg.StaticDir+"/index.html")
 }
 

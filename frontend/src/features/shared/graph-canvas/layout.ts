@@ -6,7 +6,8 @@ export async function applyElkLayout(
   cy: cytoscape.Core,
   mode: "actor" | "explorer",
   nodes: VisibleGraphNode[],
-  elk: InstanceType<typeof ELK>
+  elk: InstanceType<typeof ELK>,
+  preservedPositions: Map<string, cytoscape.Position> = new Map()
 ) {
   const graph = {
     id: "root",
@@ -46,8 +47,8 @@ export async function applyElkLayout(
 
   const positionMap: Record<string, { x: number; y: number }> = {};
   nodes.forEach((node) => {
-    positionMap[node.id] =
-      positions.get(node.id) || { x: Number(node.depth || 0) * 180, y: 80 };
+    const preserved = preservedPositions.get(node.id);
+    positionMap[node.id] = preserved || positions.get(node.id) || { x: Number(node.depth || 0) * 180, y: 80 };
   });
 
   cy.layout({

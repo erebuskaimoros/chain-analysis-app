@@ -176,6 +176,62 @@ func TestFetchAddressLiveHoldingsUTXOFallsBackAcrossConfiguredEndpoints(t *testi
 	}
 }
 
+func TestFetchAddressLiveHoldingsDOGEFallsBackToDogedHTML(t *testing.T) {
+	var apiHits atomic.Int64
+	var htmlHits atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/address/D8U1PL31zA8Q8LucFKfVDbTWUJs2EoLGDc":
+			apiHits.Add(1)
+			http.NotFound(w, r)
+		case "/address/D8U1PL31zA8Q8LucFKfVDbTWUJs2EoLGDc":
+			htmlHits.Add(1)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, `
+<html><body><script>
+var balances = JSON.parse('{"main":{"utxos":[{"satsAmount":125000000},{"satsAmount":350000000}]}}');
+</script></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			UtxoTrackerURLs: map[string]string{"DOGE": server.URL},
+		},
+		httpClient:    server.Client(),
+		trackerHealth: newTrackerHealthStore(),
+	}
+
+	holdings, err := app.fetchAddressLiveHoldings(context.Background(), "DOGE", "D8U1PL31zA8Q8LucFKfVDbTWUJs2EoLGDc", priceBook{
+		AssetUSD: map[string]float64{"DOGE.DOGE": 0.1},
+	})
+	if err != nil {
+		t.Fatalf("fetch address live holdings: %v", err)
+	}
+	if apiHits.Load() == 0 {
+		t.Fatal("expected API endpoint to be attempted first")
+	}
+	if htmlHits.Load() == 0 {
+		t.Fatal("expected HTML fallback endpoint to be attempted")
+	}
+	if len(holdings) != 1 {
+		t.Fatalf("expected 1 holding, got %d", len(holdings))
+	}
+	if holdings[0].Asset != "DOGE.DOGE" {
+		t.Fatalf("unexpected asset: %q", holdings[0].Asset)
+	}
+	if holdings[0].AmountRaw != "475000000" {
+		t.Fatalf("unexpected raw amount: %q", holdings[0].AmountRaw)
+	}
+	if holdings[0].USDSpot <= 0 {
+		t.Fatalf("expected positive USD spot, got %f", holdings[0].USDSpot)
+	}
+}
+
 func TestFetchAddressLiveHoldingsEtherscan(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("action") {

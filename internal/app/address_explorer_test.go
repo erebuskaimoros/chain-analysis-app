@@ -71,6 +71,27 @@ func TestResolveAddressExplorerSeedsKeepsExplicitChainSingleSeed(t *testing.T) {
 	}
 }
 
+func TestResolveAddressExplorerSeedsInfersDOGEFromPlainAddress(t *testing.T) {
+	protocols := protocolDirectory{
+		SupportedChains: map[string]struct{}{
+			"DOGE": {},
+		},
+	}
+
+	seeds, err := resolveAddressExplorerSeeds(protocols, frontierAddress{
+		Address: "D8U1PL31zA8Q8LucFKfVDbTWUJs2EoLGDc",
+	}, false)
+	if err != nil {
+		t.Fatalf("resolveAddressExplorerSeeds: %v", err)
+	}
+	if len(seeds) != 1 {
+		t.Fatalf("expected 1 seed, got %#v", seeds)
+	}
+	if got := seeds[0]; got.Address != "D8U1PL31zA8Q8LucFKfVDbTWUJs2EoLGDc" || got.Chain != "DOGE" {
+		t.Fatalf("unexpected seed: %#v", got)
+	}
+}
+
 func TestBuildAddressExplorerPreviewRequiresDirectionForLargeHistory(t *testing.T) {
 	address := "0x0b354326e140bdfb605b90aff0fe2cb07d48f7a3"
 	app, cleanup := newAddressExplorerTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

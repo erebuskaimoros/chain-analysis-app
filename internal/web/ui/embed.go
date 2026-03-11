@@ -78,5 +78,6 @@ func serveIndex(filesystem http.FileSystem, fileServer http.Handler, w http.Resp
 	if stat != nil {
 		modTime = stat.ModTime()
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	http.ServeContent(w, r, "index.html", modTime, readSeeker)
 }

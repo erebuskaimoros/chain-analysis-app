@@ -8,7 +8,8 @@ import {
   lookupAction,
 } from "../../../lib/api";
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES } from "../../../lib/constants";
-import { deriveExplorerVisibleGraph, filterSupportingActions, mergeAddressExplorerResponse, mergeExplorerExpansionResponse, explorerExpansionSeeds, type GraphSelection } from "../../../lib/graph";
+import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
+import { cloneGraphFilterState, deriveExplorerVisibleGraph, filterSupportingActions, mergeAddressExplorerResponse, mergeExplorerExpansionResponse, explorerExpansionSeeds, type GraphSelection } from "../../../lib/graph";
 import type { ActionLookupResponse, AddressExplorerRequest, AddressExplorerResponse } from "../../../lib/types";
 import { useGraphFilterState } from "../../shared/graph-hooks/useGraphFilterState";
 import { useGraphMetadata } from "../../shared/graph-hooks/useGraphMetadata";
@@ -274,6 +275,36 @@ export function useExplorerGraphController() {
     }
   }
 
+  function onSaveGraphState() {
+    if (!graph) {
+      return;
+    }
+    const direction = graph.query.direction === "oldest" ? "oldest" : "newest";
+    const filename = buildGraphStateFilename("address-explorer", graph.address || form.address);
+    downloadJSON(filename, {
+      schema_version: 1,
+      kind: "address-explorer",
+      exported_at: new Date().toISOString(),
+      request: explorerRequest(
+        form,
+        "graph",
+        direction,
+        graph.query.offset || 0
+      ),
+      preview,
+      ui_state: {
+        form,
+        filters: cloneGraphFilterState(graphFilters),
+        selection,
+        expanded_hop_seeds: expandedHopSeeds,
+      },
+      graph,
+      visible_graph: visibleGraph,
+      filtered_actions: filteredActions,
+    });
+    setStatusText(`Saved graph state to ${filename}.`);
+  }
+
   const currentGraph = graph;
   const visibleNodeCount = visibleGraph?.nodes.length ?? 0;
   const visibleEdgeCount = visibleGraph?.edges.length ?? 0;
@@ -309,6 +340,7 @@ export function useExplorerGraphController() {
     selection,
     setSelection,
     graphResetKey,
+    onSaveGraphState,
     graphFilters,
     filtersActive,
     filterActions: {

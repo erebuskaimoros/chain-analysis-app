@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createActor, deleteActor, listActors, updateActor } from "../../lib/api";
+import { createActor, deleteActor, listActors, listAnnotations, updateActor } from "../../lib/api";
 import { formatActorAddressLines, parseActorAddressLines } from "../../lib/actors";
 import type { Actor } from "../../lib/types";
 
@@ -26,12 +26,28 @@ export function ActorsPage() {
     queryKey: ["actors"],
     queryFn: listActors,
   });
+  const annotationsQuery = useQuery({
+    queryKey: ["annotations"],
+    queryFn: listAnnotations,
+  });
   const [draft, setDraft] = useState<ActorDraft>(defaultDraft);
   const [formError, setFormError] = useState("");
+  const [selectedNamedAddressID, setSelectedNamedAddressID] = useState("");
+
+  const namedAddresses = useMemo(
+    () =>
+      [...(annotationsQuery.data ?? [])]
+        .filter((annotation) => annotation.kind === "label" && annotation.value.trim())
+        .sort(
+          (left, right) =>
+            left.value.localeCompare(right.value) || left.address.localeCompare(right.address)
+        ),
+    [annotationsQuery.data]
+  );
 
   const saveMutation = useMutation({
     mutationFn: async (value: ActorDraft) => {
-      const parsed = parseActorAddressLines(value.addressesText);
+      const parsed = parseActorAddressLines(value.addressesText, namedAddresses);
       if (!value.name.trim()) {
         throw new Error("Actor name is required.");
       }
@@ -88,6 +104,7 @@ export function ActorsPage() {
   function resetForm() {
     setDraft(defaultDraft);
     setFormError("");
+    setSelectedNamedAddressID("");
   }
 
   async function handleDelete(actor: Actor) {
@@ -98,6 +115,20 @@ export function ActorsPage() {
     if (draft.id === actor.id) {
       resetForm();
     }
+  }
+
+  function addNamedAddress() {
+    const annotation = namedAddresses.find((item) => String(item.id) === selectedNamedAddressID);
+    if (!annotation) {
+      return;
+    }
+    const line = annotation.value;
+    setDraft((current) => ({
+      ...current,
+      addressesText: current.addressesText.trim() ? `${current.addressesText.trim()}\n${line}` : line,
+    }));
+    setSelectedNamedAddressID("");
+    setFormError("");
   }
 
   return (
@@ -152,10 +183,42 @@ export function ActorsPage() {
               rows={10}
               value={draft.addressesText}
               onChange={(event) => setDraft((current) => ({ ...current, addressesText: event.target.value }))}
-              placeholder={"thor1...,THOR,treasury hot\n0xabc...,ETH,ops signer"}
+              placeholder={"thor1...,THOR,treasury hot\n0xabc...,ETH,ops signer\nTreasury Hot Wallet"}
             />
-            <small>One address per line. Format: `address`, `address,label`, or `address,CHAIN,label`.</small>
+            <small>
+              One address per line. Format: `address`, `address,label`, `address,CHAIN,label`, or a saved label
+              annotation name.
+            </small>
           </label>
+          <div className="field field-full">
+            <span>Named Addresses</span>
+            <div className="button-row">
+              <select
+                value={selectedNamedAddressID}
+                onChange={(event) => setSelectedNamedAddressID(event.target.value)}
+                disabled={annotationsQuery.isLoading || !namedAddresses.length}
+              >
+                <option value="">Select a saved label annotation</option>
+                {namedAddresses.map((annotation) => (
+                  <option key={annotation.id} value={String(annotation.id)}>
+                    {annotation.value} · {annotation.address}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={addNamedAddress}
+                disabled={!selectedNamedAddressID}
+              >
+                Add Named Address
+              </button>
+            </div>
+            <small>
+              Saved `label` annotations appear here. Adding one inserts its name into the actor field and resolves it
+              to the underlying address on save.
+            </small>
+          </div>
           {formError ? <p className="error-text form-message">{formError}</p> : null}
           <div className="form-actions field-full">
             <button type="submit" className="button" disabled={saveMutation.isPending}>

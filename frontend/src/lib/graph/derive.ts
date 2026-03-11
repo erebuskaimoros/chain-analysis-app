@@ -184,7 +184,7 @@ export function deriveActorVisibleGraph(
       shared: Boolean(rawNode.shared),
       collapsed: Boolean(rawNode.collapsed),
       raw_node_ids: [],
-      metrics: { ...(rawNode.metrics ?? {}), live_holdings_usd_spot: 0 },
+      metrics: { ...(rawNode.metrics ?? {}), usd_spot: 0, live_holdings_usd_spot: 0 },
       color: actor?.color || ownerActor?.color || collapsedActor?.color || "#83a8dc",
     };
 
@@ -193,6 +193,7 @@ export function deriveActorVisibleGraph(
       existing.depth = Math.min(existing.depth, rawNode.depth);
       existing.actor_ids = [...new Set(existing.actor_ids.concat(rawNode.actor_ids))];
       existing.shared = existing.shared || Boolean(rawNode.shared);
+      existing.metrics.usd_spot = numberMetric(existing.metrics, "usd_spot") + (nodeUSD.get(rawNode.id) || 0);
       existing.metrics.live_holdings_usd_spot =
         numberMetric(existing.metrics, "live_holdings_usd_spot") + numberMetric(rawNode.metrics, "live_holdings_usd_spot");
       existing.metrics.live_holdings_available =
@@ -249,6 +250,7 @@ export function deriveExplorerVisibleGraph(
   const rawNodes = response.nodes;
   const rawEdges = response.edges;
   const rawNodeByID = new Map(rawNodes.map((node) => [node.id, node]));
+  const nodeUSD = new Map<string, number>();
   const filteredRawEdges: Array<FlowEdge & { chainSet: string[] }> = [];
   const labelAnnotations = labelAnnotationMap(metadata.annotations);
   const hiddenAddresses = hiddenAddressSet(metadata);
@@ -288,6 +290,9 @@ export function deriveExplorerVisibleGraph(
       assets: summary.assets,
       usd_spot: summary.usd_spot,
     });
+    [rawEdge.from, rawEdge.to].forEach((id) => {
+      nodeUSD.set(id, (nodeUSD.get(id) || 0) + Number(summary.usd_spot || 0));
+    });
   });
 
   const visibleNodes = new Map<string, VisibleNodeAccumulator>();
@@ -315,12 +320,13 @@ export function deriveExplorerVisibleGraph(
       shared: Boolean(rawNode.shared),
       collapsed: Boolean(rawNode.collapsed),
       raw_node_ids: [],
-      metrics: { ...(rawNode.metrics ?? {}), live_holdings_usd_spot: 0 },
+      metrics: { ...(rawNode.metrics ?? {}), usd_spot: 0, live_holdings_usd_spot: 0 },
       color: defaultNodeColor(rawNode.kind === "explorer_target" ? "external_address" : rawNode.kind),
     };
     if (!existing.raw_node_ids.includes(rawNode.id)) {
       existing.raw_node_ids.push(rawNode.id);
       existing.depth = Math.min(existing.depth, rawNode.depth);
+      existing.metrics.usd_spot = numberMetric(existing.metrics, "usd_spot") + (nodeUSD.get(rawNode.id) || 0);
       existing.metrics.live_holdings_usd_spot =
         numberMetric(existing.metrics, "live_holdings_usd_spot") + numberMetric(rawNode.metrics, "live_holdings_usd_spot");
       existing.metrics.live_holdings_available =

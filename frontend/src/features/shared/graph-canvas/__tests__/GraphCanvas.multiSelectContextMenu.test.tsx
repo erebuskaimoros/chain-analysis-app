@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GraphCanvas } from "../../GraphCanvas";
 import { makeVisibleNode } from "../../../../test-support/graphFixtures";
@@ -16,11 +16,11 @@ const cytoscapeState = vi.hoisted(() => ({
 class MockNodeElement {
   private readonly dataValue: MockElementData;
   private selected = false;
-  private readonly index: number;
+  private positionValue: { x: number; y: number };
 
   constructor(dataValue: MockElementData, index: number) {
     this.dataValue = dataValue;
-    this.index = index;
+    this.positionValue = { x: 40 + index * 80, y: 40 };
   }
 
   id() {
@@ -35,21 +35,17 @@ class MockNodeElement {
   }
 
   renderedBoundingBox() {
-    const left = 20 + this.index * 80;
+    const left = this.positionValue.x - 20;
     return {
       x1: left,
-      y1: 20,
+      y1: this.positionValue.y - 20,
       x2: left + 40,
-      y2: 60,
+      y2: this.positionValue.y + 20,
     };
   }
 
   renderedPosition() {
-    const box = this.renderedBoundingBox();
-    return {
-      x: (box.x1 + box.x2) / 2,
-      y: (box.y1 + box.y2) / 2,
-    };
+    return { ...this.positionValue };
   }
 
   renderedOuterHeight() {
@@ -76,6 +72,13 @@ class MockNodeElement {
 
   isSelected() {
     return this.selected;
+  }
+
+  position(next?: { x: number; y: number }) {
+    if (next) {
+      this.positionValue = { ...next };
+    }
+    return { ...this.positionValue };
   }
 
   nonempty() {
@@ -195,9 +198,17 @@ class MockCyCore {
     this.handlers.set(eventName, current);
   }
 
-  layout() {
+  layout(options?: { positions?: Record<string, { x: number; y: number }> }) {
     return {
-      run: () => undefined,
+      run: () => {
+        const positions = options?.positions ?? {};
+        for (const node of this.nodeElements) {
+          const nextPosition = positions[node.id()];
+          if (nextPosition) {
+            node.position(nextPosition);
+          }
+        }
+      },
     };
   }
 
@@ -239,6 +250,14 @@ class MockCyCore {
       }
     });
   }
+
+  nodePosition(id: string) {
+    return this.nodeElements.find((node) => node.id() === id)?.position() ?? null;
+  }
+
+  setNodePosition(id: string, position: { x: number; y: number }) {
+    this.nodeElements.find((node) => node.id() === id)?.position(position);
+  }
 }
 
 vi.mock("cytoscape", () => ({
@@ -255,8 +274,8 @@ vi.mock("elkjs/lib/elk.bundled.js", () => ({
       return {
         children: (graph.children ?? []).map((child, index) => ({
           id: child.id,
-          x: index * 120,
-          y: 80,
+          x: 40 + index * 80,
+          y: 40,
         })),
       };
     }
@@ -316,6 +335,7 @@ describe("GraphCanvas multi-node context menu", () => {
 
     const menuAction = await screen.findByRole("button", { name: "Expand Nodes (2)" });
     expect(menuAction).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cluster Nodes" })).toBeTruthy();
   });
 
   it("shows the multi-node context menu when right-clicking directly on one of the selected nodes", async () => {
@@ -359,5 +379,92 @@ describe("GraphCanvas multi-node context menu", () => {
 
     const menuAction = await screen.findByRole("button", { name: "Expand Nodes (2)" });
     expect(menuAction).toBeTruthy();
+  });
+
+  it("clusters the selected nodes around the middle of their current positions", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+    const nodeC = makeVisibleNode({ id: "node-c", label: "Node C" });
+
+    const { container } = render(
+      <GraphCanvas
+        mode="explorer"
+        nodes={[nodeA, nodeB, nodeC]}
+        edges={[]}
+        selection={{ kind: "nodes", nodes: [nodeA, nodeB, nodeC] }}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    cytoscapeState.latestCore.setSelectedNodeIDs(["node-a", "node-b", "node-c"]);
+
+    const before = ["node-a", "node-b", "node-c"].map((id) => cytoscapeState.latestCore?.nodePosition(id));
+    const beforeCenter = {
+      x: (before.reduce((sum, point) => sum + (point?.x ?? 0), 0)) / before.length,
+      y: (before.reduce((sum, point) => sum + (point?.y ?? 0), 0)) / before.length,
+    };
+
+    fireEvent.contextMenu(surface, { clientX: 120, clientY: 40 });
+    fireEvent.click(await screen.findByRole("button", { name: "Cluster Nodes" }));
+
+    const after = ["node-a", "node-b", "node-c"].map((id) => cytoscapeState.latestCore?.nodePosition(id));
+    const afterCenter = {
+      x: (after.reduce((sum, point) => sum + (point?.x ?? 0), 0)) / after.length,
+      y: (after.reduce((sum, point) => sum + (point?.y ?? 0), 0)) / after.length,
+    };
+
+    expect(after.some((point, index) => point?.x !== before[index]?.x || point?.y !== before[index]?.y)).toBe(true);
+    expect(afterCenter.x).toBeCloseTo(beforeCenter.x, 5);
+    expect(afterCenter.y).toBeCloseTo(beforeCenter.y, 5);
+  });
+
+  it("preserves extant node positions when the graph expands", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+    const nodeC = makeVisibleNode({ id: "node-c", label: "Node C" });
+
+    const { rerender } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA, nodeB]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    expect(cytoscapeState.latestCore).not.toBeNull();
+    if (!cytoscapeState.latestCore) {
+      return;
+    }
+
+    cytoscapeState.latestCore.setNodePosition("node-a", { x: 333, y: 444 });
+    cytoscapeState.latestCore.setNodePosition("node-b", { x: 555, y: 666 });
+
+    rerender(
+      <GraphCanvas mode="explorer" nodes={[nodeA, nodeB, nodeC]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(cytoscapeState.latestCore?.nodePosition("node-c")).not.toBeNull();
+    });
+
+    expect(cytoscapeState.latestCore.nodePosition("node-a")).toEqual({ x: 333, y: 444 });
+    expect(cytoscapeState.latestCore.nodePosition("node-b")).toEqual({ x: 555, y: 666 });
   });
 });

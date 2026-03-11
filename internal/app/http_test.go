@@ -3,12 +3,44 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestHandleIndexDisablesCaching(t *testing.T) {
+	dir := t.TempDir()
+	indexPath := filepath.Join(dir, "index.html")
+	if err := os.WriteFile(indexPath, []byte("<!doctype html><html><body>ok</body></html>"), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+
+	app := &App{
+		cfg: Config{
+			StaticDir: dir,
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	mux := http.NewServeMux()
+	app.RegisterRoutes(mux)
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("unexpected cache control %q", got)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got == "" {
+		t.Fatal("expected index body")
+	}
+}
 
 func TestHandleActionByTxIDSuppressesShadowSendLookupAction(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

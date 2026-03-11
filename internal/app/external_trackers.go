@@ -25,8 +25,9 @@ var errExternalTrackerUnavailable = errors.New("external tracker unavailable")
 const externalTrackerPageSize = 50
 
 var (
-	dogedInputRe  = regexp.MustCompile(`(?s)<div class="input-row-section2">.*?<a href="/address/([^"]+)">.*?</a>.*?<div class="input-hex">\s*<span>([^<]+)</span>\.<small>([^<]+)</small>\s*DOGE`)
-	dogedOutputRe = regexp.MustCompile(`(?s)<div class="output-row-section1">.*?<a href="/address/([^"]+)">.*?</a>.*?<div class="input-hex">\s*<span>([^<]+)</span>\.<small>([^<]+)</small>\s*DOGE`)
+	dogedInputRe    = regexp.MustCompile(`(?s)<div class="input-row-section2">.*?<a href="/address/([^"]+)">.*?</a>.*?<div class="input-hex">\s*<span>([^<]+)</span>\.<small>([^<]+)</small>\s*DOGE`)
+	dogedOutputRe   = regexp.MustCompile(`(?s)<div class="output-row-section1">.*?<a href="/address/([^"]+)">.*?</a>.*?<div class="input-hex">\s*<span>([^<]+)</span>\.<small>([^<]+)</small>\s*DOGE`)
+	dogedBalancesRe = regexp.MustCompile(`(?s)var\s+balances\s*=\s*JSON\.parse\('((?:\\.|[^'])*)'\)`)
 )
 
 const etherscanAddressTokenBalanceFeature = "addresstokenbalance"
@@ -425,58 +426,63 @@ func (a *App) fetchUTXOAddressLiveHoldings(ctx context.Context, chain, address s
 	var resp map[string]any
 	rawURLs := mapTrackerURLs(baseURLs, func(baseURL string) string {
 		baseURL = strings.TrimRight(baseURL, "/")
-		if strings.Contains(strings.ToLower(baseURL), "explorer.doged.io") {
+		if chain == "DOGE" {
 			return fmt.Sprintf("%s/api/address/%s", baseURL, url.PathEscape(address))
 		}
 		return fmt.Sprintf("%s/address/%s", baseURL, url.PathEscape(trackerAddress))
 	})
+	var balanceRaw int64
 	if err := a.getJSONAbsoluteMulti(ctx, rawURLs, nil, &resp); err != nil {
 		dogeFallbackURLs := mapTrackerURLs(baseURLs, func(baseURL string) string {
 			baseURL = strings.TrimRight(baseURL, "/")
-			if !strings.Contains(strings.ToLower(baseURL), "explorer.doged.io") {
+			if chain != "DOGE" {
 				return ""
 			}
 			return fmt.Sprintf("%s/address/%s", baseURL, url.PathEscape(address))
 		})
 		if len(dogeFallbackURLs) > 0 {
-			if err2 := a.getJSONAbsoluteMulti(ctx, dogeFallbackURLs, nil, &resp); err2 != nil {
-				return nil, err
+			// doged's JSON address endpoint currently 404s, but the HTML page
+			// still embeds the confirmed UTXO balance in a balances blob.
+			rawBalance, err2 := a.fetchDogedHTMLAddressBalance(ctx, dogeFallbackURLs)
+			if err2 != nil {
+				return nil, fmt.Errorf("%v; doged html fallback failed: %w", err, err2)
 			}
+			balanceRaw = rawBalance
 		} else {
 			return nil, err
 		}
-	}
+	} else {
+		chainFunded := nestedInt64(resp, "chain_stats", "funded_txo_sum")
+		chainSpent := nestedInt64(resp, "chain_stats", "spent_txo_sum")
+		mempoolFunded := nestedInt64(resp, "mempool_stats", "funded_txo_sum")
+		mempoolSpent := nestedInt64(resp, "mempool_stats", "spent_txo_sum")
+		balanceRaw = (chainFunded + mempoolFunded) - (chainSpent + mempoolSpent)
 
-	chainFunded := nestedInt64(resp, "chain_stats", "funded_txo_sum")
-	chainSpent := nestedInt64(resp, "chain_stats", "spent_txo_sum")
-	mempoolFunded := nestedInt64(resp, "mempool_stats", "funded_txo_sum")
-	mempoolSpent := nestedInt64(resp, "mempool_stats", "spent_txo_sum")
-	balanceRaw := (chainFunded + mempoolFunded) - (chainSpent + mempoolSpent)
-
-	if balanceRaw == 0 {
-		balanceRaw = firstNonZeroInt64(
-			nestedInt64(resp, "balanceSat"),
-			nestedInt64(resp, "balance_sat"),
-			nestedInt64(resp, "confirmedBalanceSat"),
-			nestedInt64(resp, "confirmed_balance_sat"),
-		)
-	}
-	if balanceRaw == 0 {
-		if balanceDecimal := firstNonEmpty(
-			nestedString(resp, "balance"),
-			nestedString(resp, "confirmedBalance"),
-			nestedString(resp, "confirmed_balance"),
-		); balanceDecimal != "" {
-			parts := strings.SplitN(strings.TrimSpace(balanceDecimal), ".", 2)
-			whole := ""
-			fractional := ""
-			if len(parts) > 0 {
-				whole = parts[0]
+		if balanceRaw == 0 {
+			balanceRaw = firstNonZeroInt64(
+				nestedInt64(resp, "balanceSat"),
+				nestedInt64(resp, "balance_sat"),
+				nestedInt64(resp, "confirmedBalanceSat"),
+				nestedInt64(resp, "confirmed_balance_sat"),
+			)
+		}
+		if balanceRaw == 0 {
+			if balanceDecimal := firstNonEmpty(
+				nestedString(resp, "balance"),
+				nestedString(resp, "confirmedBalance"),
+				nestedString(resp, "confirmed_balance"),
+			); balanceDecimal != "" {
+				parts := strings.SplitN(strings.TrimSpace(balanceDecimal), ".", 2)
+				whole := ""
+				fractional := ""
+				if len(parts) > 0 {
+					whole = parts[0]
+				}
+				if len(parts) > 1 {
+					fractional = parts[1]
+				}
+				balanceRaw = humanPartsToRaw(whole, fractional, 8)
 			}
-			if len(parts) > 1 {
-				fractional = parts[1]
-			}
-			balanceRaw = humanPartsToRaw(whole, fractional, 8)
 		}
 	}
 	if balanceRaw < 0 {
@@ -490,6 +496,64 @@ func (a *App) fetchUTXOAddressLiveHoldings(ctx context.Context, chain, address s
 		AmountRaw: amountRaw,
 		USDSpot:   prices.usdFor(asset, amountRaw),
 	}}, nil
+}
+
+func (a *App) fetchDogedHTMLAddressBalance(ctx context.Context, rawURLs []string) (int64, error) {
+	body, err := a.getTextAbsoluteMulti(ctx, rawURLs, nil)
+	if err != nil {
+		return 0, err
+	}
+	return parseDogedHTMLAddressBalance(body)
+}
+
+func parseDogedHTMLAddressBalance(body string) (int64, error) {
+	text := html.UnescapeString(body)
+	match := dogedBalancesRe.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return 0, errors.New("doged balances blob not found")
+	}
+
+	payload := strings.NewReplacer(
+		`\\`, `\`,
+		`\/`, `/`,
+	).Replace(match[1])
+
+	var balances struct {
+		Main struct {
+			SatsAmount int64  `json:"satsAmount"`
+			BalanceSat int64  `json:"balanceSat"`
+			Balance    string `json:"balance"`
+			UTXOs      []struct {
+				SatsAmount int64 `json:"satsAmount"`
+			} `json:"utxos"`
+		} `json:"main"`
+	}
+	if err := json.Unmarshal([]byte(payload), &balances); err != nil {
+		return 0, err
+	}
+
+	var balanceRaw int64
+	for _, utxo := range balances.Main.UTXOs {
+		if utxo.SatsAmount > 0 {
+			balanceRaw += utxo.SatsAmount
+		}
+	}
+	if balanceRaw == 0 {
+		balanceRaw = firstNonZeroInt64(balances.Main.SatsAmount, balances.Main.BalanceSat)
+	}
+	if balanceRaw == 0 && strings.TrimSpace(balances.Main.Balance) != "" {
+		parts := strings.SplitN(strings.TrimSpace(balances.Main.Balance), ".", 2)
+		whole := ""
+		fractional := ""
+		if len(parts) > 0 {
+			whole = parts[0]
+		}
+		if len(parts) > 1 {
+			fractional = parts[1]
+		}
+		balanceRaw = humanPartsToRaw(whole, fractional, 8)
+	}
+	return balanceRaw, nil
 }
 
 func (a *App) fetchEtherscanLikeAddressLiveHoldings(ctx context.Context, chain, address string, prices priceBook, cfg etherscanLikeConfig) ([]liveHoldingValue, error) {
@@ -3376,6 +3440,75 @@ func (a *App) getJSONAbsoluteSingle(ctx context.Context, rawURL string, headers 
 		a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, resp.StatusCode, resp.Header, nil)
 	}
 	return nil
+}
+
+func (a *App) getTextAbsoluteMulti(ctx context.Context, rawURLs []string, headers map[string]string) (string, error) {
+	var lastErr error
+	candidates := a.rotateTrackerURLs(rawURLs)
+	for idx, rawURL := range candidates {
+		body, err := a.getTextAbsoluteSingle(ctx, rawURL, headers)
+		if err != nil {
+			lastErr = err
+			if idx < len(candidates)-1 && !sleepWithContext(ctx, backoffForAttempt(idx+1)) {
+				return "", ctx.Err()
+			}
+			continue
+		}
+		return body, nil
+	}
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", errExternalTrackerUnavailable
+}
+
+func (a *App) getTextAbsoluteSingle(ctx context.Context, rawURL string, headers map[string]string) (string, error) {
+	if meta, ok := trackerRequestMetaFromContext(ctx); ok && a.trackerThrottle != nil {
+		release, err := a.trackerThrottle.acquire(ctx, meta.Provider, meta.Chain)
+		if err != nil {
+			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
+			return "", err
+		}
+		defer release()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "text/html, text/plain;q=0.9, */*;q=0.8")
+	req.Header.Set("User-Agent", "thorchain-chain-analysis/1.0")
+	for key, value := range headers {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		req.Header.Set(key, value)
+	}
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
+			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
+		}
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
+			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, resp.StatusCode, resp.Header, err)
+		}
+		return "", err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		httpErr := fmt.Errorf("GET %s failed: status=%d body=%s", rawURL, resp.StatusCode, trimForLog(string(body), 200))
+		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
+			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, resp.StatusCode, resp.Header, httpErr)
+		}
+		return "", httpErr
+	}
+	if meta, ok := trackerRequestMetaFromContext(ctx); ok {
+		a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, resp.StatusCode, resp.Header, nil)
+	}
+	return string(body), nil
 }
 
 func (a *App) postJSONAbsolute(ctx context.Context, rawURL string, headers map[string]string, payload any, out any) error {

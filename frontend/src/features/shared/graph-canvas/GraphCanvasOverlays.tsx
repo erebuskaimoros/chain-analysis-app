@@ -9,7 +9,8 @@ interface GraphCanvasOverlaysProps {
   nodeMenuActions?: GraphCanvasNodeMenuActions;
   paneMenuActions?: GraphCanvasPaneMenuActions;
   doubleActivateLabel: string;
-  onToolbarAction: (action: "zoom-in" | "zoom-out" | "fit" | "fullscreen" | "filters") => void;
+  showSaveState: boolean;
+  onToolbarAction: (action: "zoom-in" | "zoom-out" | "fit" | "fullscreen" | "filters" | "save") => void;
   onContextMenuAction: (action: string) => void;
 }
 
@@ -21,12 +22,22 @@ export function GraphCanvasOverlays({
   nodeMenuActions,
   paneMenuActions,
   doubleActivateLabel,
+  showSaveState,
   onToolbarAction,
   onContextMenuAction,
 }: GraphCanvasOverlaysProps) {
   return (
     <>
       <div className="graph-toolbar">
+        {showSaveState ? (
+          <ToolbarButton title="Save graph state" onClick={() => onToolbarAction("save")}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 2h8l2 2v10H3z" />
+              <path d="M5 2v4h6V2" />
+              <path d="M5 11h6" />
+            </svg>
+          </ToolbarButton>
+        ) : null}
         {filters ? (
           <ToolbarButton
             active={filters.isActive || filters.isOpen}
@@ -84,6 +95,7 @@ export function GraphCanvasOverlays({
                 label={`Expand Nodes (${menuState.nodes.length})`}
                 onClick={() => onContextMenuAction("expand-nodes")}
               />
+              <ContextAction label="Cluster Nodes" onClick={() => onContextMenuAction("cluster-nodes")} />
             </>
           ) : null}
           {menuState.mode === "node" ? (

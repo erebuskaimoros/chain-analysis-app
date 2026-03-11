@@ -251,6 +251,25 @@ func TestMidgardGraphPagesForHop(t *testing.T) {
 	}
 }
 
+func TestNormalizeActorTrackerRequestAcceptsLocalDateTimeInputs(t *testing.T) {
+	query, err := normalizeActorTrackerRequest(ActorTrackerRequest{
+		StartTime: "2026-03-09T21:15",
+		EndTime:   "2026-03-10T01:28",
+	})
+	if err != nil {
+		t.Fatalf("normalizeActorTrackerRequest: %v", err)
+	}
+
+	expectedStart := time.Date(2026, time.March, 9, 21, 15, 0, 0, time.Local).UTC()
+	expectedEnd := time.Date(2026, time.March, 10, 1, 28, 0, 0, time.Local).UTC()
+	if !query.StartTime.Equal(expectedStart) {
+		t.Fatalf("start time = %s, want %s", query.StartTime.Format(time.RFC3339), expectedStart.Format(time.RFC3339))
+	}
+	if !query.EndTime.Equal(expectedEnd) {
+		t.Fatalf("end time = %s, want %s", query.EndTime.Format(time.RFC3339), expectedEnd.Format(time.RFC3339))
+	}
+}
+
 func TestProjectMidgardActionInfersContractSwapAmount(t *testing.T) {
 	builder := &graphBuilder{
 		ownerMap: map[string][]int64{
@@ -2825,6 +2844,76 @@ func TestTHORDenomNormalizationSupportsModuleAssets(t *testing.T) {
 	}
 	if got := normalizeContractDenom("x/ruji"); got != "THOR.RUJI" {
 		t.Fatalf("expected x/ruji contract denom to normalize to THOR.RUJI, got %q", got)
+	}
+}
+
+func TestProjectMidgardActionPricesTHORModuleCoinAssets(t *testing.T) {
+	builder := &graphBuilder{
+		ownerMap:   map[string][]int64{},
+		actorsByID: map[int64]Actor{},
+		protocols: protocolDirectory{
+			AddressKinds: map[string]protocolAddress{},
+		},
+		prices: priceBook{
+			AssetUSD: map[string]float64{
+				"THOR.RUJI": 0.25,
+			},
+		},
+		allowedFlowTypes: flowTypeSet([]string{"transfers"}),
+		nodes:            map[string]*FlowNode{},
+		edges:            map[string]*FlowEdge{},
+		actions:          map[string]*SupportingAction{},
+	}
+
+	action := midgardAction{
+		Date:   "1763572616337487627",
+		Height: "23747777",
+		Type:   "send",
+		Status: "success",
+		In: []midgardActionLeg{
+			{
+				Address: "thor1source",
+				TxID:    "TXRUJI",
+				Coins: []midgardActionCoin{
+					{Amount: "800000000", Asset: "x/ruji"},
+				},
+			},
+		},
+		Out: []midgardActionLeg{
+			{
+				Address: "thor1target",
+				TxID:    "TXRUJI",
+				Coins: []midgardActionCoin{
+					{Amount: "800000000", Asset: "x/ruji"},
+				},
+			},
+		},
+	}
+
+	segments, _, warnings := builder.projectMidgardAction(action, 1)
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if len(segments) != 1 {
+		t.Fatalf("expected 1 segment, got %d", len(segments))
+	}
+	if segments[0].Asset != "THOR.RUJI" {
+		t.Fatalf("expected THOR.RUJI asset, got %s", segments[0].Asset)
+	}
+	if segments[0].USDSpot != 2 {
+		t.Fatalf("expected RUJI usd spot 2, got %f", segments[0].USDSpot)
+	}
+
+	builder.addProjectedSegment(segments[0])
+	edges := builder.edgeList()
+	if len(edges) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(edges))
+	}
+	if edges[0].USDSpot != 2 {
+		t.Fatalf("expected edge usd spot 2, got %f", edges[0].USDSpot)
+	}
+	if len(edges[0].Assets) != 1 || edges[0].Assets[0].Asset != "THOR.RUJI" {
+		t.Fatalf("unexpected edge assets %#v", edges[0].Assets)
 	}
 }
 

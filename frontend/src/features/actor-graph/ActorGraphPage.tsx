@@ -118,6 +118,7 @@ export function ActorGraphPage() {
                     void controller.onExpandNode(node);
                   }}
                   graphResetKey={controller.graphResetKey}
+                  onSaveState={controller.onSaveGraphState}
                   filters={{
                     isOpen: controller.graphFilters.isOpen,
                     isActive: controller.filtersActive,

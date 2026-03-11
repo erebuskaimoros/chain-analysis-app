@@ -33,6 +33,7 @@ export interface GraphCanvasProps {
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
   doubleActivateLabel?: string;
   graphResetKey?: number;
+  onSaveState?: () => void;
   filters?: GraphCanvasFilters;
   nodeMenuActions?: GraphCanvasNodeMenuActions;
   paneMenuActions?: GraphCanvasPaneMenuActions;
