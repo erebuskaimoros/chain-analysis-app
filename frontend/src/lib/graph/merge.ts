@@ -5,6 +5,7 @@ import {
   edgeMergeKey,
   ExplorerMergeSource,
   mergeEdgeTransactions,
+  nodeAddress,
   nodeMergeKey,
   normalizeEdgeTransactions,
   summarizeTransactions,
@@ -157,13 +158,26 @@ function mergeExplorerLikeResponse(
   const nodeAlias = new Map<string, string>();
   const nodeKeyToID = new Map<string, string>();
 
+  function explorerCanonicalKey(node: FlowNode) {
+    const address = nodeAddress(node).toLowerCase();
+    const chain = String(node.chain || "").trim().toUpperCase();
+    if (!address || !chain) {
+      return "";
+    }
+    return `explorer-address|${chain}|${address}`;
+  }
+
   function mergeNode(node: FlowNode) {
     const mergeKey = nodeMergeKey(node);
-    const existingID = nodeKeyToID.get(mergeKey) || node.id;
+    const canonicalKey = explorerCanonicalKey(node);
+    const existingID = nodeKeyToID.get(mergeKey) || (canonicalKey ? nodeKeyToID.get(canonicalKey) : undefined) || node.id;
     nodeAlias.set(node.id, existingID);
     const existing = nodeMap.get(existingID);
     if (!existing) {
       nodeKeyToID.set(mergeKey, existingID);
+      if (node.kind === "explorer_target" && canonicalKey) {
+        nodeKeyToID.set(canonicalKey, existingID);
+      }
       nodeMap.set(existingID, {
         ...node,
         id: existingID,
@@ -171,6 +185,10 @@ function mergeExplorerLikeResponse(
         metrics: { ...(node.metrics ?? {}) },
       });
       return;
+    }
+    nodeKeyToID.set(mergeKey, existingID);
+    if (canonicalKey && existing.kind === "explorer_target") {
+      nodeKeyToID.set(canonicalKey, existingID);
     }
     existing.actor_ids = uniqueNumbers(existing.actor_ids.concat(node.actor_ids));
     existing.shared = Boolean(existing.shared || node.shared);

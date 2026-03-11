@@ -13,6 +13,7 @@ export interface GraphCanvasNodeMenuActions {
   onOpenExplorer?: (node: VisibleGraphNode) => void;
   onCopyAddress?: (node: VisibleGraphNode) => void;
   onRefreshLiveValue?: (node: VisibleGraphNode) => void;
+  onExpandNodes?: (nodes: VisibleGraphNode[]) => void;
   onLabelNode?: (node: VisibleGraphNode) => void;
   onMarkAsgard?: (node: VisibleGraphNode) => void;
   onRemoveNode?: (node: VisibleGraphNode) => void;
@@ -39,5 +40,6 @@ export interface GraphCanvasProps {
 
 export type ContextMenuState =
   | { mode: "node"; node: VisibleGraphNode; x: number; y: number }
+  | { mode: "nodes"; nodes: VisibleGraphNode[]; x: number; y: number }
   | { mode: "pane"; x: number; y: number }
   | null;

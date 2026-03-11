@@ -97,6 +97,7 @@ export interface VisibleGraph {
 
 export type GraphSelection =
   | { kind: "node"; node: VisibleGraphNode }
+  | { kind: "nodes"; nodes: VisibleGraphNode[] }
   | { kind: "edge"; edge: VisibleGraphEdge }
   | null;
 

@@ -217,13 +217,35 @@ export function useExplorerGraphController() {
       return;
     }
     const seeds = explorerExpansionSeeds(node, graph);
+    await expandFromSeeds(seeds, true);
+  }
+
+  async function onExpandNodes(nodes: NonNullable<typeof visibleGraph>["nodes"]) {
+    if (!graph) {
+      return;
+    }
+    const seeds = Array.from(
+      new Map(
+        nodes.flatMap((node) => explorerExpansionSeeds(node, graph)).map((seed) => [seed.encoded, seed])
+      ).values()
+    );
+    await expandFromSeeds(seeds, false);
+  }
+
+  async function expandFromSeeds(
+    seeds: ReturnType<typeof explorerExpansionSeeds>,
+    singular: boolean
+  ) {
+    if (!graph) {
+      return;
+    }
     if (!seeds.length) {
-      setStatusText("Selected node has no address context to expand.");
+      setStatusText(singular ? "Selected node has no address context to expand." : "Selected nodes have no address context to expand.");
       return;
     }
     const nextSeedSet = [...new Set([...expandedHopSeeds, ...seeds.map((seed) => seed.encoded)])];
     if (nextSeedSet.length === expandedHopSeeds.length) {
-      setStatusText("Already expanded from this node.");
+      setStatusText(singular ? "Already expanded from this node." : "Already expanded from the selected nodes.");
       return;
     }
     setStatusText(`Expanding one edge from ${seeds.length} address(es)…`);
@@ -298,6 +320,7 @@ export function useExplorerGraphController() {
     },
     expandedHopSeeds,
     onExpandNode,
+    onExpandNodes,
     nodeActions: sharedNodeActions,
     visibleNodeCount,
     visibleEdgeCount,

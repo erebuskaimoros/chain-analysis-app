@@ -152,6 +152,62 @@ describe("graph merges", () => {
     expect(merged.warnings.sort()).toEqual(["base warning", "expansion warning"]);
   });
 
+  it("reconciles expansion nodes onto the existing explorer target when the address matches", () => {
+    const base = makeExplorerResponse({
+      address: "thor1base",
+      raw_address: "thor1base",
+      nodes: [
+        makeNode({
+          id: "explorer-target",
+          kind: "explorer_target",
+          chain: "THOR",
+          stage: "protocol",
+          label: "thor1base",
+          metrics: { address: "thor1base", out_edges: 2 },
+        }),
+      ],
+    });
+    const expansion = makeActorGraphResponse({
+      nodes: [
+        makeNode({
+          id: "expanded-same-address",
+          kind: "external_address",
+          chain: "THOR",
+          stage: "external",
+          label: "thor1base",
+          metrics: { address: "thor1base", in_edges: 1 },
+        }),
+        makeNode({
+          id: "expanded-peer",
+          kind: "external_address",
+          chain: "BTC",
+          metrics: { address: "bc1peer" },
+        }),
+      ],
+      edges: [
+        makeEdge({
+          id: "expanded-edge",
+          from: "expanded-same-address",
+          to: "expanded-peer",
+          transactions: [makeTransaction({ tx_id: "expanded-tx", usd_spot: 5 })],
+        }),
+      ],
+    });
+
+    const merged = mergeExplorerExpansionResponse(base, expansion);
+    const baseAddressHits = merged.nodes.filter((node) => String(node.metrics?.address || "") === "thor1base");
+
+    expect(baseAddressHits).toHaveLength(1);
+    expect(baseAddressHits[0]?.id).toBe("explorer-target");
+    expect(baseAddressHits[0]?.kind).toBe("explorer_target");
+    expect(baseAddressHits[0]?.metrics).toMatchObject({
+      address: "thor1base",
+      out_edges: 2,
+      in_edges: 1,
+    });
+    expect(merged.edges[0]?.from).toBe("explorer-target");
+  });
+
   it("applies node updates by merging metrics onto the existing node list", () => {
     const currentNodes = [
       makeNode({

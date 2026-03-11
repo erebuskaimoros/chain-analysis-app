@@ -90,18 +90,26 @@ func (a *App) fetchActionHistoryForAddress(ctx context.Context, address string, 
 	}
 
 	midgardActions, midgardTruncated, err := a.fetchMidgardActionsForAddressOnly(ctx, seed.Address, start, end, maxPages)
-	if err != nil {
-		return midgardActions, false, err
-	}
+	midgardErr := err
 	legacyActions, legacyTruncated, err := a.fetchLegacyActionsForAddress(ctx, seed.Address, start, end, maxPages)
+	legacyErr := err
+
+	merged, truncated, cacheable, err := resolveTHORActionHistorySources(
+		midgardActions,
+		midgardTruncated,
+		midgardErr,
+		legacyActions,
+		legacyTruncated,
+		legacyErr,
+	)
 	if err != nil {
-		return midgardActions, false, err
+		return merged, false, err
 	}
 
-	merged := mergeMidgardActions(midgardActions, legacyActions)
-	truncated := midgardTruncated || legacyTruncated
-	if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, truncated, merged); err != nil {
-		logError(ctx, "thor_action_cache_write_failed", err, map[string]any{"address": seed.Address})
+	if cacheable {
+		if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, truncated, merged); err != nil {
+			logError(ctx, "thor_action_cache_write_failed", err, map[string]any{"address": seed.Address})
+		}
 	}
 	return merged, truncated, nil
 }
@@ -128,24 +136,67 @@ func (a *App) fetchActionHistoryForAddressPaged(ctx context.Context, address str
 	}
 
 	midgardActions, midgardTruncated, err := a.fetchMidgardActionsForAddressPagedOnly(ctx, seed.Address, start, end, 0, totalPages)
-	if err != nil {
-		return midgardActions, false, err
-	}
+	midgardErr := err
 	legacyActions, legacyTruncated, err := a.fetchLegacyActionsForAddress(ctx, seed.Address, start, end, totalPages)
+	legacyErr := err
+
+	merged, truncated, _, err := resolveTHORActionHistorySources(
+		midgardActions,
+		midgardTruncated,
+		midgardErr,
+		legacyActions,
+		legacyTruncated,
+		legacyErr,
+	)
 	if err != nil {
-		return midgardActions, false, err
+		return merged, false, err
 	}
 
-	merged := mergeMidgardActions(midgardActions, legacyActions)
 	startIndex := startPage * midgardActionsPageLimit
 	if startIndex >= len(merged) {
-		return nil, midgardTruncated || legacyTruncated, nil
+		return nil, truncated, nil
 	}
 	endIndex := (startPage + pageCount) * midgardActionsPageLimit
 	if endIndex > len(merged) {
 		endIndex = len(merged)
 	}
-	return append([]midgardAction(nil), merged[startIndex:endIndex]...), midgardTruncated || legacyTruncated || endIndex < len(merged), nil
+	return append([]midgardAction(nil), merged[startIndex:endIndex]...), truncated || endIndex < len(merged), nil
+}
+
+func resolveTHORActionHistorySources(
+	midgardActions []midgardAction,
+	midgardTruncated bool,
+	midgardErr error,
+	legacyActions []midgardAction,
+	legacyTruncated bool,
+	legacyErr error,
+) ([]midgardAction, bool, bool, error) {
+	midgardActions = canonicalizePartialMidgardActions(midgardActions)
+	legacyActions = canonicalizePartialMidgardActions(legacyActions)
+
+	merged := mergeMidgardActions(midgardActions, legacyActions)
+	if midgardErr == nil && legacyErr == nil {
+		return merged, midgardTruncated || legacyTruncated, true, nil
+	}
+
+	// THOR history merge is best-effort. If either source succeeded or yielded
+	// partial data, keep the usable subset and mark the result truncated so
+	// callers can warn without dropping the entire expansion/load flow.
+	if midgardErr == nil || legacyErr == nil || len(merged) > 0 {
+		return merged, true, false, nil
+	}
+
+	if midgardErr != nil {
+		return nil, false, false, midgardErr
+	}
+	return nil, false, false, legacyErr
+}
+
+func canonicalizePartialMidgardActions(actions []midgardAction) []midgardAction {
+	if len(actions) == 0 {
+		return nil
+	}
+	return canonicalizeMidgardLookupActions(actions)
 }
 
 func (a *App) fetchLegacyActionsForAddress(ctx context.Context, address string, start, end time.Time, pageCount int) ([]midgardAction, bool, error) {
@@ -163,17 +214,9 @@ func (a *App) fetchLegacyActionsForAddress(ctx context.Context, address string, 
 
 	fromTimestamp, endTimestamp := actionHistoryQueryBounds(start, end)
 	actions := make([]midgardAction, 0, pageCount*midgardActionsPageLimit)
-	nextPageToken := ""
 
 	for page := 0; page < pageCount; page++ {
-		params := url.Values{}
-		params.Set("address", address)
-		params.Set("fromTimestamp", strconv.FormatInt(fromTimestamp, 10))
-		params.Set("timestamp", strconv.FormatInt(endTimestamp, 10))
-		params.Set("limit", strconv.Itoa(midgardActionsPageLimit))
-		if nextPageToken != "" {
-			params.Set("nextPageToken", nextPageToken)
-		}
+		params := legacyActionQueryParams(address, fromTimestamp, endTimestamp, page)
 
 		var response midgardActionsResponse
 		path := "/actions?" + params.Encode()
@@ -218,8 +261,7 @@ func (a *App) fetchLegacyActionsForAddress(ctx context.Context, address string, 
 		}
 
 		actions = append(actions, response.Actions...)
-		nextPageToken = strings.TrimSpace(response.Meta.NextPageToken)
-		if len(response.Actions) < midgardActionsPageLimit || nextPageToken == "" {
+		if len(response.Actions) < midgardActionsPageLimit {
 			return canonicalizeMidgardLookupActions(actions), false, nil
 		}
 		if page+1 < pageCount && !sleepWithContext(ctx, legacyActionPageDelay) {
@@ -228,6 +270,18 @@ func (a *App) fetchLegacyActionsForAddress(ctx context.Context, address string, 
 	}
 
 	return canonicalizeMidgardLookupActions(actions), true, nil
+}
+
+func legacyActionQueryParams(address string, fromTimestamp, endTimestamp int64, page int) url.Values {
+	params := url.Values{}
+	params.Set("address", address)
+	params.Set("fromTimestamp", strconv.FormatInt(fromTimestamp, 10))
+	params.Set("timestamp", strconv.FormatInt(endTimestamp, 10))
+	params.Set("limit", strconv.Itoa(midgardActionsPageLimit))
+	// Vanaheim cursor pagination is unstable for follow-up pages; offset paging
+	// remains fast for the same bounded queries.
+	params.Set("offset", strconv.Itoa(page*midgardActionsPageLimit))
+	return params
 }
 
 func (a *App) shouldUseLegacyTHORActionHistory(seed frontierAddress) bool {

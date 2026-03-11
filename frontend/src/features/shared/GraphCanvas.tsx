@@ -64,6 +64,8 @@ export function GraphCanvas({
     selectionBoxRef,
     filterPopoverRef,
     menuRef,
+    selection,
+    onSelectionChange,
     filters,
     nodeMenuActions,
     paneMenuActions,

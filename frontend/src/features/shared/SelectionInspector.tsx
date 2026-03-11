@@ -12,6 +12,43 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
     return <div className="empty-state">{emptyMessage}</div>;
   }
 
+  if (selection.kind === "nodes") {
+    const addresses = selection.nodes.map((node) => nodeAddress(node)).filter(Boolean);
+    const chains = Array.from(new Set(selection.nodes.map((node) => node.chain).filter(Boolean)));
+    return (
+      <div className="detail-stack">
+        <div>
+          <span className="eyebrow">Nodes</span>
+          <h3>{selection.nodes.length} selected</h3>
+        </div>
+        <dl className="detail-list">
+          <div>
+            <dt>Chains</dt>
+            <dd>{chains.length ? chains.join(", ") : "n/a"}</dd>
+          </div>
+          <div>
+            <dt>Addresses</dt>
+            <dd>{addresses.length}</dd>
+          </div>
+        </dl>
+        <div>
+          <span className="section-label">Selected Nodes</span>
+          <pre className="json-panel">
+            {prettyJSON(
+              selection.nodes.map((node) => ({
+                id: node.id,
+                label: node.label,
+                kind: node.kind,
+                chain: node.chain,
+                address: nodeAddress(node),
+              }))
+            )}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
   if (selection.kind === "node") {
     const address = nodeAddress(selection.node);
     return (

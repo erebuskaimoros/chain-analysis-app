@@ -223,20 +223,46 @@ export function useActorGraphController() {
     if (!graph) {
       return;
     }
-
     const seeds = actorExpansionSeeds(node, graph);
+    await expandFromSeeds(seeds, true, "hop");
+  }
+
+  async function onExpandNodes(nodes: NonNullable<typeof visibleGraph>["nodes"]) {
+    if (!graph) {
+      return;
+    }
+    const seeds = Array.from(
+      new Map(
+        nodes.flatMap((node) => actorExpansionSeeds(node, graph)).map((seed) => [seed.encoded, seed])
+      ).values()
+    );
+    await expandFromSeeds(seeds, false, "hop");
+  }
+
+  async function expandFromSeeds(
+    seeds: ReturnType<typeof actorExpansionSeeds>,
+    singular: boolean,
+    distanceLabel: "hop"
+  ) {
+    if (!graph) {
+      return;
+    }
     if (!seeds.length) {
-      setStatusText("Selected node has no address context to expand.");
+      setStatusText(singular ? "Selected node has no address context to expand." : "Selected nodes have no address context to expand.");
       return;
     }
 
     const nextSeedSet = [...new Set([...expandedHopSeeds, ...seeds.map((seed) => seed.encoded)])];
     if (nextSeedSet.length === expandedHopSeeds.length) {
-      setStatusText("One-hop expansion already loaded for this node.");
+      setStatusText(
+        singular
+          ? `One-${distanceLabel} expansion already loaded for this node.`
+          : `One-${distanceLabel} expansion already loaded for the selected nodes.`
+      );
       return;
     }
 
-    setStatusText(`Expanding one hop from ${seeds.length} address(es)…`);
+    setStatusText(`Expanding one ${distanceLabel} from ${seeds.length} address(es)…`);
     try {
       const response = await expandActorGraph({
         actor_ids: graph.query.actor_ids,
@@ -254,7 +280,7 @@ export function useActorGraphController() {
         syncWithGraph(merged, false);
         return merged;
       });
-      setStatusText(`Loaded one-hop expansion for ${nextSeedSet.length} address seed(s).`);
+      setStatusText(`Loaded one-${distanceLabel} expansion for ${nextSeedSet.length} address seed(s).`);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Expansion failed.");
     }
@@ -347,6 +373,7 @@ export function useActorGraphController() {
     expandedHopSeeds,
     onNodePrimaryAction,
     onExpandNode,
+    onExpandNodes,
     nodeActions: sharedNodeActions,
     visibleNodeCount,
     visibleEdgeCount,

@@ -136,21 +136,24 @@ export function ActorGraphPage() {
                       />
                     ),
                   }}
-                  nodeMenuActions={{
-                    onOpenExplorer: (node) => {
-                      void controller.nodeActions.onOpenExplorer(node);
-                    },
-                    onCopyAddress: (node) => {
-                      void controller.nodeActions.onCopyAddress(node);
-                    },
-                    onRefreshLiveValue: (node) => {
-                      void controller.nodeActions.onRefreshLiveValue(node);
-                    },
-                    onLabelNode: (node) => {
-                      void controller.nodeActions.onLabelNode(node);
-                    },
-                    onMarkAsgard: (node) => {
-                      void controller.nodeActions.onMarkAsgard(node);
+                nodeMenuActions={{
+                  onOpenExplorer: (node) => {
+                    void controller.nodeActions.onOpenExplorer(node);
+                  },
+                  onCopyAddress: (node) => {
+                    void controller.nodeActions.onCopyAddress(node);
+                  },
+                  onRefreshLiveValue: (node) => {
+                    void controller.nodeActions.onRefreshLiveValue(node);
+                  },
+                  onExpandNodes: (nodes) => {
+                    void controller.onExpandNodes(nodes);
+                  },
+                  onLabelNode: (node) => {
+                    void controller.nodeActions.onLabelNode(node);
+                  },
+                  onMarkAsgard: (node) => {
+                    void controller.nodeActions.onMarkAsgard(node);
                     },
                     onRemoveNode: (node) => {
                       void controller.nodeActions.onRemoveNode(node);

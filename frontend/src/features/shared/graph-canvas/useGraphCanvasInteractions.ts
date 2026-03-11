@@ -2,7 +2,7 @@ import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } 
 import type cytoscape from "cytoscape";
 import { graphNodeAtClientPoint, clamp } from "./utils";
 import type { ContextMenuState, GraphCanvasFilters, GraphCanvasNodeMenuActions, GraphCanvasPaneMenuActions } from "./types";
-import type { VisibleGraphNode } from "../../../lib/graph";
+import type { GraphSelection, VisibleGraphNode } from "../../../lib/graph";
 
 interface UseGraphCanvasInteractionsOptions {
   cyRef: MutableRefObject<cytoscape.Core | null>;
@@ -13,6 +13,8 @@ interface UseGraphCanvasInteractionsOptions {
   selectionBoxRef: MutableRefObject<HTMLDivElement | null>;
   filterPopoverRef: MutableRefObject<HTMLDivElement | null>;
   menuRef: MutableRefObject<HTMLDivElement | null>;
+  selection: GraphSelection;
+  onSelectionChange: (selection: GraphSelection) => void;
   filters?: GraphCanvasFilters;
   nodeMenuActions?: GraphCanvasNodeMenuActions;
   paneMenuActions?: GraphCanvasPaneMenuActions;
@@ -33,6 +35,8 @@ export function useGraphCanvasInteractions({
   selectionBoxRef,
   filterPopoverRef,
   menuRef,
+  selection,
+  onSelectionChange,
   filters,
   nodeMenuActions,
   paneMenuActions,
@@ -115,6 +119,22 @@ export function useGraphCanvasInteractions({
       });
     }
 
+    function syncSelectionFromSelectedNodes() {
+      const selectedNodes = cyInstance
+        .nodes(":selected")
+        .map((node) => node.data() as VisibleGraphNode)
+        .filter(Boolean);
+      if (!selectedNodes.length) {
+        onSelectionChange(null);
+        return;
+      }
+      if (selectedNodes.length === 1) {
+        onSelectionChange({ kind: "node", node: selectedNodes[0] });
+        return;
+      }
+      onSelectionChange({ kind: "nodes", nodes: selectedNodes });
+    }
+
     function stopBoxSelection() {
       boxSelecting = false;
       boxDragged = false;
@@ -181,6 +201,7 @@ export function useGraphCanvasInteractions({
       }
       if (boxDragged) {
         applyBoxSelection();
+        syncSelectionFromSelectedNodes();
         suppressTapUntilRef.current = Date.now() + 160;
         event.preventDefault();
         event.stopPropagation();
@@ -221,6 +242,10 @@ export function useGraphCanvasInteractions({
       if (hitNodeAtClientPoint(event.clientX, event.clientY)) {
         return;
       }
+      if (selection?.kind === "nodes" && selection.nodes.length > 1) {
+        setMenuState({ mode: "nodes", nodes: selection.nodes, x: event.clientX, y: event.clientY });
+        return;
+      }
       setMenuState({ mode: "pane", x: event.clientX, y: event.clientY });
     }
 
@@ -241,7 +266,7 @@ export function useGraphCanvasInteractions({
       surfaceElement.removeEventListener("wheel", onWheel);
       surfaceElement.removeEventListener("contextmenu", onNativeContextMenu);
     };
-  }, [cyRef, scheduleLabelRender, selectionBoxRef, setMenuState, surfaceRef, suppressTapUntilRef]);
+  }, [cyRef, onSelectionChange, scheduleLabelRender, selection, selectionBoxRef, setMenuState, surfaceRef, suppressTapUntilRef]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -410,6 +435,13 @@ export function useGraphCanvasInteractions({
     if (menu.mode === "pane") {
       if (action === "check-unavailable") {
         paneMenuActions?.onCheckUnavailable?.();
+      }
+      return;
+    }
+
+    if (menu.mode === "nodes") {
+      if (action === "expand-nodes") {
+        nodeMenuActions?.onExpandNodes?.(menu.nodes);
       }
       return;
     }

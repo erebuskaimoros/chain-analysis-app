@@ -179,11 +179,9 @@ export function graphStylesheet(mode: "actor" | "explorer"): CytoscapeStyleBlock
     base.splice(2, 0, {
       selector: "node[kind = 'explorer_target']",
       style: {
-        shape: "hexagon",
-        width: 110,
-        height: 100,
-        "background-color": "#e67e22",
-        "border-color": "#f5c76e",
+        shape: "ellipse",
+        width: 72,
+        height: 72,
         "border-width": 4,
         "font-size": 13,
       },
@@ -195,7 +193,7 @@ export function graphStylesheet(mode: "actor" | "explorer"): CytoscapeStyleBlock
 
 export function graphLayoutNodeSize(mode: "actor" | "explorer", node: VisibleGraphNode) {
   if (mode === "explorer" && node.kind === "explorer_target") {
-    return { width: 120, height: 108 };
+    return { width: 92, height: 80 };
   }
   if (node.kind === "actor") {
     return { width: 150, height: 64 };

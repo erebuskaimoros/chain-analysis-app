@@ -236,6 +236,9 @@ export function ExplorerPage() {
                   onRefreshLiveValue: (node) => {
                     void controller.nodeActions.onRefreshLiveValue(node);
                   },
+                  onExpandNodes: (nodes) => {
+                    void controller.onExpandNodes(nodes);
+                  },
                   onLabelNode: (node) => {
                     void controller.nodeActions.onLabelNode(node);
                   },

@@ -170,4 +170,49 @@ describe("graph derivation", () => {
     expect(visible.edges).toHaveLength(1);
     expect(visible.edges[0]?.transactions.map((transaction) => transaction.tx_id)).toEqual(["tx-in-range"]);
   });
+
+  it("keeps explorer targets styled like address nodes instead of validator nodes", () => {
+    const response = makeExplorerResponse({
+      nodes: [
+        makeNode({
+          id: "seed",
+          kind: "explorer_target",
+          label: "thor1seed",
+          chain: "THOR",
+          metrics: { address: "thor1seed", live_holdings_available: false, live_holdings_status: "" },
+        }),
+        makeNode({
+          id: "validator",
+          kind: "node",
+          label: "Node thor1validator",
+          chain: "THOR",
+          metrics: { address: "thor1validator", node_total_bond: "100000000" },
+        }),
+      ],
+      edges: [
+        makeEdge({
+          id: "bond-edge",
+          from: "seed",
+          to: "validator",
+          action_class: "bonds",
+          action_key: "bond",
+          action_label: "Bond",
+          transactions: [makeTransaction({ tx_id: "bond-tx", usd_spot: 25 })],
+        }),
+      ],
+    });
+    const filters = createGraphFilterState();
+
+    syncGraphFilterStateWithResponse(filters, response, { reset: true });
+    const visible = deriveExplorerVisibleGraph(response, filters, makeMetadata());
+
+    const seed = visible.nodes.find((node) => node.id === "seed");
+    const validator = visible.nodes.find((node) => node.id === "validator");
+
+    expect(seed?.kind).toBe("explorer_target");
+    expect(seed?.color).toBe("#5f86be");
+    expect(seed?.borderColor).toBe("#f5c76e");
+    expect(validator?.kind).toBe("node");
+    expect(validator?.color).toBe("#c86b1f");
+  });
 });

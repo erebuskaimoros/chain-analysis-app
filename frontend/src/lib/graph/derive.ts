@@ -316,7 +316,7 @@ export function deriveExplorerVisibleGraph(
       collapsed: Boolean(rawNode.collapsed),
       raw_node_ids: [],
       metrics: { ...(rawNode.metrics ?? {}), live_holdings_usd_spot: 0 },
-      color: rawNode.kind === "explorer_target" ? "#e67e22" : defaultNodeColor(rawNode.kind),
+      color: defaultNodeColor(rawNode.kind === "explorer_target" ? "external_address" : rawNode.kind),
     };
     if (!existing.raw_node_ids.includes(rawNode.id)) {
       existing.raw_node_ids.push(rawNode.id);

@@ -78,6 +78,14 @@ export function GraphCanvasOverlays({
           ref={menuRef}
           style={{ left: `${menuState.x}px`, top: `${menuState.y}px` }}
         >
+          {menuState.mode === "nodes" ? (
+            <>
+              <ContextAction
+                label={`Expand Nodes (${menuState.nodes.length})`}
+                onClick={() => onContextMenuAction("expand-nodes")}
+              />
+            </>
+          ) : null}
           {menuState.mode === "node" ? (
             <>
               {nodeMenuActions?.onOpenExplorer ? (

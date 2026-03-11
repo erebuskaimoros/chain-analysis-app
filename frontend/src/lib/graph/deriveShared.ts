@@ -393,6 +393,8 @@ function decorateVisibleNode(
     borderColor:
       node.kind === "actor" || node.kind === "actor_address"
         ? baseColor
+        : node.kind === "explorer_target"
+        ? "#f5c76e"
         : node.shared
         ? "#f4e7a3"
         : node.kind === "external_cluster"

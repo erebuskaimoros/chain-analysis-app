@@ -151,6 +151,20 @@ export function useGraphCanvasCore({
         return;
       }
       const point = contextMenuPointFromGraphEvent(surface, event);
+      const selection = selectionRef.current;
+      if (
+        selection?.kind === "nodes" &&
+        selection.nodes.length > 1 &&
+        selection.nodes.some((selectedNode) => selectedNode.id === node.id)
+      ) {
+        setMenuState({
+          mode: "nodes",
+          nodes: selection.nodes,
+          x: point.x,
+          y: point.y,
+        });
+        return;
+      }
       setMenuState({
         mode: "node",
         node,
@@ -167,6 +181,17 @@ export function useGraphCanvasCore({
         return;
       }
       const point = contextMenuPointFromGraphEvent(surfaceRef.current, event);
+      const selection = selectionRef.current;
+      if (selection?.kind === "nodes" && selection.nodes.length > 1) {
+        setMenuState({
+          mode: "nodes",
+          nodes: selection.nodes,
+          x: point.x,
+          y: point.y,
+        });
+        lastPaneContextMenuOpenedAtRef.current = Date.now();
+        return;
+      }
       setMenuState({
         mode: "pane",
         x: point.x,
@@ -251,6 +276,8 @@ export function useGraphCanvasCore({
       const exists =
         selected.kind === "node"
           ? nodeMapRef.current.has(selected.node.id)
+          : selected.kind === "nodes"
+          ? selected.nodes.some((node) => nodeMapRef.current.has(node.id))
           : edgeMapRef.current.has(selected.edge.id);
       if (!exists) {
         selectionChangeRef.current(null);
@@ -265,6 +292,15 @@ export function useGraphCanvasCore({
     }
     cy.elements().unselect();
     if (!selection) {
+      return;
+    }
+    if (selection.kind === "nodes") {
+      selection.nodes.forEach((node) => {
+        const element = cy.getElementById(node.id);
+        if (element.nonempty()) {
+          element.select();
+        }
+      });
       return;
     }
     const element = cy.getElementById(selection.kind === "node" ? selection.node.id : selection.edge.id);
