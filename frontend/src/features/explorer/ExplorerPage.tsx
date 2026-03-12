@@ -12,6 +12,7 @@ import { useExplorerGraphController } from "./hooks/useExplorerGraphController";
 
 export function ExplorerPage() {
   const controller = useExplorerGraphController();
+  const [isGraphFullscreen, setIsGraphFullscreen] = useState(false);
   const annotationsQuery = useQuery({
     queryKey: ["annotations"],
     queryFn: listAnnotations,
@@ -242,7 +243,7 @@ export function ExplorerPage() {
               <span className="meta-chip">{controller.currentGraph.loaded_actions} loaded actions</span>
             </div>
 
-            {controller.currentGraph.warnings.length ? (
+            {!isGraphFullscreen && controller.currentGraph.warnings.length ? (
               <div className="warning-list">
                 {controller.currentGraph.warnings.map((warning) => (
                   <span key={warning} className="warning-chip">
@@ -265,6 +266,8 @@ export function ExplorerPage() {
                 doubleActivateLabel="Expand one edge"
                 graphResetKey={controller.graphResetKey}
                 onSaveState={controller.onSaveGraphState}
+                savedCanvasState={controller.savedCanvasState}
+                onFullscreenChange={setIsGraphFullscreen}
                 filters={{
                   isOpen: controller.graphFilters.isOpen,
                   isActive: controller.filtersActive,

@@ -1,6 +1,7 @@
 import { useCallback, useRef, type MutableRefObject } from "react";
 import type cytoscape from "cytoscape";
 import type { VisibleGraphNode } from "../../../lib/graph";
+import { DEFAULT_GRAPH_LABEL_MAX_WIDTH_PX } from "./constants";
 import { escapeHTML, renderedNodeHeight } from "./utils";
 
 export function useGraphLabelLayer(
@@ -25,7 +26,7 @@ export function useGraphLabelLayer(
     const labelScale = Math.max(0.3, Math.min(1.35, zoom));
     const labelFontPx = 11.84 * labelScale;
     const liveFontPx = 10.88 * labelScale;
-    const labelMaxWidthPx = Math.max(48, Math.min(220, 150 * labelScale));
+    const labelMaxWidthPx = Math.max(48, Math.min(220, DEFAULT_GRAPH_LABEL_MAX_WIDTH_PX * labelScale));
     const labelGapPx = Math.max(2, 8 * labelScale);
     const html: string[] = [];
 

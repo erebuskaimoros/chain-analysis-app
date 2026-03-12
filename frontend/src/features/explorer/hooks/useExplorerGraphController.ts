@@ -9,7 +9,14 @@ import {
 } from "../../../lib/api";
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES } from "../../../lib/constants";
 import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
-import { isRecord, readJSONFile, readStringArray, restoreSavedGraphFilters } from "../../../lib/graphState";
+import {
+  isRecord,
+  readJSONFile,
+  readSavedGraphCanvasState,
+  readStringArray,
+  restoreSavedGraphFilters,
+  type SavedGraphCanvasState,
+} from "../../../lib/graphState";
 import { cloneGraphFilterState, deriveExplorerVisibleGraph, filterSupportingActions, mergeAddressExplorerResponse, mergeExplorerExpansionResponse, explorerExpansionSeeds, type GraphSelection } from "../../../lib/graph";
 import type { ActionLookupResponse, AddressExplorerRequest, AddressExplorerResponse } from "../../../lib/types";
 import { useGraphFilterState } from "../../shared/graph-hooks/useGraphFilterState";
@@ -127,6 +134,7 @@ export function useExplorerGraphController() {
   const [lookupError, setLookupError] = useState("");
   const [expandedHopSeeds, setExpandedHopSeeds] = useState<string[]>([]);
   const [graphResetKey, setGraphResetKey] = useState(0);
+  const [savedCanvasState, setSavedCanvasState] = useState<SavedGraphCanvasState | null>(null);
 
   const previewMutation = useMutation({
     mutationFn: buildAddressExplorer,
@@ -137,6 +145,7 @@ export function useExplorerGraphController() {
       setLookupResult(null);
       setLookupError("");
       setExpandedHopSeeds([]);
+      setSavedCanvasState(null);
       clearFilterState();
       setStatusText(
         response.direction_required
@@ -161,6 +170,7 @@ export function useExplorerGraphController() {
       if (request.offset === 0) {
         setGraphResetKey((value) => value + 1);
         setExpandedHopSeeds([]);
+        setSavedCanvasState(null);
         setSelection(null);
       }
       setStatusText(
@@ -316,6 +326,7 @@ export function useExplorerGraphController() {
         display_mode: DEFAULT_DISPLAY_MODE,
       });
       setExpandedHopSeeds(nextSeedSet);
+      setSavedCanvasState(null);
       setGraph((current) => {
         const next = mergeExplorerExpansionResponse(current, expansion);
         syncWithGraph(next, false);
@@ -327,7 +338,7 @@ export function useExplorerGraphController() {
     }
   }
 
-  function onSaveGraphState() {
+  function onSaveGraphState(canvasState: SavedGraphCanvasState) {
     if (!graph) {
       return;
     }
@@ -349,6 +360,7 @@ export function useExplorerGraphController() {
         filters: cloneGraphFilterState(graphFilters),
         selection,
         expanded_hop_seeds: expandedHopSeeds,
+        canvas: canvasState,
       },
       graph,
       visible_graph: visibleGraph,
@@ -392,6 +404,7 @@ export function useExplorerGraphController() {
       setLookupResult(null);
       setLookupError("");
       setExpandedHopSeeds(readStringArray(uiState.expanded_hop_seeds));
+      setSavedCanvasState(readSavedGraphCanvasState(uiState.canvas));
       setSelectedRunID("");
       setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
       setGraphResetKey((value) => value + 1);
@@ -438,6 +451,7 @@ export function useExplorerGraphController() {
     graphResetKey,
     onSaveGraphState,
     onLoadGraphState,
+    savedCanvasState,
     graphFilters,
     filtersActive,
     filterActions: {

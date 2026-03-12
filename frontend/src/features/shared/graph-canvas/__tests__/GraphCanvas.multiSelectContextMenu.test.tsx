@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GraphCanvas } from "../../GraphCanvas";
 import { makeVisibleNode } from "../../../../test-support/graphFixtures";
 import type { VisibleGraphNode } from "../../../../lib/graph";
+import { DEFAULT_GRAPH_LABEL_MAX_WIDTH_PX } from "../constants";
 
 type MockElementData = VisibleGraphNode & {
   source?: string;
@@ -216,9 +217,11 @@ class MockCyCore {
 
   resize() {}
 
-  zoom(value?: number) {
+  zoom(value?: number | { level: number; renderedPosition?: { x: number; y: number } }) {
     if (typeof value === "number") {
       this.zoomLevel = value;
+    } else if (value && typeof value.level === "number") {
+      this.zoomLevel = value.level;
     }
     return this.zoomLevel;
   }
@@ -439,6 +442,57 @@ describe("GraphCanvas multi-node context menu", () => {
     expect(afterCenter.y).toBeCloseTo(beforeCenter.y, 5);
   });
 
+  it("keeps clustered nodes loose enough for node labels to stay readable", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "THOR Treasury Alpha" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "THOR Treasury Beta" });
+    const nodeC = makeVisibleNode({ id: "node-c", label: "THOR Treasury Gamma" });
+
+    const { container } = render(
+      <GraphCanvas
+        mode="explorer"
+        nodes={[nodeA, nodeB, nodeC]}
+        edges={[]}
+        selection={{ kind: "nodes", nodes: [nodeA, nodeB, nodeC] }}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    cytoscapeState.latestCore.setSelectedNodeIDs(["node-a", "node-b", "node-c"]);
+
+    fireEvent.contextMenu(surface, { clientX: 120, clientY: 40 });
+    fireEvent.click(await screen.findByRole("button", { name: "Cluster Nodes" }));
+
+    const after = ["node-a", "node-b", "node-c"]
+      .map((id) => cytoscapeState.latestCore?.nodePosition(id))
+      .filter((point): point is { x: number; y: number } => Boolean(point));
+    const distances = after.flatMap((point, index) =>
+      after.slice(index + 1).map((other) => Math.hypot(other.x - point.x, other.y - point.y))
+    );
+
+    expect(Math.min(...distances)).toBeGreaterThanOrEqual(DEFAULT_GRAPH_LABEL_MAX_WIDTH_PX);
+  });
+
   it("preserves extant node positions when the graph expands", async () => {
     const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
     const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
@@ -466,5 +520,301 @@ describe("GraphCanvas multi-node context menu", () => {
 
     expect(cytoscapeState.latestCore.nodePosition("node-a")).toEqual({ x: 333, y: 444 });
     expect(cytoscapeState.latestCore.nodePosition("node-b")).toEqual({ x: 555, y: 666 });
+  });
+
+  it("captures current node positions and viewport when saving graph state", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+    const onSaveState = vi.fn();
+
+    render(
+      <GraphCanvas
+        mode="explorer"
+        nodes={[nodeA, nodeB]}
+        edges={[]}
+        selection={null}
+        onSelectionChange={vi.fn()}
+        onSaveState={onSaveState}
+      />
+    );
+
+    expect(cytoscapeState.latestCore).not.toBeNull();
+    if (!cytoscapeState.latestCore) {
+      return;
+    }
+
+    cytoscapeState.latestCore.setNodePosition("node-a", { x: 333, y: 444 });
+    cytoscapeState.latestCore.setNodePosition("node-b", { x: 555, y: 666 });
+    cytoscapeState.latestCore.zoom(1.75);
+    cytoscapeState.latestCore.pan({ x: 90, y: 120 });
+
+    fireEvent.click(screen.getByTitle("Save graph state"));
+
+    expect(onSaveState).toHaveBeenCalledWith({
+      node_positions: {
+        "node-a": { x: 333, y: 444 },
+        "node-b": { x: 555, y: 666 },
+      },
+      viewport: {
+        zoom: 1.75,
+        pan: { x: 90, y: 120 },
+      },
+    });
+  });
+
+  it("restores saved node positions and viewport on reset", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+
+    render(
+      <GraphCanvas
+        mode="explorer"
+        nodes={[nodeA, nodeB]}
+        edges={[]}
+        selection={null}
+        onSelectionChange={vi.fn()}
+        graphResetKey={1}
+        savedCanvasState={{
+          node_positions: {
+            "node-a": { x: 333, y: 444 },
+            "node-b": { x: 555, y: 666 },
+          },
+          viewport: {
+            zoom: 1.75,
+            pan: { x: 90, y: 120 },
+          },
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(cytoscapeState.latestCore?.nodePosition("node-a")).toEqual({ x: 333, y: 444 });
+    });
+
+    expect(cytoscapeState.latestCore?.nodePosition("node-b")).toEqual({ x: 555, y: 666 });
+    expect(cytoscapeState.latestCore?.zoom()).toBe(1.75);
+    expect(cytoscapeState.latestCore?.pan()).toEqual({ x: 90, y: 120 });
+  });
+
+  it("renders live holdings labels for nodes that have inline live values", async () => {
+    const nodeA = makeVisibleNode({
+      id: "node-a",
+      label: "Node A",
+      displayLabel: "Node A",
+      live_holdings_label: "$1.2M",
+      live_holdings_status: "available",
+    });
+
+    render(
+      <GraphCanvas mode="explorer" nodes={[nodeA]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("$1.2M")).toBeTruthy();
+    });
+  });
+
+  it("pans on MacBook-style trackpad wheel gestures instead of zooming", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA, nodeB]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.wheel(surface, {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaX: 18,
+      deltaY: 14,
+    });
+
+    expect(cytoscapeState.latestCore.pan()).not.toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).toBe(1);
+  });
+
+  it("pans on large vertical-only trackpad drags instead of treating them as wheel zoom", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA, nodeB]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.wheel(surface, {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaX: 0,
+      deltaY: 56,
+    });
+
+    expect(cytoscapeState.latestCore.pan()).not.toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).toBe(1);
+  });
+
+  it("keeps mouse-wheel zoom behavior for discrete wheel input", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA, nodeB]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.wheel(surface, {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaY: 120,
+    });
+
+    expect(cytoscapeState.latestCore.pan()).toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).not.toBe(1);
+  });
+
+  it("keeps pinch-to-zoom behavior for trackpad zoom gestures", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA, nodeB]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.wheel(surface, {
+      clientX: 240,
+      clientY: 160,
+      ctrlKey: true,
+      deltaMode: 0,
+      deltaY: 12,
+    });
+
+    expect(cytoscapeState.latestCore.pan()).toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).not.toBe(1);
+  });
+
+  it("zooms more aggressively for pinch gestures than the default wheel sensitivity", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+    const nodeB = makeVisibleNode({ id: "node-b", label: "Node B" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA, nodeB]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.wheel(surface, {
+      clientX: 240,
+      clientY: 160,
+      ctrlKey: true,
+      deltaMode: 0,
+      deltaY: -18,
+    });
+
+    expect(cytoscapeState.latestCore.pan()).toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).toBeGreaterThanOrEqual(1.06);
   });
 });

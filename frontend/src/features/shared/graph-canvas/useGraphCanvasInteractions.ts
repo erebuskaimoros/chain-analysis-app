@@ -1,8 +1,14 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type cytoscape from "cytoscape";
+import type { SavedGraphCanvasState } from "../../../lib/graphState";
 import { clusterGraphNodes, graphNodeAtClientPoint, clamp, selectedGraphNodes } from "./utils";
 import type { ContextMenuState, GraphCanvasFilters, GraphCanvasNodeMenuActions, GraphCanvasPaneMenuActions } from "./types";
 import type { GraphSelection, VisibleGraphNode } from "../../../lib/graph";
+
+const TRACKPAD_PAN_GESTURE_LOCK_MS = 180;
+const TRACKPAD_PAN_PIXEL_DELTA_THRESHOLD = 96;
+const WHEEL_ZOOM_SENSITIVITY = 0.0015;
+const PINCH_ZOOM_SENSITIVITY = 0.0035;
 
 interface UseGraphCanvasInteractionsOptions {
   cyRef: MutableRefObject<cytoscape.Core | null>;
@@ -23,7 +29,7 @@ interface UseGraphCanvasInteractionsOptions {
   isFullscreen: boolean;
   setIsFullscreen: Dispatch<SetStateAction<boolean>>;
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
-  onSaveState?: () => void;
+  onSaveState?: (canvasState: SavedGraphCanvasState) => void;
   scheduleLabelRender: () => void;
 }
 
@@ -68,6 +74,7 @@ export function useGraphCanvasInteractions({
     let preserveSelection = false;
     let boxStart = { x: 0, y: 0 };
     let boxCurrent = { x: 0, y: 0 };
+    let lastTrackpadPanAt = 0;
 
     function renderedSelectionRect() {
       const rect = surfaceElement.getBoundingClientRect();
@@ -223,13 +230,26 @@ export function useGraphCanvasInteractions({
     }
 
     function onWheel(event: WheelEvent) {
+      if (shouldPanFromWheel(event, lastTrackpadPanAt)) {
+        lastTrackpadPanAt = Date.now();
+        const currentPan = cyInstance.pan();
+        const panScale = wheelPanScale(event, surfaceElement);
+        cyInstance.pan({
+          x: currentPan.x - event.deltaX * panScale,
+          y: currentPan.y - event.deltaY * panScale,
+        });
+        event.preventDefault();
+        return;
+      }
+
       const rect = surfaceElement.getBoundingClientRect();
       const renderedPosition = {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
       };
       const currentZoom = Number(cyInstance.zoom() || 1);
-      const zoomFactor = Math.exp(-event.deltaY * 0.0015);
+      const zoomSensitivity = event.ctrlKey ? PINCH_ZOOM_SENSITIVITY : WHEEL_ZOOM_SENSITIVITY;
+      const zoomFactor = Math.exp(-event.deltaY * zoomSensitivity);
       const minZoom = typeof cyInstance.minZoom === "function" ? Number(cyInstance.minZoom() || 0.05) : 0.05;
       const maxZoom = typeof cyInstance.maxZoom === "function" ? Number(cyInstance.maxZoom() || 10) : 10;
       cyInstance.zoom({
@@ -411,6 +431,44 @@ export function useGraphCanvasInteractions({
     });
   }, [menuRef, menuState, setMenuState]);
 
+  function captureCanvasState() {
+    const cy = cyRef.current;
+    if (!cy) {
+      return null;
+    }
+
+    const nodePositions: SavedGraphCanvasState["node_positions"] = {};
+    cy.nodes().forEach((node) => {
+      if (typeof node.position !== "function") {
+        return;
+      }
+      const position = node.position();
+      if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+        return;
+      }
+      nodePositions[node.id()] = {
+        x: position.x,
+        y: position.y,
+      };
+    });
+
+    const pan = cy.pan();
+    const zoom = cy.zoom();
+    return {
+      node_positions: nodePositions,
+      viewport:
+        Number.isFinite(zoom) && Number.isFinite(pan.x) && Number.isFinite(pan.y)
+          ? {
+              zoom,
+              pan: {
+                x: pan.x,
+                y: pan.y,
+              },
+            }
+          : undefined,
+    } satisfies SavedGraphCanvasState;
+  }
+
   function handleToolbarAction(action: "zoom-in" | "zoom-out" | "fit" | "fullscreen" | "filters" | "save") {
     const cy = cyRef.current;
     const surface = surfaceRef.current;
@@ -419,7 +477,10 @@ export function useGraphCanvasInteractions({
       return;
     }
     if (action === "save") {
-      onSaveState?.();
+      const canvasState = captureCanvasState();
+      if (canvasState) {
+        onSaveState?.(canvasState);
+      }
       return;
     }
     if (!cy || !surface) {
@@ -500,4 +561,39 @@ export function useGraphCanvasInteractions({
     handleToolbarAction,
     handleContextMenuAction,
   };
+}
+
+function shouldPanFromWheel(event: WheelEvent, lastTrackpadPanAt: number) {
+  if (event.ctrlKey) {
+    return false;
+  }
+
+  const now = Date.now();
+  if (now - lastTrackpadPanAt <= TRACKPAD_PAN_GESTURE_LOCK_MS) {
+    return true;
+  }
+
+  const pixelDeltaMode = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL || event.deltaMode === 0;
+  if (!pixelDeltaMode) {
+    return false;
+  }
+
+  const absDeltaX = Math.abs(event.deltaX);
+  const absDeltaY = Math.abs(event.deltaY);
+  const hasHorizontalScroll = absDeltaX >= 0.5;
+  const hasSmallVerticalScroll = absDeltaY > 0 && absDeltaY < TRACKPAD_PAN_PIXEL_DELTA_THRESHOLD;
+  const hasFractionalDelta = !Number.isInteger(event.deltaX) || !Number.isInteger(event.deltaY);
+
+  return hasHorizontalScroll || hasSmallVerticalScroll || hasFractionalDelta;
+}
+
+function wheelPanScale(event: WheelEvent, surfaceElement: HTMLDivElement) {
+  switch (event.deltaMode) {
+    case WheelEvent.DOM_DELTA_LINE:
+      return 16;
+    case WheelEvent.DOM_DELTA_PAGE:
+      return Math.max(surfaceElement.clientWidth, surfaceElement.clientHeight);
+    default:
+      return 1;
+  }
 }

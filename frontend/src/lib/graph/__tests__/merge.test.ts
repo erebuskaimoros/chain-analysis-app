@@ -6,6 +6,7 @@ import {
   mergeExplorerExpansionResponse,
 } from "../../graph";
 import {
+  makeAsset,
   makeActor,
   makeActorGraphResponse,
   makeEdge,
@@ -332,6 +333,81 @@ describe("graph merges", () => {
     expect(merged.edges[0]?.transactions).toHaveLength(2);
     expect(merged.edges[0]?.source_protocols?.sort()).toEqual(["MAYA", "THOR"]);
     expect(merged.edges[0]?.transactions.map((tx) => tx.source_protocol).sort()).toEqual(["MAYA", "THOR"]);
+  });
+
+  it("does not double count edge transactions when actor hop expansion re-emits the same tx", () => {
+    const current = makeActorGraphResponse({
+      nodes: [
+        makeNode({ id: "node-a", chain: "THOR", metrics: { address: "thor1same" } }),
+        makeNode({ id: "node-b", chain: "BTC", metrics: { address: "bc1same" } }),
+      ],
+      edges: [
+        makeEdge({
+          id: "edge-a",
+          from: "node-a",
+          to: "node-b",
+          transactions: [
+            makeTransaction({
+              tx_id: "same-hop-tx",
+              source_protocol: "THOR",
+              usd_spot: 10,
+              assets: [
+                makeAsset({
+                  asset: "BTC.BTC",
+                  amount_raw: "100000000",
+                  usd_spot: 10,
+                  direction: "out",
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    const incoming = makeActorGraphResponse({
+      nodes: [
+        makeNode({ id: "node-a-expanded", chain: "THOR", metrics: { address: "thor1same" } }),
+        makeNode({ id: "node-b-expanded", chain: "BTC", metrics: { address: "bc1same" } }),
+      ],
+      edges: [
+        makeEdge({
+          id: "edge-b",
+          from: "node-a-expanded",
+          to: "node-b-expanded",
+          transactions: [
+            makeTransaction({
+              tx_id: "same-hop-tx",
+              source_protocol: "THOR",
+              usd_spot: 10,
+              assets: [
+                makeAsset({
+                  asset: "BTC.BTC",
+                  amount_raw: "100000000",
+                  usd_spot: 10,
+                  direction: "out",
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const merged = mergeActorGraphResponse(current, incoming);
+
+    expect(merged.edges).toHaveLength(1);
+    expect(merged.edges[0]?.transactions).toHaveLength(1);
+    expect(merged.edges[0]?.tx_ids).toEqual(["same-hop-tx"]);
+    expect(merged.edges[0]?.usd_spot).toBe(10);
+    expect(merged.edges[0]?.transactions[0]?.usd_spot).toBe(10);
+    expect(merged.edges[0]?.transactions[0]?.assets).toEqual([
+      expect.objectContaining({
+        asset: "BTC.BTC",
+        amount_raw: "100000000",
+        usd_spot: 10,
+        direction: "out",
+      }),
+    ]);
   });
 
   it("applies node updates by merging metrics onto the existing node list", () => {

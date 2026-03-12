@@ -249,8 +249,8 @@ export function mergeEdgeTransactions(existingTransactions: FlowEdgeTransaction[
     if (!existing.time || (cloned.time && cloned.time < existing.time)) {
       existing.time = cloned.time || existing.time;
     }
-    existing.usd_spot = Number(existing.usd_spot || 0) + Number(cloned.usd_spot || 0);
-    existing.assets = mergeFlowAssetValues(existing.assets, cloned.assets);
+    existing.usd_spot = Math.max(Number(existing.usd_spot || 0), Number(cloned.usd_spot || 0));
+    existing.assets = mergeRepeatedTransactionAssets(existing.assets, cloned.assets);
     txMap.set(key, existing);
   });
 
@@ -517,6 +517,34 @@ function mergeFlowAssetValues(targetAssets: FlowAssetValue[], incomingAssets: Fl
   return Array.from(assetMap.values()).sort((left, right) => Number(right.usd_spot || 0) - Number(left.usd_spot || 0));
 }
 
+function mergeRepeatedTransactionAssets(targetAssets: FlowAssetValue[], incomingAssets: FlowAssetValue[]) {
+  const assetMap = new Map<string, FlowAssetValue>();
+
+  function mergeAsset(asset: FlowAssetValue) {
+    const cloned = cloneFlowAssetValue(asset);
+    const key = `${cloned.asset}|${cloned.direction}`;
+    const existing = assetMap.get(key);
+    if (!existing) {
+      assetMap.set(key, cloned);
+      return;
+    }
+    existing.amount_raw = preferRicherRawAmount(existing.amount_raw, cloned.amount_raw);
+    existing.usd_spot = Math.max(Number(existing.usd_spot || 0), Number(cloned.usd_spot || 0));
+    if (!existing.asset_kind) existing.asset_kind = cloned.asset_kind;
+    if (!existing.token_standard) existing.token_standard = cloned.token_standard;
+    if (!existing.token_address) existing.token_address = cloned.token_address;
+    if (!existing.token_symbol) existing.token_symbol = cloned.token_symbol;
+    if (!existing.token_name) existing.token_name = cloned.token_name;
+    if (!existing.token_decimals) existing.token_decimals = cloned.token_decimals;
+    assetMap.set(key, existing);
+  }
+
+  targetAssets.forEach(mergeAsset);
+  incomingAssets.forEach(mergeAsset);
+
+  return Array.from(assetMap.values()).sort((left, right) => Number(right.usd_spot || 0) - Number(left.usd_spot || 0));
+}
+
 function cloneFlowAssetValue(asset: FlowAssetValue): FlowAssetValue {
   return {
     asset: String(asset.asset || ""),
@@ -558,6 +586,21 @@ function addRawAmountStrings(left: string, right: string) {
   const leftNum = Number.parseFloat(String(left ?? "0")) || 0;
   const rightNum = Number.parseFloat(String(right ?? "0")) || 0;
   return String(leftNum + rightNum);
+}
+
+function preferRicherRawAmount(left: string, right: string) {
+  const leftBig = toBigIntOrNull(left);
+  const rightBig = toBigIntOrNull(right);
+  if (leftBig !== null && rightBig !== null) {
+    return absBigInt(rightBig) > absBigInt(leftBig) ? right : left;
+  }
+  const leftNum = Math.abs(Number.parseFloat(String(left ?? "0")) || 0);
+  const rightNum = Math.abs(Number.parseFloat(String(right ?? "0")) || 0);
+  return rightNum > leftNum ? right : left;
+}
+
+function absBigInt(value: bigint) {
+  return value < 0n ? -value : value;
 }
 
 function toBigIntOrNull(raw: unknown) {

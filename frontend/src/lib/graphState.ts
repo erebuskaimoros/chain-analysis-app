@@ -10,6 +10,21 @@ import type { ActorGraphResponse, AddressExplorerResponse } from "./types";
 
 type FilterableGraph = Pick<ActorGraphResponse | AddressExplorerResponse, "nodes" | "edges">;
 
+export interface SavedGraphCanvasPosition {
+  x: number;
+  y: number;
+}
+
+export interface SavedGraphCanvasViewport {
+  zoom: number;
+  pan: SavedGraphCanvasPosition;
+}
+
+export interface SavedGraphCanvasState {
+  node_positions: Record<string, SavedGraphCanvasPosition>;
+  viewport?: SavedGraphCanvasViewport;
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -26,6 +41,55 @@ export function readStringArray(value: unknown) {
 
 export async function readJSONFile(file: File): Promise<unknown> {
   return JSON.parse(await file.text());
+}
+
+export function readSavedGraphCanvasState(value: unknown): SavedGraphCanvasState | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const nodePositions: Record<string, SavedGraphCanvasPosition> = {};
+  if (isRecord(value.node_positions)) {
+    Object.entries(value.node_positions).forEach(([id, position]) => {
+      if (!isRecord(position) || typeof position.x !== "number" || typeof position.y !== "number") {
+        return;
+      }
+      if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+        return;
+      }
+      nodePositions[id] = { x: position.x, y: position.y };
+    });
+  }
+
+  let viewport: SavedGraphCanvasViewport | undefined;
+  if (isRecord(value.viewport) && isRecord(value.viewport.pan)) {
+    const { zoom, pan } = value.viewport;
+    if (
+      typeof zoom === "number" &&
+      Number.isFinite(zoom) &&
+      typeof pan.x === "number" &&
+      Number.isFinite(pan.x) &&
+      typeof pan.y === "number" &&
+      Number.isFinite(pan.y)
+    ) {
+      viewport = {
+        zoom,
+        pan: {
+          x: pan.x,
+          y: pan.y,
+        },
+      };
+    }
+  }
+
+  if (!Object.keys(nodePositions).length && !viewport) {
+    return null;
+  }
+
+  return {
+    node_positions: nodePositions,
+    viewport,
+  };
 }
 
 export function restoreSavedGraphFilters(savedFilters: unknown, graph: FilterableGraph): GraphFilterState {

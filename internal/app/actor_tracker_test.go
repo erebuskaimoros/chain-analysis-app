@@ -212,6 +212,81 @@ func TestBuildActorTrackerPopulatesLiveValuesForAddressNodes(t *testing.T) {
 	}
 }
 
+func TestExpandActorTrackerOneHopSkipsSwapMatchedOnlyByAffiliateFeeLeg(t *testing.T) {
+	const affiliate = "thor1affiliatefeeflow8c7e6n7y4c2h4k5m6q7r8s9t0u"
+
+	app := newActorTrackerAffiliateFeeTestApp(t, affiliate)
+	defer app.Close()
+
+	start := time.Unix(1_700_000_000, 0).UTC().Add(-time.Hour)
+	end := time.Unix(1_700_000_000, 0).UTC().Add(time.Hour)
+
+	resp, err := app.expandActorTrackerOneHop(context.Background(), ActorTrackerExpandRequest{
+		Addresses: []string{affiliate},
+		StartTime: start.Format(time.RFC3339),
+		EndTime:   end.Format(time.RFC3339),
+		FlowTypes: []string{"swaps"},
+	})
+	if err != nil {
+		t.Fatalf("expand actor tracker: %v", err)
+	}
+	if len(resp.Nodes) != 0 {
+		t.Fatalf("expected no nodes when watched address only appears on affiliate fee legs, got %#v", resp.Nodes)
+	}
+	if len(resp.Edges) != 0 {
+		t.Fatalf("expected no edges when watched address only appears on affiliate fee legs, got %#v", resp.Edges)
+	}
+	if got := intStat(resp.Stats, "swap_emitted"); got != 0 {
+		t.Fatalf("expected swap_emitted=0, got %d", got)
+	}
+}
+
+func TestBuildActorTrackerSkipsSwapMatchedOnlyByAffiliateFeeSeed(t *testing.T) {
+	const affiliate = "thor1affiliatefeeflow8c7e6n7y4c2h4k5m6q7r8s9t0u"
+	const sender = "0x0f1cefeed0000000000000000000000000000001"
+	const recipient = "bc1qrecipient0000000000000000000000000000000"
+
+	app := newActorTrackerAffiliateFeeTestApp(t, affiliate)
+	defer app.Close()
+
+	actor, err := upsertActor(context.Background(), app.db, 0, ActorUpsertRequest{
+		Name:  "Affiliate Seed",
+		Color: "#123456",
+		Addresses: []ActorAddressInput{
+			{Address: affiliate, ChainHint: "THOR", Label: "Affiliate"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsert actor: %v", err)
+	}
+
+	start := time.Unix(1_700_000_000, 0).UTC().Add(-time.Hour)
+	end := time.Unix(1_700_000_000, 0).UTC().Add(time.Hour)
+
+	resp, err := app.buildActorTracker(context.Background(), ActorTrackerRequest{
+		ActorIDs:  []int64{actor.ID},
+		StartTime: start.Format(time.RFC3339),
+		EndTime:   end.Format(time.RFC3339),
+		MaxHops:   1,
+		FlowTypes: []string{"swaps"},
+	})
+	if err != nil {
+		t.Fatalf("build actor tracker: %v", err)
+	}
+	if hasActionClassEdge(resp.Edges, "swaps") {
+		t.Fatalf("expected affiliate-only swap match to produce no swap edges, got %#v", resp.Edges)
+	}
+	if hasAddressNode(resp.Nodes, sender) {
+		t.Fatalf("did not expect sender address node %s in graph", sender)
+	}
+	if hasAddressNode(resp.Nodes, recipient) {
+		t.Fatalf("did not expect recipient address node %s in graph", recipient)
+	}
+	if got := intStat(resp.Stats, "swap_emitted"); got != 0 {
+		t.Fatalf("expected swap_emitted=0, got %d", got)
+	}
+}
+
 func TestMakePoolRefKeepsDistinctPoolsSeparate(t *testing.T) {
 	builder := &graphBuilder{}
 	solPool := builder.makePoolRef("sol.sol", sourceProtocolTHOR, 2)
@@ -1979,6 +2054,130 @@ func TestProjectMidgardSwapSuppressesFeeLikeOutLegs(t *testing.T) {
 	}
 	if builder.feeActionDrop != 2 {
 		t.Fatalf("expected 2 suppressed fee-like legs, got %d", builder.feeActionDrop)
+	}
+}
+
+func newActorTrackerAffiliateFeeTestApp(t *testing.T, affiliate string) *App {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/actions":
+			actions := []midgardAction{}
+			if normalizeAddress(r.URL.Query().Get("address")) == normalizeAddress(affiliate) {
+				actions = []midgardAction{
+					{
+						Date:   "1700000000000000000",
+						Height: "12345678",
+						Type:   "swap",
+						Status: "success",
+						In: []midgardActionLeg{
+							{
+								Address: "0x0f1cefeed0000000000000000000000000000001",
+								TxID:    "AFFILIATEINTX1",
+								Coins: []midgardActionCoin{
+									{Asset: "ETH.ETH", Amount: "100000000"},
+								},
+							},
+						},
+						Out: []midgardActionLeg{
+							{
+								Address: "bc1qrecipient0000000000000000000000000000000",
+								TxID:    "AFFILIATEOUTTX1",
+								Coins: []midgardActionCoin{
+									{Asset: "BTC.BTC", Amount: "25000000"},
+								},
+							},
+							{
+								Address: affiliate,
+								Coins: []midgardActionCoin{
+									{Asset: "THOR.RUNE", Amount: "5000000"},
+								},
+							},
+						},
+						Pools: []string{"BTC.BTC"},
+					},
+				}
+			}
+			_ = json.NewEncoder(w).Encode(midgardActionsResponse{
+				Actions: actions,
+				Meta:    midgardActionsMeta{},
+			})
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{
+				{
+					Asset:          "ETH.USDC",
+					Status:         "available",
+					AssetDepth:     "400000000",
+					RuneDepth:      "200000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "1",
+				},
+			})
+		case r.URL.Path == "/thorchain/inbound_addresses":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case strings.HasPrefix(r.URL.Path, "/cosmos/bank/v1beta1/balances/"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"balances": []map[string]any{},
+			})
+		case strings.HasPrefix(r.URL.Path, "/member/"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pools": []map[string]any{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	app, err := New(Config{
+		DBPath:            filepath.Join(t.TempDir(), "actor-tracker-affiliate.db"),
+		StaticDir:         "internal/web/static",
+		ThornodeEndpoints: []string{server.URL},
+		MidgardEndpoints:  []string{server.URL},
+		RequestTimeout:    5 * time.Second,
+		MidgardTimeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new app: %v", err)
+	}
+	return app
+}
+
+func hasActionClassEdge(edges []FlowEdge, actionClass string) bool {
+	for _, edge := range edges {
+		if strings.EqualFold(strings.TrimSpace(edge.ActionClass), actionClass) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAddressNode(nodes []FlowNode, address string) bool {
+	address = normalizeAddress(address)
+	for _, node := range nodes {
+		if normalizeAddress(getString(node.Metrics, "address")) == address {
+			return true
+		}
+	}
+	return false
+}
+
+func intStat(stats map[string]any, key string) int {
+	if stats == nil {
+		return 0
+	}
+	switch value := stats[key].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
 	}
 }
 

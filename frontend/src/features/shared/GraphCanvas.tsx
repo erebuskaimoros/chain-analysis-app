@@ -17,6 +17,8 @@ export function GraphCanvas({
   doubleActivateLabel = mode === "explorer" ? "Expand one edge" : "Expand one hop",
   graphResetKey = 0,
   onSaveState,
+  savedCanvasState,
+  onFullscreenChange,
   filters,
   nodeMenuActions,
   paneMenuActions,
@@ -44,6 +46,7 @@ export function GraphCanvas({
     onNodePrimaryAction,
     onNodeDoubleActivate,
     graphResetKey,
+    savedCanvasState,
     cyRef,
     viewportRef,
     suppressTapUntilRef,
@@ -79,6 +82,17 @@ export function GraphCanvas({
   useEffect(() => {
     scheduleLabelRender();
   }, [isFullscreen, scheduleLabelRender]);
+
+  useEffect(() => {
+    onFullscreenChange?.(isFullscreen);
+  }, [isFullscreen, onFullscreenChange]);
+
+  useEffect(
+    () => () => {
+      onFullscreenChange?.(false);
+    },
+    [onFullscreenChange]
+  );
 
   return (
     <div className="graph-frame" ref={rootRef}>

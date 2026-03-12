@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { GraphSelection, VisibleGraphEdge, VisibleGraphNode } from "../../../lib/graph";
+import type { SavedGraphCanvasState } from "../../../lib/graphState";
 
 export interface GraphCanvasFilters {
   isOpen: boolean;
@@ -33,7 +34,9 @@ export interface GraphCanvasProps {
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
   doubleActivateLabel?: string;
   graphResetKey?: number;
-  onSaveState?: () => void;
+  onSaveState?: (canvasState: SavedGraphCanvasState) => void;
+  savedCanvasState?: SavedGraphCanvasState | null;
+  onFullscreenChange?: (isFullscreen: boolean) => void;
   filters?: GraphCanvasFilters;
   nodeMenuActions?: GraphCanvasNodeMenuActions;
   paneMenuActions?: GraphCanvasPaneMenuActions;

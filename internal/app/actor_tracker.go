@@ -541,6 +541,10 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 					seenMidgardActions[key] = struct{}{}
 					continue
 				}
+				if shouldSkipMidgardActionForFeeOnlyFrontier(action, item.Address) {
+					builder.swapSuppressed++
+					continue
+				}
 
 				segments, nextAddresses, warnings, consumed := builder.projectMidgardActionWithExternal(action, item.BaseDepth, externalTransfers)
 				builder.warnings = append(builder.warnings, warnings...)
@@ -862,6 +866,10 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 					builder.refundActionDrop++
 				}
 				seenMidgardActions[key] = struct{}{}
+				continue
+			}
+			if shouldSkipMidgardActionForFeeOnlyFrontier(action, address) {
+				builder.swapSuppressed++
 				continue
 			}
 
@@ -2962,20 +2970,13 @@ func selectMidgardSwapOutLegs(protocol string, legsOut []midgardActionLeg) ([]mi
 	if len(legsOut) <= 1 {
 		return legsOut, 0
 	}
-	hasExplicitOutTx := false
-	for _, leg := range legsOut {
-		if cleanTxID(leg.TxID) != "" {
-			hasExplicitOutTx = true
-			break
-		}
-	}
-	if !hasExplicitOutTx {
+	if !midgardSwapOutLegsHaveExplicitTx(legsOut) {
 		return legsOut, 0
 	}
 	filtered := make([]midgardActionLeg, 0, len(legsOut))
 	suppressed := 0
 	for _, leg := range legsOut {
-		if cleanTxID(leg.TxID) == "" && isMidgardFeeLikeSwapOutLegForProtocol(protocol, leg) {
+		if isMidgardSuppressedSwapOutLeg(protocol, legsOut, leg) {
 			suppressed++
 			continue
 		}
@@ -2985,6 +2986,50 @@ func selectMidgardSwapOutLegs(protocol string, legsOut []midgardActionLeg) ([]mi
 		return legsOut, 0
 	}
 	return filtered, suppressed
+}
+
+func shouldSkipMidgardActionForFeeOnlyFrontier(action midgardAction, frontierAddress string) bool {
+	frontierAddress = normalizeAddress(frontierAddress)
+	if frontierAddress == "" || describeMidgardAction(action).ActionClass != "swaps" {
+		return false
+	}
+	for _, leg := range action.In {
+		if normalizeAddress(leg.Address) == frontierAddress {
+			return false
+		}
+	}
+	if !midgardSwapOutLegsHaveExplicitTx(action.Out) {
+		return false
+	}
+	protocol := sourceProtocolFromAction(action)
+	matchedFeeLikeOut := false
+	for _, leg := range action.Out {
+		if normalizeAddress(leg.Address) != frontierAddress {
+			continue
+		}
+		if isMidgardSuppressedSwapOutLeg(protocol, action.Out, leg) {
+			matchedFeeLikeOut = true
+			continue
+		}
+		return false
+	}
+	return matchedFeeLikeOut
+}
+
+func midgardSwapOutLegsHaveExplicitTx(legsOut []midgardActionLeg) bool {
+	for _, leg := range legsOut {
+		if cleanTxID(leg.TxID) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func isMidgardSuppressedSwapOutLeg(protocol string, legsOut []midgardActionLeg, leg midgardActionLeg) bool {
+	if cleanTxID(leg.TxID) != "" || !midgardSwapOutLegsHaveExplicitTx(legsOut) {
+		return false
+	}
+	return isMidgardFeeLikeSwapOutLegForProtocol(protocol, leg)
 }
 
 func isMidgardFeeLikeSwapOutLeg(leg midgardActionLeg) bool {

@@ -79,8 +79,8 @@ export function GraphCanvasOverlays({
       ) : null}
 
       <div className="graph-help">
-        Wheel to zoom · Left-drag to box-select · Middle-drag to pan · Right-click for actions · Double-click to{" "}
-        {doubleActivateLabel.toLowerCase()}
+        Wheel or pinch to zoom · Trackpad scroll or middle-drag to pan · Left-drag to box-select · Right-click for
+        actions · Double-click to {doubleActivateLabel.toLowerCase()}
       </div>
 
       {menuState ? (

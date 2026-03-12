@@ -2,6 +2,7 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import cytoscape from "cytoscape";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { graphStylesheet, type GraphSelection, type VisibleGraphEdge, type VisibleGraphNode } from "../../../lib/graph";
+import type { SavedGraphCanvasState } from "../../../lib/graphState";
 import { applyElkLayout } from "./layout";
 import { selectedGraphNodes } from "./utils";
 
@@ -16,6 +17,7 @@ interface UseGraphCanvasCoreOptions {
   onNodePrimaryAction?: (node: VisibleGraphNode) => boolean;
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
   graphResetKey: number;
+  savedCanvasState?: SavedGraphCanvasState | null;
   cyRef: MutableRefObject<cytoscape.Core | null>;
   viewportRef: MutableRefObject<{ zoom: number; pan: cytoscape.Position } | null>;
   suppressTapUntilRef: MutableRefObject<number>;
@@ -34,6 +36,7 @@ export function useGraphCanvasCore({
   onNodePrimaryAction,
   onNodeDoubleActivate,
   graphResetKey,
+  savedCanvasState,
   cyRef,
   viewportRef,
   suppressTapUntilRef,
@@ -53,6 +56,7 @@ export function useGraphCanvasCore({
   const nodeMapRef = useRef(new Map<string, VisibleGraphNode>());
   const edgeMapRef = useRef(new Map<string, VisibleGraphEdge>());
   const resetKeyRef = useRef(graphResetKey);
+  const restoredCanvasStateKeyRef = useRef<number | null>(null);
 
   selectionRef.current = selection;
   selectionChangeRef.current = onSelectionChange;
@@ -167,12 +171,22 @@ export function useGraphCanvasCore({
       return;
     }
 
-    const resetLayout = resetKeyRef.current !== graphResetKey;
-    const preservedPositions = resetLayout ? new Map<string, cytoscape.Position>() : captureNodePositions(cy, nodes);
+    const shouldRestoreSavedCanvasState =
+      Boolean(savedCanvasState) && restoredCanvasStateKeyRef.current !== graphResetKey;
+    const resetLayout = resetKeyRef.current !== graphResetKey || shouldRestoreSavedCanvasState;
+    const preservedPositions = shouldRestoreSavedCanvasState
+      ? mapSavedCanvasNodePositions(savedCanvasState)
+      : resetLayout
+      ? new Map<string, cytoscape.Position>()
+      : captureNodePositions(cy, nodes);
 
     if (resetKeyRef.current !== graphResetKey) {
       resetKeyRef.current = graphResetKey;
       viewportRef.current = null;
+    }
+    if (shouldRestoreSavedCanvasState) {
+      restoredCanvasStateKeyRef.current = graphResetKey;
+      viewportRef.current = savedCanvasState?.viewport ? { ...savedCanvasState.viewport } : null;
     }
 
     const elements: cytoscape.ElementDefinition[] = [
@@ -230,7 +244,7 @@ export function useGraphCanvasCore({
         selectionChangeRef.current(null);
       }
     }
-  }, [edges, graphResetKey, mode, nodes, scheduleLabelRender]);
+  }, [edges, graphResetKey, mode, nodes, savedCanvasState, scheduleLabelRender]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -267,5 +281,16 @@ function captureNodePositions(cy: cytoscape.Core, nodes: VisibleGraphNode[]) {
     }
     positions.set(node.id, element.position());
   }
+  return positions;
+}
+
+function mapSavedCanvasNodePositions(savedCanvasState: SavedGraphCanvasState | null | undefined) {
+  const positions = new Map<string, cytoscape.Position>();
+  if (!savedCanvasState) {
+    return positions;
+  }
+  Object.entries(savedCanvasState.node_positions).forEach(([id, position]) => {
+    positions.set(id, { x: position.x, y: position.y });
+  });
   return positions;
 }

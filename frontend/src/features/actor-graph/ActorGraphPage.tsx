@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { formatDateTime, formatUSD } from "../../lib/format";
 import { GraphFilterPopover } from "../shared/GraphFilterPopover";
 import { GraphCanvas } from "../shared/GraphCanvas";
@@ -10,6 +11,7 @@ import { useActorGraphController } from "./hooks/useActorGraphController";
 
 export function ActorGraphPage() {
   const controller = useActorGraphController();
+  const [isGraphFullscreen, setIsGraphFullscreen] = useState(false);
 
   return (
     <div className="page-grid graph-layout">
@@ -103,7 +105,7 @@ export function ActorGraphPage() {
                 <span className="meta-chip">{formatUSD(controller.graph.query.min_usd)} min</span>
               </div>
 
-              {controller.graph.warnings.length ? (
+              {!isGraphFullscreen && controller.graph.warnings.length ? (
                 <div className="warning-list">
                   {controller.graph.warnings.map((warning) => (
                     <span key={warning} className="warning-chip">
@@ -126,6 +128,8 @@ export function ActorGraphPage() {
                   }}
                   graphResetKey={controller.graphResetKey}
                   onSaveState={controller.onSaveGraphState}
+                  savedCanvasState={controller.savedCanvasState}
+                  onFullscreenChange={setIsGraphFullscreen}
                   filters={{
                     isOpen: controller.graphFilters.isOpen,
                     isActive: controller.filtersActive,

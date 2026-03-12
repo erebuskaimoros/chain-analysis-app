@@ -1,5 +1,6 @@
 import cytoscape from "cytoscape";
 import type { VisibleGraphNode } from "../../../lib/graph";
+import { DEFAULT_GRAPH_LABEL_MAX_WIDTH_PX } from "./constants";
 
 export function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -78,7 +79,7 @@ export function clusterGraphNodes(cy: cytoscape.Core, nodeIDs: string[]) {
     x: (Math.min(...positions.map((item) => item.position.x)) + Math.max(...positions.map((item) => item.position.x))) / 2,
     y: (Math.min(...positions.map((item) => item.position.y)) + Math.max(...positions.map((item) => item.position.y))) / 2,
   };
-  const spacing = Math.max(56, average(positions.map((item) => item.distance)) * 1.45);
+  const spacing = Math.max(DEFAULT_GRAPH_LABEL_MAX_WIDTH_PX, average(positions.map((item) => item.distance)) * 1.45);
   const offsets = buildClusterOffsets(positions.length, spacing);
   const sortedNodes = [...positions].sort((left, right) => {
     const angleDelta = angleFrom(center, left.position) - angleFrom(center, right.position);

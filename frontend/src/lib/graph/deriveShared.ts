@@ -369,10 +369,10 @@ function decorateVisibleNode(
   const liveHoldingsStatus = stringMetric(node.metrics, "live_holdings_status").toLowerCase();
   const nodeTotalBondRaw = stringMetric(node.metrics, "node_total_bond");
   const liveHoldingsLabel =
-    node.kind === "node" && nodeTotalBondRaw
-      ? `${formatTokenAmountRaw(nodeTotalBondRaw)} RUNE`
-      : liveHoldingsAvailable
+    liveHoldingsAvailable
       ? formatCompactUSD(liveHoldingsUSD)
+      : node.kind === "node" && nodeTotalBondRaw
+      ? `${formatTokenAmountRaw(nodeTotalBondRaw)} RUNE`
       : liveHoldingsStatus === "error"
       ? "Unavailable"
       : "";

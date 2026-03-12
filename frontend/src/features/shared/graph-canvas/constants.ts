@@ -1,0 +1,1 @@
+export const DEFAULT_GRAPH_LABEL_MAX_WIDTH_PX = 150;

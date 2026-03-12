@@ -257,4 +257,93 @@ describe("graph derivation", () => {
     expect(source?.metrics?.usd_spot).toBe(2);
     expect(target?.metrics?.usd_spot).toBe(2);
   });
+
+  it("surfaces inline live holdings labels on visible nodes", () => {
+    const response = makeActorGraphResponse({
+      nodes: [
+        makeNode({
+          id: "live-node",
+          kind: "actor_address",
+          chain: "THOR",
+          label: "Treasury",
+          metrics: {
+            address: "thor1treasury",
+            live_holdings_available: true,
+            live_holdings_status: "available",
+            live_holdings_usd_spot: 1250000,
+          },
+        }),
+        makeNode({
+          id: "peer-node",
+          chain: "BTC",
+          metrics: { address: "bc1peer" },
+        }),
+      ],
+      edges: [
+        makeEdge({
+          id: "live-edge",
+          from: "live-node",
+          to: "peer-node",
+          transactions: [makeTransaction({ tx_id: "live-tx", usd_spot: 25 })],
+        }),
+      ],
+    });
+    const filters = createGraphFilterState();
+
+    syncGraphFilterStateWithResponse(filters, response, { reset: true });
+    const visible = deriveActorVisibleGraph(response, filters, makeMetadata(), {
+      expandedActorIDs: [],
+      expandedExternalChains: [],
+    });
+
+    const node = visible.nodes.find((item) => item.id === "live-node");
+    expect(node?.live_holdings_label).toBe("$1.3M");
+    expect(node?.live_holdings_status).toBe("available");
+  });
+
+  it("prefers validator live USD labels over raw bond amounts when inline live values exist", () => {
+    const response = makeExplorerResponse({
+      nodes: [
+        makeNode({
+          id: "seed",
+          kind: "explorer_target",
+          label: "thor1seed",
+          chain: "THOR",
+          metrics: { address: "thor1seed" },
+        }),
+        makeNode({
+          id: "validator",
+          kind: "node",
+          label: "Validator thor1validator",
+          chain: "THOR",
+          metrics: {
+            address: "thor1validator",
+            node_total_bond: "450000000",
+            live_holdings_available: true,
+            live_holdings_status: "available",
+            live_holdings_usd_spot: 9,
+          },
+        }),
+      ],
+      edges: [
+        makeEdge({
+          id: "validator-edge",
+          from: "seed",
+          to: "validator",
+          action_class: "bonds",
+          action_key: "bond",
+          action_label: "Bond",
+          transactions: [makeTransaction({ tx_id: "validator-tx", usd_spot: 25 })],
+        }),
+      ],
+    });
+    const filters = createGraphFilterState();
+
+    syncGraphFilterStateWithResponse(filters, response, { reset: true });
+    const visible = deriveExplorerVisibleGraph(response, filters, makeMetadata());
+
+    const validator = visible.nodes.find((node) => node.id === "validator");
+    expect(validator?.live_holdings_label).toBe("$9");
+    expect(validator?.live_holdings_status).toBe("available");
+  });
 });

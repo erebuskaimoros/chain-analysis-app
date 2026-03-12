@@ -12,7 +12,15 @@ import {
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES, defaultActorGraphWindow } from "../../../lib/constants";
 import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
 import { formatShortDateTime, toLocalInputValue } from "../../../lib/format";
-import { isRecord, readJSONFile, readNumberArray, readStringArray, restoreSavedGraphFilters } from "../../../lib/graphState";
+import {
+  isRecord,
+  readJSONFile,
+  readNumberArray,
+  readSavedGraphCanvasState,
+  readStringArray,
+  restoreSavedGraphFilters,
+  type SavedGraphCanvasState,
+} from "../../../lib/graphState";
 import {
   actorExpansionSeeds,
   applyNodeUpdates,
@@ -167,6 +175,7 @@ export function useActorGraphController() {
   const [expandedExternalChains, setExpandedExternalChains] = useState<string[]>([]);
   const [expandedHopSeeds, setExpandedHopSeeds] = useState<string[]>([]);
   const [graphResetKey, setGraphResetKey] = useState(0);
+  const [savedCanvasState, setSavedCanvasState] = useState<SavedGraphCanvasState | null>(null);
 
   const buildMutation = useMutation({
     mutationFn: buildActorGraph,
@@ -178,6 +187,7 @@ export function useActorGraphController() {
       setExpandedActorIDs([]);
       setExpandedExternalChains([]);
       setExpandedHopSeeds([]);
+      setSavedCanvasState(null);
       syncWithGraph(response, true);
       setGraphResetKey((value) => value + 1);
       setStatusText(
@@ -330,6 +340,7 @@ export function useActorGraphController() {
         display_mode: graph.query.display_mode,
       });
       setExpandedHopSeeds(nextSeedSet);
+      setSavedCanvasState(null);
       setGraph((current) => {
         const merged = mergeActorGraphResponse(current, response);
         syncWithGraph(merged, false);
@@ -384,7 +395,7 @@ export function useActorGraphController() {
     return false;
   }
 
-  function onSaveGraphState() {
+  function onSaveGraphState(canvasState: SavedGraphCanvasState) {
     if (!graph) {
       return;
     }
@@ -406,6 +417,7 @@ export function useActorGraphController() {
         expanded_actor_ids: expandedActorIDs,
         expanded_external_chains: expandedExternalChains,
         expanded_hop_seeds: expandedHopSeeds,
+        canvas: canvasState,
       },
       graph,
       visible_graph: visibleGraph,
@@ -446,6 +458,7 @@ export function useActorGraphController() {
       setExpandedActorIDs(readNumberArray(uiState.expanded_actor_ids));
       setExpandedExternalChains(readStringArray(uiState.expanded_external_chains));
       setExpandedHopSeeds(readStringArray(uiState.expanded_hop_seeds));
+      setSavedCanvasState(readSavedGraphCanvasState(uiState.canvas));
       setSelectedRunID("");
       setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
       setGraphResetKey((value) => value + 1);
@@ -492,6 +505,7 @@ export function useActorGraphController() {
     graphResetKey,
     onSaveGraphState,
     onLoadGraphState,
+    savedCanvasState,
     graphFilters,
     filtersActive,
     filterActions: {
