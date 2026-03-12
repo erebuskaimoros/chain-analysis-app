@@ -1,6 +1,7 @@
 import { formatDateTime, formatUSD } from "../../lib/format";
 import { GraphFilterPopover } from "../shared/GraphFilterPopover";
 import { GraphCanvas } from "../shared/GraphCanvas";
+import { GraphStateLoaderButton } from "../shared/GraphStateLoaderButton";
 import { SelectionInspector } from "../shared/SelectionInspector";
 import { ActionLookupPanel } from "../shared/ActionLookupPanel";
 import { SupportingActionsTable } from "../shared/SupportingActionsTable";
@@ -56,25 +57,31 @@ export function ActorGraphPage() {
                 </p>
               ) : null}
             </div>
-            {controller.graph ? (
-              <div className="graph-stats">
-                <span className="meta-chip">
-                  {controller.showNodeFraction
-                    ? `${controller.visibleNodeCount} / ${controller.totalNodeCount} nodes`
-                    : `${controller.totalNodeCount} nodes`}
-                </span>
-                <span className="meta-chip">
-                  {controller.showEdgeFraction
-                    ? `${controller.visibleEdgeCount} / ${controller.totalEdgeCount} edges`
-                    : `${controller.totalEdgeCount} edges`}
-                </span>
-                <span className="meta-chip">
-                  {controller.showActionFraction
-                    ? `${controller.filteredActions.length} / ${controller.totalActionCount} actions`
-                    : `${controller.totalActionCount} actions`}
-                </span>
-              </div>
-            ) : null}
+            <div className="graph-head-actions">
+              <GraphStateLoaderButton
+                disabled={controller.isBuilding}
+                onLoadFile={(file) => controller.onLoadGraphState(file)}
+              />
+              {controller.graph ? (
+                <div className="graph-stats">
+                  <span className="meta-chip">
+                    {controller.showNodeFraction
+                      ? `${controller.visibleNodeCount} / ${controller.totalNodeCount} nodes`
+                      : `${controller.totalNodeCount} nodes`}
+                  </span>
+                  <span className="meta-chip">
+                    {controller.showEdgeFraction
+                      ? `${controller.visibleEdgeCount} / ${controller.totalEdgeCount} edges`
+                      : `${controller.totalEdgeCount} edges`}
+                  </span>
+                  <span className="meta-chip">
+                    {controller.showActionFraction
+                      ? `${controller.filteredActions.length} / ${controller.totalActionCount} actions`
+                      : `${controller.totalActionCount} actions`}
+                  </span>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {controller.graph ? (

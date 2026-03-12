@@ -1,6 +1,10 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { listAnnotations } from "../../lib/api";
 import { formatShortDateTime, formatUSD, shortHash } from "../../lib/format";
 import { GraphFilterPopover } from "../shared/GraphFilterPopover";
 import { GraphCanvas } from "../shared/GraphCanvas";
+import { GraphStateLoaderButton } from "../shared/GraphStateLoaderButton";
 import { SelectionInspector } from "../shared/SelectionInspector";
 import { ActionLookupPanel } from "../shared/ActionLookupPanel";
 import { SupportingActionsTable } from "../shared/SupportingActionsTable";
@@ -8,6 +12,21 @@ import { useExplorerGraphController } from "./hooks/useExplorerGraphController";
 
 export function ExplorerPage() {
   const controller = useExplorerGraphController();
+  const annotationsQuery = useQuery({
+    queryKey: ["annotations"],
+    queryFn: listAnnotations,
+  });
+  const [selectedNamedAddressID, setSelectedNamedAddressID] = useState("");
+  const namedAddresses = useMemo(
+    () =>
+      [...(annotationsQuery.data ?? [])]
+        .filter((annotation) => annotation.kind === "label" && annotation.value.trim())
+        .sort(
+          (left, right) =>
+            left.value.localeCompare(right.value) || left.address.localeCompare(right.address)
+        ),
+    [annotationsQuery.data]
+  );
 
   return (
     <div className="page-stack">
@@ -30,10 +49,41 @@ export function ExplorerPage() {
               <span>Address</span>
               <input
                 value={controller.form.address}
-                onChange={(event) => controller.setForm((current) => ({ ...current, address: event.target.value }))}
+                onChange={(event) => {
+                  setSelectedNamedAddressID("");
+                  controller.setForm((current) => ({ ...current, address: event.target.value }));
+                }}
                 placeholder="thor1..."
               />
             </label>
+            <div className="field field-full">
+              <span>Named Addresses</span>
+              <select
+                aria-label="Named Addresses"
+                value={selectedNamedAddressID}
+                onChange={(event) => {
+                  const nextID = event.target.value;
+                  setSelectedNamedAddressID(nextID);
+                  const annotation = namedAddresses.find((item) => String(item.id) === nextID);
+                  if (!annotation) {
+                    return;
+                  }
+                  controller.setForm((current) => ({ ...current, address: annotation.address }));
+                }}
+                disabled={annotationsQuery.isLoading || !namedAddresses.length}
+              >
+                <option value="">Choose a saved label annotation</option>
+                {namedAddresses.map((annotation) => (
+                  <option key={annotation.id} value={String(annotation.id)}>
+                    {annotation.value} · {annotation.address}
+                  </option>
+                ))}
+              </select>
+              <small>
+                Saved `label` annotations appear here. Choosing one fills the explorer address field with its
+                underlying address.
+              </small>
+            </div>
             <label className="field">
               <span>Min USD</span>
               <input
@@ -153,25 +203,31 @@ export function ExplorerPage() {
               <p>Double-click to expand one edge from the selected node. Right-click nodes for more graph actions.</p>
             ) : null}
           </div>
-          {controller.currentGraph ? (
-            <div className="graph-stats">
-              <span className="meta-chip">
-                {controller.showNodeFraction
-                  ? `${controller.visibleNodeCount} / ${controller.totalNodeCount} nodes`
-                  : `${controller.totalNodeCount} nodes`}
-              </span>
-              <span className="meta-chip">
-                {controller.showEdgeFraction
-                  ? `${controller.visibleEdgeCount} / ${controller.totalEdgeCount} edges`
-                  : `${controller.totalEdgeCount} edges`}
-              </span>
-              <span className="meta-chip">
-                {controller.showActionFraction
-                  ? `${controller.filteredActions.length} / ${controller.totalActionCount} actions`
-                  : `${controller.totalActionCount} actions`}
-              </span>
-            </div>
-          ) : null}
+          <div className="graph-head-actions">
+            <GraphStateLoaderButton
+              disabled={controller.isPreviewing || controller.isLoadingGraph}
+              onLoadFile={(file) => controller.onLoadGraphState(file)}
+            />
+            {controller.currentGraph ? (
+              <div className="graph-stats">
+                <span className="meta-chip">
+                  {controller.showNodeFraction
+                    ? `${controller.visibleNodeCount} / ${controller.totalNodeCount} nodes`
+                    : `${controller.totalNodeCount} nodes`}
+                </span>
+                <span className="meta-chip">
+                  {controller.showEdgeFraction
+                    ? `${controller.visibleEdgeCount} / ${controller.totalEdgeCount} edges`
+                    : `${controller.totalEdgeCount} edges`}
+                </span>
+                <span className="meta-chip">
+                  {controller.showActionFraction
+                    ? `${controller.filteredActions.length} / ${controller.totalActionCount} actions`
+                    : `${controller.totalActionCount} actions`}
+                </span>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {controller.currentGraph ? (

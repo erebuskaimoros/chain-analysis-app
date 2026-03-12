@@ -9,6 +9,7 @@ import {
 } from "../../../lib/api";
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES } from "../../../lib/constants";
 import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
+import { isRecord, readJSONFile, readStringArray, restoreSavedGraphFilters } from "../../../lib/graphState";
 import { cloneGraphFilterState, deriveExplorerVisibleGraph, filterSupportingActions, mergeAddressExplorerResponse, mergeExplorerExpansionResponse, explorerExpansionSeeds, type GraphSelection } from "../../../lib/graph";
 import type { ActionLookupResponse, AddressExplorerRequest, AddressExplorerResponse } from "../../../lib/types";
 import { useGraphFilterState } from "../../shared/graph-hooks/useGraphFilterState";
@@ -40,6 +41,56 @@ function explorerRequest(
   };
 }
 
+function requestFromGraphQuery(graph: AddressExplorerResponse): AddressExplorerRequest {
+  return {
+    address: graph.address,
+    flow_types: [...graph.query.flow_types],
+    min_usd: Number(graph.query.min_usd || 0),
+    mode: "graph",
+    direction: graph.query.direction === "oldest" ? "oldest" : "newest",
+    offset: Number(graph.query.offset || 0),
+    batch_size: Number(graph.query.batch_size || 10),
+  };
+}
+
+function normalizeExplorerRequest(value: unknown, graph: AddressExplorerResponse): AddressExplorerRequest {
+  const fallback = requestFromGraphQuery(graph);
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  const flowTypes = readStringArray(value.flow_types);
+  const minUSD = typeof value.min_usd === "number" && Number.isFinite(value.min_usd) ? value.min_usd : fallback.min_usd;
+  const offset = typeof value.offset === "number" && Number.isFinite(value.offset) ? value.offset : fallback.offset;
+  const batchSize =
+    typeof value.batch_size === "number" && Number.isFinite(value.batch_size) ? value.batch_size : fallback.batch_size;
+
+  return {
+    address: typeof value.address === "string" ? value.address : fallback.address,
+    flow_types: flowTypes.length ? flowTypes : fallback.flow_types,
+    min_usd: minUSD,
+    mode: "graph",
+    direction: value.direction === "oldest" ? "oldest" : "newest",
+    offset,
+    batch_size: batchSize,
+  };
+}
+
+function normalizeExplorerFormState(value: unknown, fallback: ExplorerFormState): ExplorerFormState {
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  return {
+    address: typeof value.address === "string" ? value.address : fallback.address,
+    min_usd: typeof value.min_usd === "string" ? value.min_usd : fallback.min_usd,
+    batch_size:
+      typeof value.batch_size === "number" && Number.isFinite(value.batch_size)
+        ? value.batch_size
+        : fallback.batch_size,
+  };
+}
+
 export function useExplorerGraphController() {
   const queryClient = useQueryClient();
   const runsQuery = useQuery({
@@ -49,6 +100,7 @@ export function useExplorerGraphController() {
   const { metadata } = useGraphMetadata();
   const {
     graphFilters,
+    setGraphFilters,
     filtersActive,
     clearFilterState,
     syncWithGraph,
@@ -305,6 +357,50 @@ export function useExplorerGraphController() {
     setStatusText(`Saved graph state to ${filename}.`);
   }
 
+  async function onLoadGraphState(file: File) {
+    try {
+      const parsed = await readJSONFile(file);
+      if (!isRecord(parsed)) {
+        setStatusText(`Could not load ${file.name}: invalid graph state file.`);
+        return;
+      }
+      if (parsed.kind !== "address-explorer") {
+        const foundKind = typeof parsed.kind === "string" ? parsed.kind : "unknown";
+        setStatusText(`Could not load ${file.name}: expected an address-explorer state, found ${foundKind}.`);
+        return;
+      }
+      const nextGraph = parsed.graph;
+      if (!isRecord(nextGraph)) {
+        setStatusText(`Could not load ${file.name}: saved graph data is missing.`);
+        return;
+      }
+
+      const graphState = nextGraph as unknown as AddressExplorerResponse;
+      const savedRequest = normalizeExplorerRequest(parsed.request, graphState);
+      const uiState = isRecord(parsed.ui_state) ? parsed.ui_state : {};
+
+      setForm(
+        normalizeExplorerFormState(uiState.form, {
+          address: savedRequest.address,
+          min_usd: String(savedRequest.min_usd ?? 0),
+          batch_size: savedRequest.batch_size || 10,
+        })
+      );
+      setPreview(isRecord(parsed.preview) ? (parsed.preview as unknown as AddressExplorerResponse) : graphState);
+      setGraph(graphState);
+      setSelection((uiState.selection as GraphSelection | null) ?? null);
+      setLookupResult(null);
+      setLookupError("");
+      setExpandedHopSeeds(readStringArray(uiState.expanded_hop_seeds));
+      setSelectedRunID("");
+      setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
+      setGraphResetKey((value) => value + 1);
+      setStatusText(`Loaded graph state from ${file.name}.`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? `Could not load ${file.name}: ${error.message}` : `Could not load ${file.name}.`);
+    }
+  }
+
   const currentGraph = graph;
   const visibleNodeCount = visibleGraph?.nodes.length ?? 0;
   const visibleEdgeCount = visibleGraph?.edges.length ?? 0;
@@ -341,6 +437,7 @@ export function useExplorerGraphController() {
     setSelection,
     graphResetKey,
     onSaveGraphState,
+    onLoadGraphState,
     graphFilters,
     filtersActive,
     filterActions: {

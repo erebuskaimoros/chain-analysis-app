@@ -12,6 +12,7 @@ import {
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES, defaultActorGraphWindow } from "../../../lib/constants";
 import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
 import { formatShortDateTime, toLocalInputValue } from "../../../lib/format";
+import { isRecord, readJSONFile, readNumberArray, readStringArray, restoreSavedGraphFilters } from "../../../lib/graphState";
 import {
   actorExpansionSeeds,
   applyNodeUpdates,
@@ -79,6 +80,56 @@ function toggleString(values: string[], value: string) {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
 
+function requestFromGraphQuery(graph: ActorGraphResponse): ActorGraphRequest {
+  return {
+    actor_ids: [...graph.query.actor_ids],
+    start_time: graph.query.start_time,
+    end_time: graph.query.end_time,
+    max_hops: graph.query.max_hops || 4,
+    flow_types: [...graph.query.flow_types],
+    min_usd: Number(graph.query.min_usd || 0),
+    collapse_external: Boolean(graph.query.collapse_external),
+    display_mode: graph.query.display_mode || DEFAULT_DISPLAY_MODE,
+  };
+}
+
+function normalizeActorGraphRequest(value: unknown, graph: ActorGraphResponse): ActorGraphRequest {
+  const fallback = requestFromGraphQuery(graph);
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  const actorIDs = readNumberArray(value.actor_ids);
+  const flowTypes = readStringArray(value.flow_types);
+  const maxHops = typeof value.max_hops === "number" && Number.isFinite(value.max_hops) ? value.max_hops : fallback.max_hops;
+  const minUSD = typeof value.min_usd === "number" && Number.isFinite(value.min_usd) ? value.min_usd : fallback.min_usd;
+
+  return {
+    actor_ids: actorIDs.length ? actorIDs : fallback.actor_ids,
+    start_time: typeof value.start_time === "string" ? value.start_time : fallback.start_time,
+    end_time: typeof value.end_time === "string" ? value.end_time : fallback.end_time,
+    max_hops: maxHops,
+    flow_types: flowTypes.length ? flowTypes : fallback.flow_types,
+    min_usd: minUSD,
+    collapse_external: typeof value.collapse_external === "boolean" ? value.collapse_external : fallback.collapse_external,
+    display_mode: typeof value.display_mode === "string" ? value.display_mode : fallback.display_mode,
+  };
+}
+
+function normalizeActorFormState(value: unknown, fallback: GraphFormState): GraphFormState {
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  return {
+    start_time: typeof value.start_time === "string" ? value.start_time : fallback.start_time,
+    end_time: typeof value.end_time === "string" ? value.end_time : fallback.end_time,
+    max_hops:
+      typeof value.max_hops === "number" && Number.isFinite(value.max_hops) ? value.max_hops : fallback.max_hops,
+    min_usd: typeof value.min_usd === "string" ? value.min_usd : fallback.min_usd,
+  };
+}
+
 export function useActorGraphController() {
   const queryClient = useQueryClient();
   const actorsQuery = useQuery({
@@ -92,6 +143,7 @@ export function useActorGraphController() {
   const { metadata } = useGraphMetadata();
   const {
     graphFilters,
+    setGraphFilters,
     filtersActive,
     syncWithGraph,
     toggleTxnType,
@@ -362,6 +414,47 @@ export function useActorGraphController() {
     setStatusText(`Saved graph state to ${filename}.`);
   }
 
+  async function onLoadGraphState(file: File) {
+    try {
+      const parsed = await readJSONFile(file);
+      if (!isRecord(parsed)) {
+        setStatusText(`Could not load ${file.name}: invalid graph state file.`);
+        return;
+      }
+      if (parsed.kind !== "actor-graph") {
+        const foundKind = typeof parsed.kind === "string" ? parsed.kind : "unknown";
+        setStatusText(`Could not load ${file.name}: expected an actor-graph state, found ${foundKind}.`);
+        return;
+      }
+      const nextGraph = parsed.graph;
+      if (!isRecord(nextGraph)) {
+        setStatusText(`Could not load ${file.name}: saved graph data is missing.`);
+        return;
+      }
+
+      const graphState = nextGraph as unknown as ActorGraphResponse;
+      const savedRequest = normalizeActorGraphRequest(parsed.request, graphState);
+      const uiState = isRecord(parsed.ui_state) ? parsed.ui_state : {};
+      const nextSelectedActorIDs = readNumberArray(uiState.selected_actor_ids);
+
+      setForm(normalizeActorFormState(uiState.form, stateFromRequest(savedRequest)));
+      setSelectedActorIDs(nextSelectedActorIDs.length ? nextSelectedActorIDs : [...savedRequest.actor_ids]);
+      setGraph(graphState);
+      setSelection((uiState.selection as GraphSelection | null) ?? null);
+      setLookupResult(null);
+      setLookupError("");
+      setExpandedActorIDs(readNumberArray(uiState.expanded_actor_ids));
+      setExpandedExternalChains(readStringArray(uiState.expanded_external_chains));
+      setExpandedHopSeeds(readStringArray(uiState.expanded_hop_seeds));
+      setSelectedRunID("");
+      setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
+      setGraphResetKey((value) => value + 1);
+      setStatusText(`Loaded graph state from ${file.name}.`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? `Could not load ${file.name}: ${error.message}` : `Could not load ${file.name}.`);
+    }
+  }
+
   const actorOptions = [...(actorsQuery.data ?? [])].sort((left, right) => left.name.localeCompare(right.name));
   const visibleNodeCount = visibleGraph?.nodes.length ?? 0;
   const visibleEdgeCount = visibleGraph?.edges.length ?? 0;
@@ -398,6 +491,7 @@ export function useActorGraphController() {
     setSelection,
     graphResetKey,
     onSaveGraphState,
+    onLoadGraphState,
     graphFilters,
     filtersActive,
     filterActions: {
