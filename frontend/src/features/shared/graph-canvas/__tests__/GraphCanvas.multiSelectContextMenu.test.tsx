@@ -817,4 +817,123 @@ describe("GraphCanvas multi-node context menu", () => {
     expect(cytoscapeState.latestCore.pan()).toEqual({ x: 0, y: 0 });
     expect(cytoscapeState.latestCore.zoom()).toBeGreaterThanOrEqual(1.06);
   });
+
+  it("zooms for Chrome mouse wheel events identified by wheelDelta multiple of 120", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0, top: 0, right: 640, bottom: 480, width: 640, height: 480, x: 0, y: 0, toJSON: () => ({}),
+      }) as DOMRect;
+
+    // Simulate a Chrome mouse wheel event: pixel-mode, small delta, but wheelDelta is a multiple of 120.
+    // Without the wheelDelta check, this small delta would be misclassified as trackpad pan.
+    const wheelEvent = new WheelEvent("wheel", {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaX: 0,
+      deltaY: 50,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(wheelEvent, "wheelDelta", { value: -120 });
+    surface.dispatchEvent(wheelEvent);
+
+    expect(cytoscapeState.latestCore.pan()).toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).not.toBe(1);
+  });
+
+  it("pans for trackpad events even when wheelDelta is present but not a multiple of 120", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0, top: 0, right: 640, bottom: 480, width: 640, height: 480, x: 0, y: 0, toJSON: () => ({}),
+      }) as DOMRect;
+
+    // Trackpad in Chrome: wheelDelta is NOT a multiple of 120, and deltas have horizontal component
+    const wheelEvent = new WheelEvent("wheel", {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaX: 12,
+      deltaY: 18,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(wheelEvent, "wheelDelta", { value: -54 });
+    surface.dispatchEvent(wheelEvent);
+
+    expect(cytoscapeState.latestCore.pan()).not.toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).toBe(1);
+  });
+
+  it("maintains trackpad pan through inertia scrolling beyond 200ms", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0, top: 0, right: 640, bottom: 480, width: 640, height: 480, x: 0, y: 0, toJSON: () => ({}),
+      }) as DOMRect;
+
+    // First trackpad event - small fractional delta (clearly trackpad)
+    fireEvent.wheel(surface, {
+      clientX: 240, clientY: 160, deltaMode: 0, deltaX: 0, deltaY: 8.5,
+    });
+
+    const panAfterFirst = { ...cytoscapeState.latestCore.pan() };
+    expect(panAfterFirst).not.toEqual({ x: 0, y: 0 });
+
+    // Simulate 250ms passing (was beyond old 180ms lock, within new 400ms lock)
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(250);
+
+    // Second event - large vertical integer delta that would be ambiguous without gesture lock
+    fireEvent.wheel(surface, {
+      clientX: 240, clientY: 160, deltaMode: 0, deltaX: 0, deltaY: 140,
+    });
+
+    vi.useRealTimers();
+
+    // Should have continued panning (not zoomed) thanks to the extended gesture lock
+    expect(cytoscapeState.latestCore.pan()).not.toEqual(panAfterFirst);
+    expect(cytoscapeState.latestCore.zoom()).toBe(1);
+  });
 });
