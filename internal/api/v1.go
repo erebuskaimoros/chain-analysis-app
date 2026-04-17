@@ -17,11 +17,11 @@ import (
 )
 
 type V1 struct {
-	services *services.Container
-	buildActorGraphFn       func(ctx context.Context, req app.ActorTrackerRequest) (app.ActorTrackerResponse, error)
-	createActorGraphRunFn   func(ctx context.Context, req app.ActorTrackerRequest, summary string, nodeCount, edgeCount int) (int64, error)
-	buildAddressExplorerFn  func(ctx context.Context, req app.AddressExplorerRequest) (app.AddressExplorerResponse, error)
-	createExplorerRunFn     func(ctx context.Context, req app.AddressExplorerRequest, summary string, nodeCount, edgeCount int) (int64, error)
+	services               *services.Container
+	buildActorGraphFn      func(ctx context.Context, req app.ActorTrackerRequest) (app.ActorTrackerResponse, error)
+	createActorGraphRunFn  func(ctx context.Context, req app.ActorTrackerRequest, summary string, nodeCount, edgeCount int) (int64, error)
+	buildAddressExplorerFn func(ctx context.Context, req app.AddressExplorerRequest) (app.AddressExplorerResponse, error)
+	createExplorerRunFn    func(ctx context.Context, req app.AddressExplorerRequest, summary string, nodeCount, edgeCount int) (int64, error)
 }
 
 func NewV1(svcs *services.Container) *V1 {
@@ -274,13 +274,29 @@ func (h *V1) handleActorGraphLiveHoldings(w http.ResponseWriter, r *http.Request
 		writeError(w, err)
 		return
 	}
-	warnings, err := h.services.ActorGraph.RefreshLiveHoldings(r.Context(), req.Nodes)
+	nodes := make([]app.FlowNode, 0, len(req.Nodes))
+	for _, node := range req.Nodes {
+		nodes = append(nodes, app.FlowNode{
+			ID:      strings.TrimSpace(node.ID),
+			Kind:    strings.TrimSpace(node.Kind),
+			Chain:   strings.TrimSpace(node.Chain),
+			Metrics: node.Metrics,
+		})
+	}
+	warnings, err := h.services.ActorGraph.RefreshLiveHoldings(r.Context(), nodes)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+	updates := make([]dto.LiveHoldingsNodeUpdate, 0, len(nodes))
+	for _, node := range nodes {
+		updates = append(updates, dto.LiveHoldingsNodeUpdate{
+			ID:      node.ID,
+			Metrics: node.Metrics,
+		})
+	}
 	writeJSON(w, http.StatusOK, dto.LiveHoldingsRefreshResponse{
-		Nodes:       req.Nodes,
+		Nodes:       updates,
 		Warnings:    warnings,
 		RefreshedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})

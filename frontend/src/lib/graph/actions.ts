@@ -25,8 +25,19 @@ export function rawNodesForVisibleNode(
   return out;
 }
 
-export function isInlineLiveValueNode(node: Pick<FlowNode, "kind">) {
-  return node.kind === "pool" || node.kind === "node";
+export function isInlineLiveValueNode(node: Pick<FlowNode, "kind" | "metrics">) {
+  if (node.kind !== "pool" && node.kind !== "node") {
+    return false;
+  }
+  const status = stringMetric(node.metrics, "live_holdings_status").toLowerCase();
+  return status === "available";
+}
+
+function hasRefreshableLiveValueTarget(node: Pick<FlowNode, "kind" | "metrics">) {
+  if (node.kind === "pool") {
+    return stringMetric(node.metrics, "pool") !== "";
+  }
+  return stringMetric(node.metrics, "address") !== "";
 }
 
 export function refreshableLiveValueNodes(nodes: FlowNode[]) {
@@ -35,7 +46,8 @@ export function refreshableLiveValueNodes(nodes: FlowNode[]) {
 
   nodes.forEach((node) => {
     const nodeID = String(node.id || "").trim();
-    if (!nodeID || seen.has(nodeID) || isInlineLiveValueNode(node)) {
+    const status = stringMetric(node.metrics, "live_holdings_status").toLowerCase();
+    if (!nodeID || seen.has(nodeID) || !hasRefreshableLiveValueTarget(node) || status === "available" || isInlineLiveValueNode(node)) {
       return;
     }
     seen.add(nodeID);

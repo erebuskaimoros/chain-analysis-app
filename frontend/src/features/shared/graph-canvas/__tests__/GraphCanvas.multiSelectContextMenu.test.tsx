@@ -688,8 +688,8 @@ describe("GraphCanvas multi-node context menu", () => {
       clientX: 240,
       clientY: 160,
       deltaMode: 0,
-      deltaX: 0,
-      deltaY: 56,
+      deltaX: 1.5,
+      deltaY: 56.3,
     });
 
     expect(cytoscapeState.latestCore.pan()).not.toEqual({ x: 0, y: 0 });
@@ -730,6 +730,41 @@ describe("GraphCanvas multi-node context menu", () => {
       clientY: 160,
       deltaMode: 0,
       deltaY: 120,
+    });
+
+    expect(cytoscapeState.latestCore.pan()).toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).not.toBe(1);
+  });
+
+  it("zooms for mouse wheel with typical macOS small delta (BUG: was panning)", async () => {
+    // On macOS with medium scroll speed, a single mouse wheel notch often produces
+    // deltaY ~40-80, pixel-mode, integer, vertical-only — identical signature to the
+    // old "trackpad pan" heuristic. This MUST zoom, not pan.
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0, top: 0, right: 640, bottom: 480, width: 640, height: 480, x: 0, y: 0, toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.wheel(surface, {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaX: 0,
+      deltaY: 53,
     });
 
     expect(cytoscapeState.latestCore.pan()).toEqual({ x: 0, y: 0 });
@@ -913,9 +948,9 @@ describe("GraphCanvas multi-node context menu", () => {
         left: 0, top: 0, right: 640, bottom: 480, width: 640, height: 480, x: 0, y: 0, toJSON: () => ({}),
       }) as DOMRect;
 
-    // First trackpad event - small fractional delta (clearly trackpad)
+    // First trackpad event - small fractional delta with horizontal jitter (clearly trackpad)
     fireEvent.wheel(surface, {
-      clientX: 240, clientY: 160, deltaMode: 0, deltaX: 0, deltaY: 8.5,
+      clientX: 240, clientY: 160, deltaMode: 0, deltaX: 0.8, deltaY: 8.5,
     });
 
     const panAfterFirst = { ...cytoscapeState.latestCore.pan() };
@@ -935,5 +970,88 @@ describe("GraphCanvas multi-node context menu", () => {
     // Should have continued panning (not zoomed) thanks to the extended gesture lock
     expect(cytoscapeState.latestCore.pan()).not.toEqual(panAfterFirst);
     expect(cytoscapeState.latestCore.zoom()).toBe(1);
+  });
+
+  it("zooms for a physical mouse wheel even immediately after a trackpad pan gesture", async () => {
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0, top: 0, right: 640, bottom: 480, width: 640, height: 480, x: 0, y: 0, toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.wheel(surface, {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaX: 12,
+      deltaY: 18,
+    });
+
+    expect(cytoscapeState.latestCore.pan()).not.toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).toBe(1);
+
+    const mouseWheelEvent = new WheelEvent("wheel", {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaX: 0,
+      deltaY: 50,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(mouseWheelEvent, "wheelDelta", { value: -120 });
+    surface.dispatchEvent(mouseWheelEvent);
+
+    expect(cytoscapeState.latestCore.pan()).not.toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).not.toBe(1);
+  });
+
+  it("zooms for mouse wheel with macOS scroll-smoothed fractional deltaY (BUG: was panning)", async () => {
+    // On macOS, scroll acceleration smooths mouse wheel events into fractional deltaY values.
+    // A standard mouse wheel notch can produce e.g. deltaY: 53.333 with deltaX: 0.
+    // The fractional check was misclassifying this as trackpad. It should zoom.
+    const nodeA = makeVisibleNode({ id: "node-a", label: "Node A" });
+
+    const { container } = render(
+      <GraphCanvas mode="explorer" nodes={[nodeA]} edges={[]} selection={null} onSelectionChange={vi.fn()} />
+    );
+
+    const surface = container.querySelector(".graph-surface") as HTMLDivElement | null;
+    expect(surface).not.toBeNull();
+    if (!surface || !cytoscapeState.latestCore) {
+      return;
+    }
+
+    Object.defineProperty(surface, "clientWidth", { configurable: true, value: 640 });
+    Object.defineProperty(surface, "clientHeight", { configurable: true, value: 480 });
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 0, top: 0, right: 640, bottom: 480, width: 640, height: 480, x: 0, y: 0, toJSON: () => ({}),
+      }) as DOMRect;
+
+    // Mouse wheel on macOS with scroll smoothing: fractional deltaY, zero deltaX, no wheelDelta in JSDOM
+    fireEvent.wheel(surface, {
+      clientX: 240,
+      clientY: 160,
+      deltaMode: 0,
+      deltaX: 0,
+      deltaY: 53.333,
+    });
+
+    expect(cytoscapeState.latestCore.pan()).toEqual({ x: 0, y: 0 });
+    expect(cytoscapeState.latestCore.zoom()).not.toBe(1);
   });
 });

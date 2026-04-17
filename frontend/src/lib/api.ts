@@ -11,7 +11,9 @@ import type {
   AddressExplorerRunsResponse,
   AnnotationListResponse,
   BlocklistResponse,
+  FlowNode,
   HealthSnapshot,
+  LiveHoldingsRefreshNode,
   LiveHoldingsRefreshResponse,
 } from "./types";
 
@@ -94,10 +96,10 @@ export function expandActorGraph(payload: ActorGraphExpandRequest) {
   });
 }
 
-export function refreshLiveHoldings(nodes: ActorGraphResponse["nodes"]) {
+export function refreshLiveHoldings(nodes: FlowNode[]) {
   return fetchJSON<LiveHoldingsRefreshResponse>("/api/v1/analysis/actor-graph/live-holdings", {
     method: "POST",
-    body: JSON.stringify({ nodes }),
+    body: JSON.stringify({ nodes: nodes.map(toLiveHoldingsRefreshNode) }),
   });
 }
 
@@ -128,4 +130,26 @@ export function deleteAddressExplorerRun(id: number) {
 
 export function lookupAction(txID: string) {
   return fetchJSON<ActionLookupResponse>(`/api/v1/actions/${encodeURIComponent(txID)}`);
+}
+
+function toLiveHoldingsRefreshNode(node: FlowNode): LiveHoldingsRefreshNode {
+  return {
+    id: node.id,
+    kind: node.kind,
+    chain: node.chain,
+    metrics: pickLiveHoldingsRefreshMetrics(node.metrics),
+  };
+}
+
+function pickLiveHoldingsRefreshMetrics(metrics: FlowNode["metrics"]) {
+  if (!metrics) {
+    return null;
+  }
+  const out: Record<string, unknown> = {};
+  for (const key of ["address", "pool", "source_protocol", "live_holdings_status"]) {
+    if (key in metrics) {
+      out[key] = metrics[key];
+    }
+  }
+  return Object.keys(out).length ? out : null;
 }

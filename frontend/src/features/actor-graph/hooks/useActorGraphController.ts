@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   buildActorGraph,
@@ -138,6 +138,46 @@ function normalizeActorFormState(value: unknown, fallback: GraphFormState): Grap
   };
 }
 
+const BACKGROUND_LIVE_HOLDINGS_CHUNK_SIZE = 500;
+const BACKGROUND_LIVE_HOLDINGS_DELAY_MS = 350;
+const BACKGROUND_LIVE_HOLDINGS_MAX_PASSES = 40;
+
+function liveHoldingsStatus(node: Pick<ActorGraphResponse["nodes"][number], "metrics">) {
+  const status = node.metrics?.live_holdings_status;
+  return typeof status === "string" ? status.toLowerCase() : "";
+}
+
+function retryableLiveValueNodes(nodes: ActorGraphResponse["nodes"]) {
+  return refreshableLiveValueNodes(nodes).filter((node) => {
+    const status = liveHoldingsStatus(node);
+    return status === "" || status === "pending";
+  });
+}
+
+function liveHoldingsProgressSignature(node: Pick<ActorGraphResponse["nodes"][number], "metrics">) {
+  return JSON.stringify({
+    status: liveHoldingsStatus(node),
+    available: Boolean(node.metrics?.live_holdings_available),
+    usd: Number(node.metrics?.live_holdings_usd_spot || 0),
+  });
+}
+
+function liveHoldingsResponseMadeProgress(
+  requestNodes: ActorGraphResponse["nodes"],
+  responseNodes: Array<Pick<ActorGraphResponse["nodes"][number], "id" | "metrics">>
+) {
+  const beforeByID = new Map(requestNodes.map((node) => [node.id, liveHoldingsProgressSignature(node)]));
+  return responseNodes.some((node) => beforeByID.get(node.id) !== liveHoldingsProgressSignature(node));
+}
+
+function hasBudgetExhaustedWarning(warnings: string[]) {
+  return warnings.some((warning) => warning.toLowerCase().includes("budget exhausted"));
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export function useActorGraphController() {
   const queryClient = useQueryClient();
   const actorsQuery = useQuery({
@@ -176,6 +216,104 @@ export function useActorGraphController() {
   const [expandedHopSeeds, setExpandedHopSeeds] = useState<string[]>([]);
   const [graphResetKey, setGraphResetKey] = useState(0);
   const [savedCanvasState, setSavedCanvasState] = useState<SavedGraphCanvasState | null>(null);
+  const [isRefreshingLiveHoldings, setIsRefreshingLiveHoldings] = useState(false);
+  const liveRefreshRunRef = useRef(0);
+
+  function mergeLiveHoldingsResponse(response: Awaited<ReturnType<typeof refreshLiveHoldings>>) {
+    setGraph((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        nodes: applyNodeUpdates(current.nodes, response.nodes),
+        warnings: Array.from(new Set([...current.warnings, ...response.warnings])),
+      };
+    });
+  }
+
+  async function refreshGraphLiveHoldings(nodes: ActorGraphResponse["nodes"], mode: "auto" | "manual") {
+    let refreshableNodes = refreshableLiveValueNodes(nodes);
+    if (!refreshableNodes.length) {
+      if (mode === "manual") {
+        setStatusText("All graph live values are already computed inline.");
+      }
+      return;
+    }
+
+    const runID = liveRefreshRunRef.current + 1;
+    liveRefreshRunRef.current = runID;
+    setIsRefreshingLiveHoldings(true);
+
+    const warnings = new Set<string>();
+    let refreshedAt = "";
+    let mergedNodes = nodes;
+
+    try {
+      for (let pass = 0; pass < BACKGROUND_LIVE_HOLDINGS_MAX_PASSES && refreshableNodes.length > 0; pass += 1) {
+        let passBudgetExhausted = false;
+        let passMadeProgress = false;
+
+        for (let index = 0; index < refreshableNodes.length; index += BACKGROUND_LIVE_HOLDINGS_CHUNK_SIZE) {
+          if (liveRefreshRunRef.current !== runID) {
+            return;
+          }
+          const chunk = refreshableNodes.slice(index, index + BACKGROUND_LIVE_HOLDINGS_CHUNK_SIZE);
+          const response = await refreshLiveHoldings(chunk);
+          if (liveRefreshRunRef.current !== runID) {
+            return;
+          }
+          passMadeProgress = passMadeProgress || liveHoldingsResponseMadeProgress(chunk, response.nodes);
+          mergeLiveHoldingsResponse(response);
+          mergedNodes = applyNodeUpdates(mergedNodes, response.nodes);
+          response.warnings.forEach((warning) => warnings.add(warning));
+          passBudgetExhausted = passBudgetExhausted || hasBudgetExhaustedWarning(response.warnings);
+          refreshedAt = response.refreshed_at;
+          if (index + BACKGROUND_LIVE_HOLDINGS_CHUNK_SIZE < refreshableNodes.length) {
+            await sleep(BACKGROUND_LIVE_HOLDINGS_DELAY_MS);
+          }
+        }
+
+        if (liveRefreshRunRef.current !== runID) {
+          return;
+        }
+        if (mode !== "auto" || !passBudgetExhausted) {
+          break;
+        }
+
+        const retryableNodes = retryableLiveValueNodes(mergedNodes);
+        const hasBlankRetryables = retryableNodes.some((node) => liveHoldingsStatus(node) === "");
+        if (!retryableNodes.length) {
+          break;
+        }
+        if (!passMadeProgress && !hasBlankRetryables) {
+          break;
+        }
+        refreshableNodes = retryableNodes;
+        await sleep(BACKGROUND_LIVE_HOLDINGS_DELAY_MS);
+      }
+      if (liveRefreshRunRef.current !== runID) {
+        return;
+      }
+      if (warnings.size > 0) {
+        const prefix = mode === "manual" ? "Live holdings refreshed." : "Background live holdings refresh finished.";
+        setStatusText(`${prefix} ${Array.from(warnings).join(" · ")}`);
+        return;
+      }
+      if (mode === "manual" && refreshedAt) {
+        setStatusText(`Live holdings refreshed at ${formatShortDateTime(refreshedAt)}.`);
+      }
+    } catch (error) {
+      if (liveRefreshRunRef.current !== runID) {
+        return;
+      }
+      setStatusText(error instanceof Error ? error.message : "Live holdings refresh failed.");
+    } finally {
+      if (liveRefreshRunRef.current === runID) {
+        setIsRefreshingLiveHoldings(false);
+      }
+    }
+  }
 
   const buildMutation = useMutation({
     mutationFn: buildActorGraph,
@@ -198,6 +336,7 @@ export function useActorGraphController() {
       setForm(stateFromRequest(request));
       setSelectedActorIDs(request.actor_ids);
       await queryClient.invalidateQueries({ queryKey: ["actor-graph-runs"] });
+      void refreshGraphLiveHoldings(response.nodes, "auto");
     },
     onError: (error) => {
       setStatusText(error instanceof Error ? error.message : "Graph build failed.");
@@ -289,7 +428,7 @@ export function useActorGraphController() {
       return;
     }
     const seeds = actorExpansionSeeds(node, graph);
-    await expandFromSeeds(seeds, true, "hop");
+    await expandFromSeeds(seeds, true, "edge");
   }
 
   async function onExpandNodes(nodes: NonNullable<typeof visibleGraph>["nodes"]) {
@@ -301,13 +440,13 @@ export function useActorGraphController() {
         nodes.flatMap((node) => actorExpansionSeeds(node, graph)).map((seed) => [seed.encoded, seed])
       ).values()
     );
-    await expandFromSeeds(seeds, false, "hop");
+    await expandFromSeeds(seeds, false, "edge");
   }
 
   async function expandFromSeeds(
     seeds: ReturnType<typeof actorExpansionSeeds>,
     singular: boolean,
-    distanceLabel: "hop"
+    distanceLabel: "edge"
   ) {
     if (!graph) {
       return;
@@ -347,6 +486,7 @@ export function useActorGraphController() {
         return merged;
       });
       setStatusText(`Loaded one-${distanceLabel} expansion for ${nextSeedSet.length} address seed(s).`);
+      void refreshGraphLiveHoldings(response.nodes, "auto");
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Expansion failed.");
     }
@@ -356,31 +496,7 @@ export function useActorGraphController() {
     if (!graph) {
       return;
     }
-    const refreshableNodes = refreshableLiveValueNodes(graph.nodes);
-    if (!refreshableNodes.length) {
-      setStatusText("All graph live values are already computed inline.");
-      return;
-    }
-    try {
-      const response = await refreshLiveHoldings(refreshableNodes);
-      setGraph((current) => {
-        if (!current) {
-          return current;
-        }
-        return {
-          ...current,
-          nodes: applyNodeUpdates(current.nodes, response.nodes),
-          warnings: Array.from(new Set([...current.warnings, ...response.warnings])),
-        };
-      });
-      setStatusText(
-        response.warnings.length
-          ? `Live holdings refreshed. ${response.warnings.join(" · ")}`
-          : `Live holdings refreshed at ${formatShortDateTime(response.refreshed_at)}.`
-      );
-    } catch (error) {
-      setStatusText(error instanceof Error ? error.message : "Live holdings refresh failed.");
-    }
+    await refreshGraphLiveHoldings(graph.nodes, "manual");
   }
 
   function onNodePrimaryAction(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
@@ -463,6 +579,7 @@ export function useActorGraphController() {
       setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
       setGraphResetKey((value) => value + 1);
       setStatusText(`Loaded graph state from ${file.name}.`);
+      void refreshGraphLiveHoldings(graphState.nodes, "auto");
     } catch (error) {
       setStatusText(error instanceof Error ? `Could not load ${file.name}: ${error.message}` : `Could not load ${file.name}.`);
     }
@@ -488,6 +605,7 @@ export function useActorGraphController() {
     isBuilding: buildMutation.isPending,
     canBuild: selectedActorIDs.length > 0,
     onRefreshAllLiveHoldings,
+    isRefreshingLiveHoldings,
     statusText,
     runs: runsQuery.data ?? [],
     selectedRunID,

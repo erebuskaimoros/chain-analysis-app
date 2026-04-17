@@ -124,7 +124,7 @@ export function mergeExplorerExpansionResponse(
   return mergeExplorerLikeResponse(current, incoming as unknown as ExplorerMergeSource);
 }
 
-export function applyNodeUpdates(nodes: FlowNode[], updates: FlowNode[]) {
+export function applyNodeUpdates<T extends Pick<FlowNode, "id"> & Partial<FlowNode>>(nodes: FlowNode[], updates: T[]) {
   const byID = new Map(updates.map((node) => [node.id, node]));
   return nodes.map((node) => {
     const update = byID.get(node.id);

@@ -175,3 +175,86 @@ func TestV1ActorGraphReturnsGraphWhenRunSaveFails(t *testing.T) {
 		t.Fatalf("expected graph payload, got %#v", resp)
 	}
 }
+
+func TestV1LiveHoldingsUsesSlimNodePayload(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/thorchain/inbound_addresses":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case "/pools":
+			_ = json.NewEncoder(w).Encode([]app.MidgardPool{
+				{
+					Asset:         "ETH.USDC",
+					Status:        "available",
+					AssetDepth:    "400000000",
+					RuneDepth:     "200000000",
+					AssetPriceUSD: "1",
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	legacy, err := app.New(app.Config{
+		DBPath:            filepath.Join(t.TempDir(), "test.db"),
+		StaticDir:         filepath.Join("..", "web", "static"),
+		UIBuildDir:        filepath.Join("..", "web", "ui", "dist"),
+		RequestTimeout:    time.Second,
+		MidgardTimeout:    time.Second,
+		ThornodeEndpoints: []string{upstream.URL},
+		MidgardEndpoints:  []string{upstream.URL},
+	})
+	if err != nil {
+		t.Fatalf("new app: %v", err)
+	}
+	defer legacy.Close()
+
+	v1 := NewV1(services.New(legacy))
+	mux := http.NewServeMux()
+	v1.Register(mux)
+
+	body := bytes.NewBufferString(`{
+		"nodes": [
+			{
+				"id": "pool:eth-usdc",
+				"kind": "pool",
+				"chain": "THOR",
+				"metrics": {
+					"pool": "ETH.USDC",
+					"source_protocol": "THOR",
+					"ignored": "drop-me"
+				}
+			}
+		]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/analysis/actor-graph/live-holdings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Nodes []map[string]any `json:"nodes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Nodes) != 1 {
+		t.Fatalf("expected one live-holdings node update, got %#v", resp.Nodes)
+	}
+	if _, exists := resp.Nodes[0]["kind"]; exists {
+		t.Fatalf("expected live-holdings response to omit node topology fields, got %#v", resp.Nodes[0])
+	}
+	metrics, ok := resp.Nodes[0]["metrics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected metrics object in response, got %#v", resp.Nodes[0]["metrics"])
+	}
+	if metrics["live_holdings_status"] != "available" {
+		t.Fatalf("expected live holdings metrics in response, got %#v", metrics)
+	}
+}

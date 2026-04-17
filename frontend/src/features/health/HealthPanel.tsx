@@ -11,6 +11,10 @@ function sourceCount(value: unknown): number {
   return 0;
 }
 
+function sourceList(value: string[] | null | undefined): string[] {
+  return Array.isArray(value) ? value : [];
+}
+
 export function HealthPanel() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["health"],
@@ -67,17 +71,20 @@ export function HealthPanel() {
         </article>
         {engines.map((engine) => {
           const nodeLabel = engine.protocol === "MAYA" ? "MAYANode" : "THORNode";
+          const thornodeSources = sourceList(engine.thornode_sources);
+          const midgardSources = sourceList(engine.midgard_sources);
+          const legacySources = sourceList(engine.legacy_action_sources);
           const summary = [
-            `${nodeLabel} ${engine.thornode_sources.length}`,
-            `Midgard ${engine.midgard_sources.length}`,
-            engine.legacy_action_sources.length ? `Legacy ${engine.legacy_action_sources.length}` : "",
+            `${nodeLabel} ${thornodeSources.length}`,
+            `Midgard ${midgardSources.length}`,
+            legacySources.length ? `Legacy ${legacySources.length}` : "",
           ]
             .filter(Boolean)
             .join(" • ");
           return (
             <article key={engine.protocol} className="metric-card">
               <span className="metric-label">{engine.protocol}</span>
-              <strong>{engine.thornode_sources.length + engine.midgard_sources.length + engine.legacy_action_sources.length}</strong>
+              <strong>{thornodeSources.length + midgardSources.length + legacySources.length}</strong>
               <small>{summary || "No sources configured"}</small>
             </article>
           );

@@ -129,6 +129,9 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 		prices:               prices,
 		bondMemoNodeByTx:     map[string]string{},
 		calcPayoutByContract: map[string]string{},
+		thorTxTransfersByTx:  map[string][]thorTxTransfer{},
+		midgardActionsByTx:   map[string][]midgardAction{},
+		recordedActionKeys:   map[string]struct{}{},
 		allowedFlowTypes:     flowTypeSet(prepared.query.FlowTypes),
 		minUSD:               prepared.query.MinUSD,
 		nodes:                map[string]*FlowNode{},
@@ -178,6 +181,8 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 	_ = midgardSwapTxIDs
 
 	builder.warnings = append(builder.warnings, a.hydrateBondMemoNodeCache(ctx, actions, builder.bondMemoNodeByTx)...)
+	builder.recordMidgardActions(actions)
+	a.prefetchThorTxTransfers(ctx, actions, builder)
 	builder.recordCalcRepresentativePayouts(actions)
 
 	consumedExternalTransfers := map[string]struct{}{}
@@ -195,6 +200,10 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 			continue
 		}
 		if skip, _ := shouldSkipMidgardActionForGraph(action, refundTxIDs, liquidityFeeTxIDs, calcStrategyTxIDs, calcStrategyProcessTxIDs); skip {
+			seenMidgardActions[key] = struct{}{}
+			continue
+		}
+		if builder.shouldSkipActionBecauseRujiraTrace(action) {
 			seenMidgardActions[key] = struct{}{}
 			continue
 		}
@@ -237,7 +246,7 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 	}
 
 	nodes := builder.nodeList()
-	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols)...)
+	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, true)...)
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	supportingActions := builder.actionList()

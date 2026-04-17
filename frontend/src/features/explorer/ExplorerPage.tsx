@@ -1,14 +1,15 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listAnnotations } from "../../lib/api";
 import { formatShortDateTime, formatUSD, shortHash } from "../../lib/format";
 import { GraphFilterPopover } from "../shared/GraphFilterPopover";
-import { GraphCanvas } from "../shared/GraphCanvas";
 import { GraphStateLoaderButton } from "../shared/GraphStateLoaderButton";
 import { SelectionInspector } from "../shared/SelectionInspector";
 import { ActionLookupPanel } from "../shared/ActionLookupPanel";
 import { SupportingActionsTable } from "../shared/SupportingActionsTable";
 import { useExplorerGraphController } from "./hooks/useExplorerGraphController";
+
+const GraphCanvas = lazy(() => import("../shared/GraphCanvas").then((module) => ({ default: module.GraphCanvas })));
 
 export function ExplorerPage() {
   const controller = useExplorerGraphController();
@@ -254,67 +255,69 @@ export function ExplorerPage() {
             ) : null}
 
             {controller.visibleGraph && controller.visibleGraph.nodes.length ? (
-              <GraphCanvas
-                mode="explorer"
-                nodes={controller.visibleGraph.nodes}
-                edges={controller.visibleGraph.edges}
-                selection={controller.selection}
-                onSelectionChange={controller.setSelection}
-                onNodeDoubleActivate={(node) => {
-                  void controller.onExpandNode(node);
-                }}
-                doubleActivateLabel="Expand one edge"
-                graphResetKey={controller.graphResetKey}
-                onSaveState={controller.onSaveGraphState}
-                savedCanvasState={controller.savedCanvasState}
-                onFullscreenChange={setIsGraphFullscreen}
-                filters={{
-                  isOpen: controller.graphFilters.isOpen,
-                  isActive: controller.filtersActive,
-                  onToggle: controller.filterActions.toggleOpen,
-                  onClose: controller.filterActions.close,
-                  content: (
-                    <GraphFilterPopover
-                      filterState={controller.graphFilters}
-                      onToggleTxnType={controller.filterActions.toggleTxnType}
-                      onToggleChain={controller.filterActions.toggleChain}
-                      onStartTimeChange={(value) => controller.filterActions.updateDate("startTime", value)}
-                      onEndTimeChange={(value) => controller.filterActions.updateDate("endTime", value)}
-                      onMinUSDChange={(value) => controller.filterActions.updateNumber("minTxnUSD", value)}
-                      onMaxUSDChange={(value) => controller.filterActions.updateNumber("maxTxnUSD", value)}
-                      onReset={controller.filterActions.resetAllFilters}
-                    />
-                  ),
-                }}
-                nodeMenuActions={{
-                  onOpenExplorer: (node) => {
-                    void controller.nodeActions.onOpenExplorer(node);
-                  },
-                  onCopyAddress: (node) => {
-                    void controller.nodeActions.onCopyAddress(node);
-                  },
-                  onRefreshLiveValue: (node) => {
-                    void controller.nodeActions.onRefreshLiveValue(node);
-                  },
-                  onExpandNodes: (nodes) => {
-                    void controller.onExpandNodes(nodes);
-                  },
-                  onLabelNode: (node) => {
-                    void controller.nodeActions.onLabelNode(node);
-                  },
-                  onMarkAsgard: (node) => {
-                    void controller.nodeActions.onMarkAsgard(node);
-                  },
-                  onRemoveNode: (node) => {
-                    void controller.nodeActions.onRemoveNode(node);
-                  },
-                }}
-                paneMenuActions={{
-                  onCheckUnavailable: () => {
-                    void controller.nodeActions.onRefreshUnavailable();
-                  },
-                }}
-              />
+              <Suspense fallback={<div className="empty-state">Loading graph canvas…</div>}>
+                <GraphCanvas
+                  mode="explorer"
+                  nodes={controller.visibleGraph.nodes}
+                  edges={controller.visibleGraph.edges}
+                  selection={controller.selection}
+                  onSelectionChange={controller.setSelection}
+                  onNodeDoubleActivate={(node) => {
+                    void controller.onExpandNode(node);
+                  }}
+                  doubleActivateLabel="Expand one edge"
+                  graphResetKey={controller.graphResetKey}
+                  onSaveState={controller.onSaveGraphState}
+                  savedCanvasState={controller.savedCanvasState}
+                  onFullscreenChange={setIsGraphFullscreen}
+                  filters={{
+                    isOpen: controller.graphFilters.isOpen,
+                    isActive: controller.filtersActive,
+                    onToggle: controller.filterActions.toggleOpen,
+                    onClose: controller.filterActions.close,
+                    content: (
+                      <GraphFilterPopover
+                        filterState={controller.graphFilters}
+                        onToggleTxnType={controller.filterActions.toggleTxnType}
+                        onToggleChain={controller.filterActions.toggleChain}
+                        onStartTimeChange={(value) => controller.filterActions.updateDate("startTime", value)}
+                        onEndTimeChange={(value) => controller.filterActions.updateDate("endTime", value)}
+                        onMinUSDChange={(value) => controller.filterActions.updateNumber("minTxnUSD", value)}
+                        onMaxUSDChange={(value) => controller.filterActions.updateNumber("maxTxnUSD", value)}
+                        onReset={controller.filterActions.resetAllFilters}
+                      />
+                    ),
+                  }}
+                  nodeMenuActions={{
+                    onOpenExplorer: (node) => {
+                      void controller.nodeActions.onOpenExplorer(node);
+                    },
+                    onCopyAddress: (node) => {
+                      void controller.nodeActions.onCopyAddress(node);
+                    },
+                    onRefreshLiveValue: (node) => {
+                      void controller.nodeActions.onRefreshLiveValue(node);
+                    },
+                    onExpandNodes: (nodes) => {
+                      void controller.onExpandNodes(nodes);
+                    },
+                    onLabelNode: (node) => {
+                      void controller.nodeActions.onLabelNode(node);
+                    },
+                    onMarkAsgard: (node) => {
+                      void controller.nodeActions.onMarkAsgard(node);
+                    },
+                    onRemoveNode: (node) => {
+                      void controller.nodeActions.onRemoveNode(node);
+                    },
+                  }}
+                  paneMenuActions={{
+                    onCheckUnavailable: () => {
+                      void controller.nodeActions.onRefreshUnavailable();
+                    },
+                  }}
+                />
+              </Suspense>
             ) : (
               <div className="empty-state">
                 {controller.filtersActive ? (

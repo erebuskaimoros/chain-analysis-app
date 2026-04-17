@@ -133,6 +133,9 @@ type graphBuilder struct {
 	prices               priceBook
 	bondMemoNodeByTx     map[string]string
 	calcPayoutByContract map[string]string
+	thorTxTransfersByTx  map[string][]thorTxTransfer
+	midgardActionsByTx   map[string][]midgardAction
+	recordedActionKeys   map[string]struct{}
 	allowedFlowTypes     map[string]bool
 	minUSD               float64
 	nodes                map[string]*FlowNode
@@ -153,22 +156,23 @@ type graphBuilder struct {
 }
 
 type queueItem struct {
-	Address   string
-	Chain     string
-	Hop       int
-	BaseDepth int
+	Address string
+	Chain   string
+	Hop     int
+	Depth   int
 }
 
 type frontierCandidate struct {
-	address   string
-	chain     string
-	totalUSD  float64
-	baseDepth int
+	address  string
+	chain    string
+	totalUSD float64
+	depth    int
 }
 
 type frontierAddress struct {
 	Address string
 	Chain   string
+	Depth   int
 }
 
 type flowRef struct {
@@ -344,6 +348,9 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 		prices:               prices,
 		bondMemoNodeByTx:     map[string]string{},
 		calcPayoutByContract: map[string]string{},
+		thorTxTransfersByTx:  map[string][]thorTxTransfer{},
+		midgardActionsByTx:   map[string][]midgardAction{},
+		recordedActionKeys:   map[string]struct{}{},
 		allowedFlowTypes:     flowTypeSet(query.FlowTypes),
 		minUSD:               query.MinUSD,
 		nodes:                map[string]*FlowNode{},
@@ -390,6 +397,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 		}
 	}
 
+	maxNodeDepth := maxGraphNodeDepth(query.MaxHops)
 	queue := make([]queueItem, 0, len(seedAddresses))
 	queued := map[string]int{}
 	for _, seed := range seedAddresses {
@@ -398,7 +406,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 			builder.warnings = append(builder.warnings, fmt.Sprintf("skipped invalid seed address %s", shortAddress(seed.Address)))
 			continue
 		}
-		queue = append(queue, queueItem{Address: norm.Address, Chain: norm.Chain, Hop: 0, BaseDepth: 1})
+		queue = append(queue, queueItem{Address: norm.Address, Chain: norm.Chain, Hop: 0, Depth: 1})
 		queued[frontierKey(norm.Chain, norm.Address)] = 0
 	}
 
@@ -440,42 +448,62 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 		}
 		queue = remaining
 
+		expandableWave := make([]queueItem, 0, len(wave))
+		for _, item := range wave {
+			if item.Depth < maxNodeDepth {
+				expandableWave = append(expandableWave, item)
+			}
+		}
+		if len(expandableWave) == 0 {
+			continue
+		}
+
 		// Prefetch Midgard actions for the entire wave concurrently.
 		if !midgardRateLimited && midgardFetchCount < midgardGraphMaxFetches {
-			a.prefetchMidgardBatch(ctx, wave, query.StartTime, query.EndTime, currentHop,
+			a.prefetchMidgardBatch(ctx, expandableWave, query.StartTime, query.EndTime, currentHop,
 				midgardActionCache, midgardActionTruncated, &midgardFetchCount, &midgardRateLimited,
 				midgardGraphMaxFetches, builder)
 		}
-		for _, item := range wave {
+		for _, item := range expandableWave {
 			mergeStringSet(midgardSwapTxIDs, collectMidgardSwapTxIDs(midgardActionCache[item.Address]))
 		}
 
 		// Collect next-hop candidates with cumulative USD values so we can
 		// prioritise high-value connections and cap the frontier size.
-		nextCandidates := map[string]*frontierCandidate{}
+		nextCandidatesByHop := map[int]map[string]*frontierCandidate{}
 
-		collectCandidate := func(addr frontierAddress, usd float64, baseDepth int) {
+		collectCandidate := func(addr frontierAddress, usd float64) {
 			norm := normalizeFrontierAddress(encodeFrontierAddress(addr))
 			if norm.Address == "" {
 				return
 			}
+			candidateDepth := max(1, addr.Depth)
+			candidateHop := max(0, candidateDepth-1)
 			key := frontierKey(norm.Chain, norm.Address)
-			if prevHop, ok := queued[key]; ok && prevHop <= currentHop+1 {
+			if prevHop, ok := queued[key]; ok && prevHop <= candidateHop {
 				return
 			}
-			if c, exists := nextCandidates[key]; exists {
+			bucket := nextCandidatesByHop[candidateHop]
+			if bucket == nil {
+				bucket = map[string]*frontierCandidate{}
+				nextCandidatesByHop[candidateHop] = bucket
+			}
+			if c, exists := bucket[key]; exists {
 				c.totalUSD += usd
+				if candidateDepth < c.depth {
+					c.depth = candidateDepth
+				}
 			} else {
-				nextCandidates[key] = &frontierCandidate{
-					address:   norm.Address,
-					chain:     norm.Chain,
-					totalUSD:  usd,
-					baseDepth: baseDepth,
+				bucket[key] = &frontierCandidate{
+					address:  norm.Address,
+					chain:    norm.Chain,
+					totalUSD: usd,
+					depth:    candidateDepth,
 				}
 			}
 		}
 
-		for _, item := range wave {
+		for _, item := range expandableWave {
 			itemKey := frontierKey(item.Chain, item.Address)
 			if prev, ok := visitedFrontier[itemKey]; ok && prev <= item.Hop {
 				continue
@@ -494,6 +522,8 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 			mergeStringSet(liquidityFeeTxIDs, collectMidgardLiquidityFeeTxIDs(actions))
 			mergeStringSet(calcStrategyTxIDs, collectCalcStrategyTxIDs(actions))
 			mergeStringSet(calcStrategyProcessTxIDs, collectCalcStrategyProcessTxIDs(actions))
+			builder.recordMidgardActions(actions)
+			a.prefetchThorTxTransfers(ctx, actions, builder)
 			builder.recordCalcRepresentativePayouts(actions)
 
 			externalTransfers, externalTruncated, externalWarning, extErr := a.fetchExternalTransfersForAddress(ctx, item.Chain, item.Address, query.StartTime, query.EndTime, max(1, midgardGraphPagesForHop(item.Hop)))
@@ -541,12 +571,22 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 					seenMidgardActions[key] = struct{}{}
 					continue
 				}
+				if builder.shouldSkipActionBecauseRujiraTrace(action) {
+					builder.contractSubDrop++
+					seenMidgardActions[key] = struct{}{}
+					continue
+				}
 				if shouldSkipMidgardActionForFeeOnlyFrontier(action, item.Address) {
 					builder.swapSuppressed++
 					continue
 				}
 
-				segments, nextAddresses, warnings, consumed := builder.projectMidgardActionWithExternal(action, item.BaseDepth, externalTransfers)
+				segments, _, warnings, consumed := builder.projectMidgardActionWithExternal(action, item.Depth, externalTransfers)
+				segments, _ = filterProjectedSegmentsToMaxDepth(segments, maxNodeDepth)
+				segments, nextAddresses := filterProjectedSegmentsToFrontierStep(segments, frontierAddress{
+					Address: item.Address,
+					Chain:   item.Chain,
+				}, item.Depth+1, maxNodeDepth)
 				builder.warnings = append(builder.warnings, warnings...)
 				mergeStringSet(consumedExternalTransfers, consumed)
 				if len(segments) == 0 {
@@ -567,7 +607,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 							segUSD += seg.USDSpot
 						}
 					}
-					collectCandidate(next, segUSD, item.BaseDepth+3)
+					collectCandidate(next, segUSD)
 				}
 			}
 			if externalTruncated {
@@ -598,7 +638,12 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 					seenExternalTransfers[key] = struct{}{}
 					continue
 				}
-				segments, nextAddresses := builder.projectExternalTransfer(transfer, item.BaseDepth)
+				segments, _ := builder.projectExternalTransfer(transfer, item.Depth)
+				segments, _ = filterProjectedSegmentsToMaxDepth(segments, maxNodeDepth)
+				segments, nextAddresses := filterProjectedSegmentsToFrontierStep(segments, frontierAddress{
+					Address: item.Address,
+					Chain:   item.Chain,
+				}, item.Depth+1, maxNodeDepth)
 				if len(segments) == 0 {
 					continue
 				}
@@ -617,40 +662,48 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 							segUSD += seg.USDSpot
 						}
 					}
-					collectCandidate(next, segUSD, item.BaseDepth+3)
+					collectCandidate(next, segUSD)
 				}
 			}
 		}
 
 		// Sort candidates by total USD flow (descending) and cap frontier.
-		if len(nextCandidates) > 0 {
-			sorted := make([]*frontierCandidate, 0, len(nextCandidates))
-			for _, c := range nextCandidates {
-				sorted = append(sorted, c)
+		if len(nextCandidatesByHop) > 0 {
+			hops := make([]int, 0, len(nextCandidatesByHop))
+			for hop := range nextCandidatesByHop {
+				hops = append(hops, hop)
 			}
-			sort.Slice(sorted, func(i, j int) bool {
-				return sorted[i].totalUSD > sorted[j].totalUSD
-			})
-			if len(sorted) > maxFrontierPerHop {
-				builder.warnings = append(builder.warnings, fmt.Sprintf(
-					"hop %d frontier capped from %d to %d addresses (by USD flow priority)",
-					currentHop+1, len(sorted), maxFrontierPerHop))
-				sorted = sorted[:maxFrontierPerHop]
-			}
-			for _, c := range sorted {
-				queued[frontierKey(c.chain, c.address)] = currentHop + 1
-				queue = append(queue, queueItem{
-					Address:   c.address,
-					Chain:     c.chain,
-					Hop:       currentHop + 1,
-					BaseDepth: c.baseDepth,
+			sort.Ints(hops)
+			for _, hop := range hops {
+				bucket := nextCandidatesByHop[hop]
+				sorted := make([]*frontierCandidate, 0, len(bucket))
+				for _, c := range bucket {
+					sorted = append(sorted, c)
+				}
+				sort.Slice(sorted, func(i, j int) bool {
+					return sorted[i].totalUSD > sorted[j].totalUSD
 				})
+				if len(sorted) > maxFrontierPerHop {
+					builder.warnings = append(builder.warnings, fmt.Sprintf(
+						"hop %d frontier capped from %d to %d addresses (by USD flow priority)",
+						hop, len(sorted), maxFrontierPerHop))
+					sorted = sorted[:maxFrontierPerHop]
+				}
+				for _, c := range sorted {
+					queued[frontierKey(c.chain, c.address)] = hop
+					queue = append(queue, queueItem{
+						Address: c.address,
+						Chain:   c.chain,
+						Hop:     hop,
+						Depth:   c.depth,
+					})
+				}
 			}
 		}
 	}
 
 	nodes := builder.nodeList()
-	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols)...)
+	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, false)...)
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	actions := builder.actionList()
@@ -822,6 +875,8 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 		mergeStringSet(liquidityFeeTxIDs, collectMidgardLiquidityFeeTxIDs(actions))
 		mergeStringSet(calcStrategyTxIDs, collectCalcStrategyTxIDs(actions))
 		mergeStringSet(calcStrategyProcessTxIDs, collectCalcStrategyProcessTxIDs(actions))
+		builder.recordMidgardActions(actions)
+		a.prefetchThorTxTransfers(ctx, actions, builder)
 		builder.recordCalcRepresentativePayouts(actions)
 
 		externalTransfers, externalTruncated, externalWarning, extErr := a.fetchExternalTransfersForAddress(ctx, seed.Chain, address, query.StartTime, query.EndTime, max(1, midgardExpandPagesPerSeed))
@@ -868,12 +923,22 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 				seenMidgardActions[key] = struct{}{}
 				continue
 			}
+			if builder.shouldSkipActionBecauseRujiraTrace(action) {
+				builder.contractSubDrop++
+				seenMidgardActions[key] = struct{}{}
+				continue
+			}
 			if shouldSkipMidgardActionForFeeOnlyFrontier(action, address) {
 				builder.swapSuppressed++
 				continue
 			}
 
 			segments, _, segmentWarnings, consumed := builder.projectMidgardActionWithExternal(action, 1, externalTransfers)
+			segments, _ = filterProjectedSegmentsToMaxDepth(segments, maxGraphNodeDepth(query.MaxHops))
+			segments, _ = filterProjectedSegmentsToFrontierStep(segments, frontierAddress{
+				Address: address,
+				Chain:   seed.Chain,
+			}, 2, maxGraphNodeDepth(query.MaxHops))
 			builder.warnings = append(builder.warnings, segmentWarnings...)
 			mergeStringSet(consumedExternalTransfers, consumed)
 			if len(segments) == 0 {
@@ -914,6 +979,11 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 			}
 			seenExternalTransfers[key] = struct{}{}
 			segments, _ := builder.projectExternalTransfer(transfer, 1)
+			segments, _ = filterProjectedSegmentsToMaxDepth(segments, maxGraphNodeDepth(query.MaxHops))
+			segments, _ = filterProjectedSegmentsToFrontierStep(segments, frontierAddress{
+				Address: address,
+				Chain:   seed.Chain,
+			}, 2, maxGraphNodeDepth(query.MaxHops))
 			for _, segment := range segments {
 				builder.addProjectedSegment(segment)
 			}
@@ -921,7 +991,7 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 	}
 
 	nodes := builder.nodeList()
-	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols)...)
+	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, false)...)
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	actions := builder.actionList()
@@ -1772,6 +1842,11 @@ func isLikelyAddressCandidate(value string) bool {
 }
 
 func (a *App) loadProtocolDirectory(ctx context.Context) (protocolDirectory, error) {
+	a.protocolDirectory.init(protocolDirectoryCacheTTL, cloneProtocolDirectory)
+	return a.protocolDirectory.get(ctx, a.loadProtocolDirectoryFresh)
+}
+
+func (a *App) loadProtocolDirectoryFresh(ctx context.Context) (protocolDirectory, error) {
 	out := protocolDirectory{
 		AddressKinds: map[string]protocolAddress{},
 		SupportedChains: map[string]struct{}{
@@ -1841,6 +1916,11 @@ func (a *App) loadProtocolDirectory(ctx context.Context) (protocolDirectory, err
 }
 
 func (a *App) buildPriceBook(ctx context.Context) (priceBook, error) {
+	a.priceBook.init(priceBookCacheTTL, clonePriceBook)
+	return a.priceBook.get(ctx, a.buildPriceBookFresh)
+}
+
+func (a *App) buildPriceBookFresh(ctx context.Context) (priceBook, error) {
 	book := priceBook{
 		NativeUSD:     map[string]float64{},
 		AssetUSD:      map[string]float64{},
@@ -2076,11 +2156,39 @@ func (a *App) refreshActorTrackerLiveHoldings(ctx context.Context, nodes []FlowN
 	if priceErr != nil {
 		warnings = append(warnings, "spot USD normalization unavailable; falling back to asset-native values")
 	}
-	warnings = append(warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, protocols)...)
+	warnings = append(warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, protocols, true)...)
 	return uniqueStrings(warnings), nil
 }
 
-func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode, prices priceBook, protocols protocolDirectory) []string {
+func markUnresolvedAddressLookupTasksPending(nodes []FlowNode, tasks map[string]*liveHoldingAddressLookupTask) {
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		for _, ref := range task.refs {
+			if ref.index < 0 || ref.index >= len(nodes) {
+				continue
+			}
+			if nodes[ref.index].Metrics == nil {
+				nodes[ref.index].Metrics = map[string]any{}
+			}
+			status := strings.ToLower(strings.TrimSpace(getString(nodes[ref.index].Metrics, "live_holdings_status")))
+			if status != "" {
+				continue
+			}
+			nodes[ref.index].Metrics["live_holdings_available"] = false
+			nodes[ref.index].Metrics["live_holdings_status"] = "pending"
+		}
+	}
+}
+
+func (a *App) enrichNodesWithLiveHoldings(
+	ctx context.Context,
+	nodes []FlowNode,
+	prices priceBook,
+	protocols protocolDirectory,
+	includeAddressLookups bool,
+) []string {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -2166,6 +2274,9 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 			}
 			nodeLookupRefs = append(nodeLookupRefs, liveHoldingNodeRef{index: i, protocol: protocol})
 		default:
+			if !includeAddressLookups && !priorityAddressLiveHoldingsNode(nodes[i]) {
+				continue
+			}
 			queueAddressLookupTask(i)
 		}
 	}
@@ -2357,25 +2468,33 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 			}
 			refs := task.refs
 			if result.err != nil {
-				failed = append(failed, fmt.Sprintf("%s:%s", task.chain, shortAddress(task.address)))
 				budgetExceeded := errors.Is(lookupCtx.Err(), context.DeadlineExceeded) &&
 					(errors.Is(result.err, context.DeadlineExceeded) || errors.Is(result.err, context.Canceled))
-				if !budgetExceeded {
-					fields := map[string]any{
-						"chain":      task.chain,
-						"address":    task.address,
-						"provider":   result.provider,
-						"elapsed_ms": result.elapsed.Milliseconds(),
+				if budgetExceeded {
+					for _, ref := range refs {
+						if nodes[ref.index].Metrics == nil {
+							nodes[ref.index].Metrics = map[string]any{}
+						}
+						nodes[ref.index].Metrics["live_holdings_available"] = false
+						nodes[ref.index].Metrics["live_holdings_status"] = "pending"
 					}
-					if task.chain == "THOR" {
-						fields["provider_candidates"] = "thornode,midgard"
-					} else if task.chain == "MAYA" {
-						fields["provider_candidates"] = "mayanode,midgard"
-					} else if providers := strings.Join(a.cfg.trackerProvidersForChain(task.chain), ","); providers != "" {
-						fields["provider_candidates"] = providers
-					}
-					logError(baseLookupCtx, "actor_tracker_live_holdings_lookup_failed", result.err, fields)
+					continue
 				}
+				failed = append(failed, fmt.Sprintf("%s:%s", task.chain, shortAddress(task.address)))
+				fields := map[string]any{
+					"chain":      task.chain,
+					"address":    task.address,
+					"provider":   result.provider,
+					"elapsed_ms": result.elapsed.Milliseconds(),
+				}
+				if task.chain == "THOR" {
+					fields["provider_candidates"] = "thornode,midgard"
+				} else if task.chain == "MAYA" {
+					fields["provider_candidates"] = "mayanode,midgard"
+				} else if providers := strings.Join(a.cfg.trackerProvidersForChain(task.chain), ","); providers != "" {
+					fields["provider_candidates"] = providers
+				}
+				logError(baseLookupCtx, "actor_tracker_live_holdings_lookup_failed", result.err, fields)
 				for _, ref := range refs {
 					if nodes[ref.index].Metrics == nil {
 						nodes[ref.index].Metrics = map[string]any{}
@@ -2408,6 +2527,7 @@ func (a *App) enrichNodesWithLiveHoldings(ctx context.Context, nodes []FlowNode,
 		warnings = append(warnings, fmt.Sprintf("live holdings unavailable for %d address nodes (%s)", len(failed), strings.Join(failed[:limit], ", ")))
 	}
 	if errors.Is(lookupCtx.Err(), context.DeadlineExceeded) {
+		markUnresolvedAddressLookupTasksPending(nodes, addressLookupTasks)
 		logInfo(baseLookupCtx, "actor_tracker_live_holdings_budget_exhausted", map[string]any{
 			"timeout_ms": a.liveHoldingsBatchTimeout().Milliseconds(),
 			"nodes":      len(nodes),
@@ -2450,7 +2570,7 @@ func (a *App) liveHoldingsLookupTimeout(provider, chain string) time.Duration {
 }
 
 func (a *App) liveHoldingsBatchTimeout() time.Duration {
-	return a.clampLiveHoldingsLookupTimeout(6 * time.Second)
+	return a.clampLiveHoldingsLookupTimeout(10 * time.Second)
 }
 
 func (a *App) clampLiveHoldingsLookupTimeout(timeout time.Duration) time.Duration {
@@ -2472,8 +2592,8 @@ func (a *App) liveHoldingsBucketConcurrency(provider, chain string) int {
 		return 1
 	case "utxo", "blockscout", "xrpl":
 		return 3
-	case "thornode", "midgard":
-		return 2
+	case "thornode", "mayanode", "midgard":
+		return 4
 	default:
 		return 2
 	}
@@ -2611,13 +2731,16 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 		segments = append(segments, seg)
 		for _, ref := range []flowRef{source, target} {
 			if shouldExpandAddressRef(ref) {
-				nextAddresses = append(nextAddresses, frontierAddress{Address: ref.Address, Chain: ref.Chain})
+				nextAddresses = append(nextAddresses, frontierAddress{Address: ref.Address, Chain: ref.Chain, Depth: ref.Depth})
 			}
 		}
 	}
 
 	if strings.EqualFold(strings.TrimSpace(action.Type), "contract") {
 		contractDesc := lookupContractCallDescriptor(actionMeta.ContractType)
+		if tracedSegments, tracedNext, tracedWarnings, handled := b.projectRujiraContractActionFromTrace(action, contractDesc, baseDepth); handled {
+			return tracedSegments, tracedNext, tracedWarnings, consumedExternalTransfers
+		}
 		sourceHint := ""
 		if action.Metadata.Contract != nil {
 			sourceHint = findContractExecutionAddress(action.Metadata.Contract.Msg)
@@ -4635,16 +4758,50 @@ func midgardActionKey(action midgardAction) string {
 	// types (e.g. wasm-calc-strategy/update vs wasm-calc-manager/strategy.update)
 	// must produce distinct keys so suppressing one doesn't hide the other.
 	contractType := ""
+	contractRoute := ""
 	if actionType == "contract" && action.Metadata.Contract != nil {
 		contractType = strings.ToLower(strings.TrimSpace(action.Metadata.Contract.ContractType))
+		contractRoute = midgardContractActionRouteKey(action)
 	}
 	return strings.Join([]string{
 		actionType,
 		contractType,
+		contractRoute,
 		strings.TrimSpace(action.Height),
 		strings.TrimSpace(action.Date),
 		strings.Join(txIDs, ","),
 	}, "|")
+}
+
+func midgardContractActionRouteKey(action midgardAction) string {
+	receivers, payouts := splitMidgardContractLegs(action)
+	receiverKey := strings.Join(midgardActionLegAddressKey(receivers), ",")
+	payoutKey := strings.Join(midgardActionLegAddressKey(payouts), ",")
+	if receiverKey == "" && payoutKey == "" {
+		return ""
+	}
+	return receiverKey + "->" + payoutKey
+}
+
+func midgardActionLegAddressKey(legs []midgardActionLeg) []string {
+	if len(legs) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(legs))
+	for _, leg := range legs {
+		address := normalizeAddress(leg.Address)
+		if address == "" {
+			continue
+		}
+		if _, ok := seen[address]; ok {
+			continue
+		}
+		seen[address] = struct{}{}
+		out = append(out, address)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func midgardSyntheticTxID(action midgardAction) string {
@@ -5345,8 +5502,7 @@ func uniqueFrontierAddresses(in []frontierAddress) []frontierAddress {
 	if len(in) < 2 {
 		return in
 	}
-	seen := map[string]struct{}{}
-	out := make([]frontierAddress, 0, len(in))
+	seen := map[string]frontierAddress{}
 	for _, item := range in {
 		if item.Address == "" {
 			continue
@@ -5355,18 +5511,110 @@ func uniqueFrontierAddresses(in []frontierAddress) []frontierAddress {
 		if key == "" {
 			continue
 		}
-		if _, ok := seen[key]; ok {
+		if existing, ok := seen[key]; ok {
+			if item.Depth > 0 && (existing.Depth == 0 || item.Depth < existing.Depth) {
+				existing.Depth = item.Depth
+				seen[key] = existing
+			}
 			continue
 		}
-		seen[key] = struct{}{}
 		item.Address = normalizeAddress(item.Address)
 		item.Chain = normalizeChain(item.Chain, item.Address)
+		seen[key] = item
+	}
+	out := make([]frontierAddress, 0, len(seen))
+	for _, item := range seen {
 		out = append(out, item)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return frontierKey(out[i].Chain, out[i].Address) < frontierKey(out[j].Chain, out[j].Address)
 	})
 	return out
+}
+
+func maxGraphNodeDepth(maxHops int) int {
+	if maxHops < 1 {
+		return 2
+	}
+	return maxHops + 1
+}
+
+func filterProjectedSegmentsToMaxDepth(segments []projectedSegment, maxDepth int) ([]projectedSegment, []frontierAddress) {
+	if maxDepth <= 0 || len(segments) == 0 {
+		return segments, nil
+	}
+	filtered := make([]projectedSegment, 0, len(segments))
+	nextAddresses := make([]frontierAddress, 0, len(segments))
+	for _, segment := range segments {
+		if segment.Source.Depth > maxDepth || segment.Target.Depth > maxDepth {
+			continue
+		}
+		filtered = append(filtered, segment)
+		for _, ref := range []flowRef{segment.Source, segment.Target} {
+			if shouldExpandAddressRef(ref) && ref.Depth < maxDepth {
+				nextAddresses = append(nextAddresses, frontierAddress{
+					Address: ref.Address,
+					Chain:   ref.Chain,
+					Depth:   ref.Depth,
+				})
+			}
+		}
+	}
+	return filtered, uniqueFrontierAddresses(nextAddresses)
+}
+
+func filterProjectedSegmentsToFrontierStep(segments []projectedSegment, frontier frontierAddress, nextDepth, maxDepth int) ([]projectedSegment, []frontierAddress) {
+	if len(segments) == 0 {
+		return nil, nil
+	}
+	frontier = normalizeFrontierAddress(encodeFrontierAddress(frontier))
+	if frontier.Address == "" {
+		return segments, nil
+	}
+	frontierAddrKey := frontierKey(frontier.Chain, frontier.Address)
+	filtered := make([]projectedSegment, 0, len(segments))
+	nextAddresses := make([]frontierAddress, 0, len(segments))
+	for _, segment := range segments {
+		matchesSource := flowRefMatchesFrontier(frontierAddrKey, frontier, segment.Source)
+		matchesTarget := flowRefMatchesFrontier(frontierAddrKey, frontier, segment.Target)
+		if !matchesSource && !matchesTarget {
+			continue
+		}
+		filtered = append(filtered, segment)
+		if nextDepth > maxDepth {
+			continue
+		}
+		var candidate flowRef
+		switch {
+		case matchesSource && !matchesTarget:
+			candidate = segment.Target
+		case matchesTarget && !matchesSource:
+			candidate = segment.Source
+		default:
+			continue
+		}
+		if !shouldExpandAddressRef(candidate) || flowRefMatchesFrontier(frontierAddrKey, frontier, candidate) {
+			continue
+		}
+		nextAddresses = append(nextAddresses, frontierAddress{
+			Address: candidate.Address,
+			Chain:   candidate.Chain,
+			Depth:   nextDepth,
+		})
+	}
+	return filtered, uniqueFrontierAddresses(nextAddresses)
+}
+
+func flowRefMatchesFrontier(frontierAddrKey string, frontier frontierAddress, ref flowRef) bool {
+	if frontier.Address == "" || ref.Address == "" {
+		return false
+	}
+	if frontierAddrKey != "" {
+		if refAddrKey := frontierKey(ref.Chain, ref.Address); refAddrKey != "" && refAddrKey == frontierAddrKey {
+			return true
+		}
+	}
+	return normalizeAddress(ref.Address) == normalizeAddress(frontier.Address)
 }
 
 func firstNonEmpty(values ...string) string {

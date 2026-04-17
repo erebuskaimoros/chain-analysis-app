@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { formatDateTime, formatUSD } from "../../lib/format";
 import { GraphFilterPopover } from "../shared/GraphFilterPopover";
-import { GraphCanvas } from "../shared/GraphCanvas";
 import { GraphStateLoaderButton } from "../shared/GraphStateLoaderButton";
 import { SelectionInspector } from "../shared/SelectionInspector";
 import { ActionLookupPanel } from "../shared/ActionLookupPanel";
 import { SupportingActionsTable } from "../shared/SupportingActionsTable";
 import { ActorGraphSidebar } from "./ActorGraphSidebar";
 import { useActorGraphController } from "./hooks/useActorGraphController";
+
+const GraphCanvas = lazy(() => import("../shared/GraphCanvas").then((module) => ({ default: module.GraphCanvas })));
 
 export function ActorGraphPage() {
   const controller = useActorGraphController();
@@ -30,7 +31,7 @@ export function ActorGraphPage() {
           void controller.onRefreshAllLiveHoldings();
         }}
         canRefreshLiveHoldings={Boolean(controller.graph)}
-        isRefreshingLiveHoldings={false}
+        isRefreshingLiveHoldings={controller.isRefreshingLiveHoldings}
         statusText={controller.statusText}
         runs={controller.runs}
         selectedRunID={controller.selectedRunID}
@@ -55,7 +56,7 @@ export function ActorGraphPage() {
               {controller.graph ? (
                 <p>
                   Click actor nodes to expand owned addresses. Click external clusters to expand one chain. Double-click to
-                  expand one hop. Right-click nodes for more actions.
+                  expand one edge. Right-click nodes for more actions.
                 </p>
               ) : null}
             </div>
@@ -90,7 +91,7 @@ export function ActorGraphPage() {
             <>
               <div className="chip-list">
                 <span className="meta-chip">{controller.graph.actors.length} actors</span>
-                <span className="meta-chip">{controller.graph.query.max_hops} hops</span>
+                <span className="meta-chip">{controller.graph.query.max_hops} edges</span>
                 <span className="meta-chip">
                   {formatDateTime(controller.graph.query.start_time)} → {formatDateTime(controller.graph.query.end_time)}
                 </span>
@@ -99,7 +100,7 @@ export function ActorGraphPage() {
                 </span>
                 <span className="meta-chip">{controller.graph.query.blocks_scanned} blocks scanned</span>
                 {controller.expandedHopSeeds.length ? (
-                  <span className="meta-chip">+{controller.expandedHopSeeds.length} one-hop seeds</span>
+                  <span className="meta-chip">+{controller.expandedHopSeeds.length} expanded edges</span>
                 ) : null}
                 {controller.filtersActive ? <span className="meta-chip">Filters active</span> : null}
                 <span className="meta-chip">{formatUSD(controller.graph.query.min_usd)} min</span>
@@ -116,67 +117,69 @@ export function ActorGraphPage() {
               ) : null}
 
               {controller.visibleGraph && controller.visibleGraph.nodes.length ? (
-                <GraphCanvas
-                  mode="actor"
-                  nodes={controller.visibleGraph.nodes}
-                  edges={controller.visibleGraph.edges}
-                  selection={controller.selection}
-                  onSelectionChange={controller.setSelection}
-                  onNodePrimaryAction={controller.onNodePrimaryAction}
-                  onNodeDoubleActivate={(node) => {
-                    void controller.onExpandNode(node);
-                  }}
-                  graphResetKey={controller.graphResetKey}
-                  onSaveState={controller.onSaveGraphState}
-                  savedCanvasState={controller.savedCanvasState}
-                  onFullscreenChange={setIsGraphFullscreen}
-                  filters={{
-                    isOpen: controller.graphFilters.isOpen,
-                    isActive: controller.filtersActive,
-                    onToggle: controller.filterActions.toggleOpen,
-                    onClose: controller.filterActions.close,
-                    content: (
-                      <GraphFilterPopover
-                        filterState={controller.graphFilters}
-                        onToggleTxnType={controller.filterActions.toggleTxnType}
-                        onToggleChain={controller.filterActions.toggleChain}
-                        onStartTimeChange={(value) => controller.filterActions.updateDate("startTime", value)}
-                        onEndTimeChange={(value) => controller.filterActions.updateDate("endTime", value)}
-                        onMinUSDChange={(value) => controller.filterActions.updateNumber("minTxnUSD", value)}
-                        onMaxUSDChange={(value) => controller.filterActions.updateNumber("maxTxnUSD", value)}
-                        onReset={controller.filterActions.resetAllFilters}
-                      />
-                    ),
-                  }}
-                nodeMenuActions={{
-                  onOpenExplorer: (node) => {
-                    void controller.nodeActions.onOpenExplorer(node);
-                  },
-                  onCopyAddress: (node) => {
-                    void controller.nodeActions.onCopyAddress(node);
-                  },
-                  onRefreshLiveValue: (node) => {
-                    void controller.nodeActions.onRefreshLiveValue(node);
-                  },
-                  onExpandNodes: (nodes) => {
-                    void controller.onExpandNodes(nodes);
-                  },
-                  onLabelNode: (node) => {
-                    void controller.nodeActions.onLabelNode(node);
-                  },
-                  onMarkAsgard: (node) => {
-                    void controller.nodeActions.onMarkAsgard(node);
-                    },
-                    onRemoveNode: (node) => {
-                      void controller.nodeActions.onRemoveNode(node);
-                    },
-                  }}
-                  paneMenuActions={{
-                    onCheckUnavailable: () => {
-                      void controller.nodeActions.onRefreshUnavailable();
-                    },
-                  }}
-                />
+                <Suspense fallback={<div className="empty-state">Loading graph canvas…</div>}>
+                  <GraphCanvas
+                    mode="actor"
+                    nodes={controller.visibleGraph.nodes}
+                    edges={controller.visibleGraph.edges}
+                    selection={controller.selection}
+                    onSelectionChange={controller.setSelection}
+                    onNodePrimaryAction={controller.onNodePrimaryAction}
+                    onNodeDoubleActivate={(node) => {
+                      void controller.onExpandNode(node);
+                    }}
+                    graphResetKey={controller.graphResetKey}
+                    onSaveState={controller.onSaveGraphState}
+                    savedCanvasState={controller.savedCanvasState}
+                    onFullscreenChange={setIsGraphFullscreen}
+                    filters={{
+                      isOpen: controller.graphFilters.isOpen,
+                      isActive: controller.filtersActive,
+                      onToggle: controller.filterActions.toggleOpen,
+                      onClose: controller.filterActions.close,
+                      content: (
+                        <GraphFilterPopover
+                          filterState={controller.graphFilters}
+                          onToggleTxnType={controller.filterActions.toggleTxnType}
+                          onToggleChain={controller.filterActions.toggleChain}
+                          onStartTimeChange={(value) => controller.filterActions.updateDate("startTime", value)}
+                          onEndTimeChange={(value) => controller.filterActions.updateDate("endTime", value)}
+                          onMinUSDChange={(value) => controller.filterActions.updateNumber("minTxnUSD", value)}
+                          onMaxUSDChange={(value) => controller.filterActions.updateNumber("maxTxnUSD", value)}
+                          onReset={controller.filterActions.resetAllFilters}
+                        />
+                      ),
+                    }}
+                    nodeMenuActions={{
+                      onOpenExplorer: (node) => {
+                        void controller.nodeActions.onOpenExplorer(node);
+                      },
+                      onCopyAddress: (node) => {
+                        void controller.nodeActions.onCopyAddress(node);
+                      },
+                      onRefreshLiveValue: (node) => {
+                        void controller.nodeActions.onRefreshLiveValue(node);
+                      },
+                      onExpandNodes: (nodes) => {
+                        void controller.onExpandNodes(nodes);
+                      },
+                      onLabelNode: (node) => {
+                        void controller.nodeActions.onLabelNode(node);
+                      },
+                      onMarkAsgard: (node) => {
+                        void controller.nodeActions.onMarkAsgard(node);
+                      },
+                      onRemoveNode: (node) => {
+                        void controller.nodeActions.onRemoveNode(node);
+                      },
+                    }}
+                    paneMenuActions={{
+                      onCheckUnavailable: () => {
+                        void controller.nodeActions.onRefreshUnavailable();
+                      },
+                    }}
+                  />
+                </Suspense>
               ) : (
                 <div className="empty-state">
                   {controller.filtersActive ? (

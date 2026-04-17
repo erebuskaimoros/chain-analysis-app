@@ -6,7 +6,6 @@ import type { ContextMenuState, GraphCanvasFilters, GraphCanvasNodeMenuActions, 
 import type { GraphSelection, VisibleGraphNode } from "../../../lib/graph";
 
 const TRACKPAD_PAN_GESTURE_LOCK_MS = 400;
-const TRACKPAD_PAN_PIXEL_DELTA_THRESHOLD = 100;
 const WHEEL_ZOOM_SENSITIVITY = 0.0015;
 const PINCH_ZOOM_SENSITIVITY = 0.0035;
 
@@ -563,30 +562,10 @@ export function useGraphCanvasInteractions({
   };
 }
 
-/**
- * In Chrome/Edge, WheelEvent carries a non-standard `wheelDelta` property.
- * Physical mouse scroll wheels always produce values that are exact multiples
- * of 120; trackpad gestures do not.  Returns true only when we can positively
- * identify a mouse wheel — returning false means "inconclusive", not "trackpad".
- */
-function isMouseWheelByWheelDelta(event: WheelEvent): boolean {
-  const wheelDelta = (event as unknown as { wheelDelta?: number }).wheelDelta;
-  if (typeof wheelDelta !== "number" || wheelDelta === 0) {
-    return false;
-  }
-  return wheelDelta % 120 === 0;
-}
-
 function shouldPanFromWheel(event: WheelEvent, lastTrackpadPanAt: number) {
   // Ctrl+wheel or trackpad pinch-to-zoom → always zoom
   if (event.ctrlKey) {
     return false;
-  }
-
-  // Continue panning if we recently detected trackpad input (covers inertia scrolling)
-  const now = Date.now();
-  if (now - lastTrackpadPanAt <= TRACKPAD_PAN_GESTURE_LOCK_MS) {
-    return true;
   }
 
   // Non-pixel delta modes (LINE, PAGE) are always discrete mouse wheels
@@ -595,26 +574,40 @@ function shouldPanFromWheel(event: WheelEvent, lastTrackpadPanAt: number) {
     return false;
   }
 
-  // Chrome/Edge: positively identify mouse wheel via wheelDelta multiple-of-120
-  if (isMouseWheelByWheelDelta(event)) {
-    return false;
+  // Chrome/Safari: wheelDelta is definitive when available.
+  // Mouse wheels always produce exact multiples of 120; trackpads do not.
+  const wheelDelta = (event as unknown as { wheelDelta?: number }).wheelDelta;
+  const hasWheelDelta = typeof wheelDelta === "number" && wheelDelta !== 0;
+  if (hasWheelDelta) {
+    return wheelDelta! % 120 !== 0; // multiple of 120 = mouse → zoom; otherwise trackpad → pan
   }
+
+  // Continue panning if we recently detected trackpad input (covers inertia scrolling).
+  // This stays after the definitive mouse-wheel checks so a physical wheel can
+  // still zoom immediately after a trackpad gesture.
+  const now = Date.now();
+  if (now - lastTrackpadPanAt <= TRACKPAD_PAN_GESTURE_LOCK_MS) {
+    return true;
+  }
+
+  // No wheelDelta available (Firefox, or Safari in rare cases).
+  // Firefox mouse wheels use deltaMode LINE (caught above), so pixel-mode events
+  // here are almost certainly trackpad. Apply conservative heuristics.
 
   // Horizontal scroll component → trackpad (mice don't produce horizontal wheel events)
-  const absDeltaX = Math.abs(event.deltaX);
-  if (absDeltaX >= 0.5) {
+  if (Math.abs(event.deltaX) >= 0.5) {
     return true;
   }
 
-  // Fractional deltas → trackpad (mouse wheels produce integer values)
-  if (!Number.isInteger(event.deltaX) || !Number.isInteger(event.deltaY)) {
+  // Fractional deltaX → trackpad (only trackpads produce fractional horizontal values)
+  if (!Number.isInteger(event.deltaX)) {
     return true;
   }
 
-  // Fallback for Firefox/Safari: vertical-only, integer, pixel-mode, no wheelDelta info.
-  // Mouse wheel notches on macOS typically produce ≥100px; trackpad scrolls are smaller.
-  const absDeltaY = Math.abs(event.deltaY);
-  return absDeltaY > 0 && absDeltaY < TRACKPAD_PAN_PIXEL_DELTA_THRESHOLD;
+  // Fractional deltaY alone is NOT a reliable trackpad signal — macOS scroll
+  // acceleration smooths mouse wheel events into fractional vertical values too.
+  // Without wheelDelta to disambiguate, default to zoom for vertical-only events.
+  return false;
 }
 
 function wheelPanScale(event: WheelEvent, surfaceElement: HTMLDivElement) {

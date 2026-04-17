@@ -28,6 +28,8 @@ type App struct {
 	trackerThrottle   *trackerThrottleStore
 	trackerFeatures   *trackerFeatureStore
 	trackerBlockNums  *trackerBlockNumberStore
+	protocolDirectory cachedMetadataResult[protocolDirectory]
+	priceBook         cachedMetadataResult[priceBook]
 	trackerEndpointRR atomic.Uint64
 }
 

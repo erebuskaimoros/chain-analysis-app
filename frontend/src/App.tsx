@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { ActorsPage } from "./features/actors/ActorsPage";
-import { ActorGraphPage } from "./features/actor-graph/ActorGraphPage";
-import { AnnotationsPage } from "./features/annotations/AnnotationsPage";
-import { ExplorerPage } from "./features/explorer/ExplorerPage";
-import { OverviewPage } from "./features/overview/OverviewPage";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+  type LazyExoticComponent,
+} from "react";
 
 type ViewKey = "overview" | "actors" | "graph" | "explorer" | "annotations";
 
@@ -53,6 +56,32 @@ const views: ViewDef[] = [
   },
 ];
 
+type LazyPageComponent = LazyExoticComponent<ComponentType> & {
+  preload: () => Promise<unknown>;
+};
+
+function lazyPage<T extends ComponentType<any>>(loader: () => Promise<{ default: T }>): LazyPageComponent {
+  return Object.assign(lazy(loader), { preload: loader });
+}
+
+const pageComponents: Record<ViewKey, LazyPageComponent> = {
+  overview: lazyPage(() =>
+    import("./features/overview/OverviewPage").then((module) => ({ default: module.OverviewPage }))
+  ),
+  actors: lazyPage(() =>
+    import("./features/actors/ActorsPage").then((module) => ({ default: module.ActorsPage }))
+  ),
+  graph: lazyPage(() =>
+    import("./features/actor-graph/ActorGraphPage").then((module) => ({ default: module.ActorGraphPage }))
+  ),
+  explorer: lazyPage(() =>
+    import("./features/explorer/ExplorerPage").then((module) => ({ default: module.ExplorerPage }))
+  ),
+  annotations: lazyPage(() =>
+    import("./features/annotations/AnnotationsPage").then((module) => ({ default: module.AnnotationsPage }))
+  ),
+};
+
 function viewFromHash(hash: string): ViewKey {
   const candidate = hash.replace(/^#/, "").trim().toLowerCase();
   if (views.some((view) => view.key === candidate)) {
@@ -81,6 +110,11 @@ function App() {
     () => views.find((view) => view.key === activeView) ?? views[0],
     [activeView]
   );
+  const ActivePage = pageComponents[activeView];
+
+  function preloadView(view: ViewKey) {
+    void pageComponents[view].preload();
+  }
 
   return (
     <div className="shell">
@@ -97,6 +131,8 @@ function App() {
               type="button"
               className={`nav-item ${view.key === activeView ? "active" : ""}`}
               onClick={() => navigate(view.key)}
+              onMouseEnter={() => preloadView(view.key)}
+              onFocus={() => preloadView(view.key)}
             >
               <span>{view.label}</span>
               <small>{view.eyebrow}</small>
@@ -114,11 +150,17 @@ function App() {
           <h2>{currentView.title}</h2>
           <p>{currentView.description}</p>
         </section>
-        {activeView === "overview" ? <OverviewPage /> : null}
-        {activeView === "actors" ? <ActorsPage /> : null}
-        {activeView === "graph" ? <ActorGraphPage /> : null}
-        {activeView === "explorer" ? <ExplorerPage /> : null}
-        {activeView === "annotations" ? <AnnotationsPage /> : null}
+        <Suspense
+          fallback={
+            <section className="panel page-panel">
+              <span className="eyebrow">Loading</span>
+              <h2>Loading {currentView.label}</h2>
+              <p>Fetching the code bundle for this workspace view.</p>
+            </section>
+          }
+        >
+          <ActivePage />
+        </Suspense>
       </main>
     </div>
   );

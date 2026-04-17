@@ -368,13 +368,12 @@ function decorateVisibleNode(
   const liveHoldingsUSD = numberMetric(node.metrics, "live_holdings_usd_spot");
   const liveHoldingsStatus = stringMetric(node.metrics, "live_holdings_status").toLowerCase();
   const nodeTotalBondRaw = stringMetric(node.metrics, "node_total_bond");
+  const hasMeaningfulLiveHoldings = liveHoldingsAvailable && Math.round(liveHoldingsUSD) > 0;
   const liveHoldingsLabel =
-    liveHoldingsAvailable
+    hasMeaningfulLiveHoldings
       ? formatCompactUSD(liveHoldingsUSD)
       : node.kind === "node" && nodeTotalBondRaw
       ? `${formatTokenAmountRaw(nodeTotalBondRaw)} RUNE`
-      : liveHoldingsStatus === "error"
-      ? "Unavailable"
       : "";
   const address = stringMetric(node.metrics, "address").toLowerCase();
   const customLabel = address ? labelAnnotations.get(address) : "";

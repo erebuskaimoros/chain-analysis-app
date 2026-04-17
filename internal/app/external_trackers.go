@@ -159,19 +159,34 @@ func (a *App) fetchProtocolAddressLiveHoldings(ctx context.Context, protocol, ad
 		holdings []liveHoldingValue
 		errs     []error
 	)
+	type liveHoldingsFetchResult struct {
+		holdings []liveHoldingValue
+		err      error
+	}
+	bankResults := make(chan liveHoldingsFetchResult, 1)
+	lpResults := make(chan liveHoldingsFetchResult, 1)
 
-	bankHoldings, err := a.fetchProtocolBankHoldings(ctx, protocol, address, prices)
-	if err != nil {
-		errs = append(errs, err)
+	go func() {
+		holdings, err := a.fetchProtocolBankHoldings(ctx, protocol, address, prices)
+		bankResults <- liveHoldingsFetchResult{holdings: holdings, err: err}
+	}()
+	go func() {
+		holdings, err := a.fetchProtocolLPHoldings(ctx, protocol, address, prices)
+		lpResults <- liveHoldingsFetchResult{holdings: holdings, err: err}
+	}()
+
+	bankResult := <-bankResults
+	if bankResult.err != nil {
+		errs = append(errs, bankResult.err)
 	} else {
-		holdings = append(holdings, bankHoldings...)
+		holdings = append(holdings, bankResult.holdings...)
 	}
 
-	lpHoldings, err := a.fetchProtocolLPHoldings(ctx, protocol, address, prices)
-	if err != nil {
-		errs = append(errs, err)
+	lpResult := <-lpResults
+	if lpResult.err != nil {
+		errs = append(errs, lpResult.err)
 	} else {
-		holdings = append(holdings, lpHoldings...)
+		holdings = append(holdings, lpResult.holdings...)
 	}
 
 	bondHoldings, err := a.fetchProtocolBondHoldings(ctx, protocol, address, prices, bondedByAddress)
@@ -1571,7 +1586,7 @@ func (b *graphBuilder) projectExternalTransfer(transfer externalTransfer, baseDe
 	var next []frontierAddress
 	for _, ref := range []flowRef{source, target} {
 		if shouldExpandAddressRef(ref) {
-			next = append(next, frontierAddress{Address: ref.Address, Chain: ref.Chain})
+			next = append(next, frontierAddress{Address: ref.Address, Chain: ref.Chain, Depth: ref.Depth})
 		}
 	}
 	return []projectedSegment{seg}, uniqueFrontierAddresses(next)

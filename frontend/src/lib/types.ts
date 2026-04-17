@@ -8,7 +8,7 @@ export interface HealthEngineSnapshot {
   protocol: string;
   thornode_sources: string[];
   midgard_sources: string[];
-  legacy_action_sources: string[];
+  legacy_action_sources: string[] | null;
 }
 
 export interface HealthSnapshot {
@@ -199,8 +199,20 @@ export interface ActorGraphResponse {
   supporting_actions: SupportingAction[];
 }
 
+export interface LiveHoldingsRefreshNode {
+  id: string;
+  kind: string;
+  chain: string;
+  metrics: Record<string, unknown> | null;
+}
+
+export interface LiveHoldingsNodeUpdate {
+  id: string;
+  metrics: Record<string, unknown> | null;
+}
+
 export interface LiveHoldingsRefreshResponse {
-  nodes: FlowNode[];
+  nodes: LiveHoldingsNodeUpdate[];
   warnings: string[];
   refreshed_at: string;
 }

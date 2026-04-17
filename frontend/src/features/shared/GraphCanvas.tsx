@@ -14,7 +14,7 @@ export function GraphCanvas({
   onSelectionChange,
   onNodePrimaryAction,
   onNodeDoubleActivate,
-  doubleActivateLabel = mode === "explorer" ? "Expand one edge" : "Expand one hop",
+  doubleActivateLabel = "Expand one edge",
   graphResetKey = 0,
   onSaveState,
   savedCanvasState,

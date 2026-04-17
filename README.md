@@ -95,7 +95,8 @@ Use `make stop-server` to stop and `make build-server` to build without restarti
 - `CHAIN_ANALYSIS_DEFAULT_SCAN_BLOCKS` (default `120`)
 - `CHAIN_ANALYSIS_MAX_SCAN_BLOCKS` (default `3000`)
 - `CHAIN_ANALYSIS_MAX_GRAPH_SCAN_BLOCKS` (default `30000`)
-- `THORNODE_ENDPOINTS` (default `https://thornode.ninerealms.com,https://thornode.thorchain.liquify.com`)
+- `THORNODE_ENDPOINTS` (default `https://thornode.thorchain.network,https://thornode.thorchain.liquify.com`)
+- `MIDGARD_ENDPOINTS` (default `https://midgard.thorchain.network/v2,https://midgard.thorchain.liquify.com/v2`)
 
 Tracker endpoint values can be multi-homed:
 

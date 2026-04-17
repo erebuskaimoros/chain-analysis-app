@@ -57,6 +57,7 @@ export function useGraphCanvasCore({
   const edgeMapRef = useRef(new Map<string, VisibleGraphEdge>());
   const resetKeyRef = useRef(graphResetKey);
   const restoredCanvasStateKeyRef = useRef<number | null>(null);
+  const topologySignatureRef = useRef("");
 
   selectionRef.current = selection;
   selectionChangeRef.current = onSelectionChange;
@@ -156,12 +157,14 @@ export function useGraphCanvasCore({
     });
 
     cyRef.current = cy;
+    topologySignatureRef.current = "";
 
     return () => {
       clearPendingNodeTap();
       cancelScheduledLabelRender();
       cy.destroy();
       cyRef.current = null;
+      topologySignatureRef.current = "";
     };
   }, [cancelScheduledLabelRender, cyMountRef, mode, scheduleLabelRender, surfaceRef]);
 
@@ -174,11 +177,17 @@ export function useGraphCanvasCore({
     const shouldRestoreSavedCanvasState =
       Boolean(savedCanvasState) && restoredCanvasStateKeyRef.current !== graphResetKey;
     const resetLayout = resetKeyRef.current !== graphResetKey || shouldRestoreSavedCanvasState;
+    const nextTopologySignature = graphTopologySignature(nodes, edges);
+    const needsTopologyRebuild =
+      topologySignatureRef.current !== nextTopologySignature || (cy.elements().length === 0 && (nodes.length > 0 || edges.length > 0));
+    const shouldRunLayout = resetLayout || needsTopologyRebuild;
     const preservedPositions = shouldRestoreSavedCanvasState
       ? mapSavedCanvasNodePositions(savedCanvasState)
       : resetLayout
       ? new Map<string, cytoscape.Position>()
-      : captureNodePositions(cy, nodes);
+      : shouldRunLayout
+      ? captureNodePositions(cy, nodes)
+      : new Map<string, cytoscape.Position>();
 
     if (resetKeyRef.current !== graphResetKey) {
       resetKeyRef.current = graphResetKey;
@@ -189,48 +198,31 @@ export function useGraphCanvasCore({
       viewportRef.current = savedCanvasState?.viewport ? { ...savedCanvasState.viewport } : null;
     }
 
-    const elements: cytoscape.ElementDefinition[] = [
-      ...nodes.map((node) => ({
-        data: {
-          ...node,
-          id: node.id,
-          kind: node.kind,
-          depth: node.depth,
-        },
-      })),
-      ...edges.map((edge) => ({
-        data: {
-          ...edge,
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          actionClass: edge.action_class,
-          edgeLabel: edge.edgeLabel,
-          lineColor: edge.lineColor,
-          width: edge.width,
-        },
-      })),
-    ];
+    if (shouldRunLayout) {
+      cy.batch(() => {
+        cy.elements().remove();
+        cy.add(buildElementDefinitions(nodes, edges));
+      });
+      topologySignatureRef.current = nextTopologySignature;
 
-    cy.batch(() => {
-      cy.elements().remove();
-      cy.add(elements);
-    });
-
-    const currentLayoutSeq = ++layoutSeqRef.current;
-    void applyElkLayout(cy, mode, nodes, elkRef.current, preservedPositions).then(() => {
-      if (layoutSeqRef.current !== currentLayoutSeq || !cyRef.current) {
-        return;
-      }
-      const viewport = viewportRef.current;
-      if (viewport) {
-        cy.zoom(viewport.zoom);
-        cy.pan(viewport.pan);
-      } else {
-        cy.fit(cy.elements(), 40);
-      }
+      const currentLayoutSeq = ++layoutSeqRef.current;
+      void applyElkLayout(cy, mode, nodes, elkRef.current, preservedPositions).then(() => {
+        if (layoutSeqRef.current !== currentLayoutSeq || !cyRef.current) {
+          return;
+        }
+        const viewport = viewportRef.current;
+        if (viewport) {
+          cy.zoom(viewport.zoom);
+          cy.pan(viewport.pan);
+        } else {
+          cy.fit(cy.elements(), 40);
+        }
+        scheduleLabelRender();
+      });
+    } else {
+      syncElementData(cy, nodes, edges);
       scheduleLabelRender();
-    });
+    }
 
     const selected = selectionRef.current;
     if (selected) {
@@ -293,4 +285,85 @@ function mapSavedCanvasNodePositions(savedCanvasState: SavedGraphCanvasState | n
     positions.set(id, { x: position.x, y: position.y });
   });
   return positions;
+}
+
+function buildElementDefinitions(nodes: VisibleGraphNode[], edges: VisibleGraphEdge[]): cytoscape.ElementDefinition[] {
+  return [
+    ...nodes.map((node) => ({
+      data: {
+        ...node,
+        id: node.id,
+        kind: node.kind,
+        depth: node.depth,
+      },
+    })),
+    ...edges.map((edge) => ({
+      data: {
+        ...edge,
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        actionClass: edge.action_class,
+        edgeLabel: edge.edgeLabel,
+        lineColor: edge.lineColor,
+        width: edge.width,
+      },
+    })),
+  ];
+}
+
+function syncElementData(cy: cytoscape.Core, nodes: VisibleGraphNode[], edges: VisibleGraphEdge[]) {
+  const nodeDataByID = new Map(
+    nodes.map((node) => [
+      node.id,
+      {
+        ...node,
+        id: node.id,
+        kind: node.kind,
+        depth: node.depth,
+      },
+    ])
+  );
+  const edgeDataByID = new Map(
+    edges.map((edge) => [
+      edge.id,
+      {
+        ...edge,
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        actionClass: edge.action_class,
+        edgeLabel: edge.edgeLabel,
+        lineColor: edge.lineColor,
+        width: edge.width,
+      },
+    ])
+  );
+
+  cy.batch(() => {
+    cy.nodes().forEach((element) => {
+      const nextData = nodeDataByID.get(element.id());
+      if (nextData) {
+        element.data(nextData);
+      }
+    });
+    cy.edges().forEach((element) => {
+      const nextData = edgeDataByID.get(element.id());
+      if (nextData) {
+        element.data(nextData);
+      }
+    });
+  });
+}
+
+function graphTopologySignature(nodes: VisibleGraphNode[], edges: VisibleGraphEdge[]) {
+  const nodeSignature = nodes
+    .map((node) => `${node.id}|${node.kind}|${node.stage}|${node.depth}`)
+    .sort()
+    .join("~");
+  const edgeSignature = edges
+    .map((edge) => `${edge.id}|${edge.source}|${edge.target}`)
+    .sort()
+    .join("~");
+  return `${nodeSignature}::${edgeSignature}`;
 }

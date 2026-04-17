@@ -346,4 +346,88 @@ describe("graph derivation", () => {
     expect(validator?.live_holdings_label).toBe("$9");
     expect(validator?.live_holdings_status).toBe("available");
   });
+
+  it("only shows meaningful inline live values and omits zero-value or unavailable labels", () => {
+    const response = makeActorGraphResponse({
+      actors: [
+        makeActor({
+          id: 6,
+          name: "9Rs",
+          color: "#4ca3ff",
+          addresses: [makeActorAddress({ actor_id: 6, address: "thor1seed", normalized_address: "thor1seed" })],
+        }),
+      ],
+      nodes: [
+        makeNode({
+          id: "seed",
+          kind: "actor_address",
+          chain: "THOR",
+          actor_ids: [6],
+          label: "Vesting 9R",
+          metrics: {
+            address: "thor1seed",
+            live_holdings_available: true,
+            live_holdings_status: "available",
+            live_holdings_usd_spot: 0,
+          },
+        }),
+        makeNode({
+          id: "valued-node",
+          kind: "external_address",
+          chain: "THOR",
+          label: "thor1valued",
+          metrics: {
+            address: "thor1valued",
+            live_holdings_available: true,
+            live_holdings_status: "available",
+            live_holdings_usd_spot: 1250,
+          },
+        }),
+        makeNode({
+          id: "error-node",
+          kind: "external_address",
+          chain: "BNB",
+          label: "bnb1error",
+          metrics: {
+            address: "bnb1error",
+            live_holdings_available: false,
+            live_holdings_status: "error",
+            live_holdings_usd_spot: 0,
+          },
+        }),
+      ],
+      edges: [
+        makeEdge({
+          id: "seed-to-valued",
+          from: "seed",
+          to: "valued-node",
+          transactions: [makeTransaction({ tx_id: "seed-to-valued", usd_spot: 12 })],
+        }),
+        makeEdge({
+          id: "valued-to-error",
+          from: "valued-node",
+          to: "error-node",
+          transactions: [makeTransaction({ tx_id: "valued-to-error", usd_spot: 8 })],
+        }),
+      ],
+    });
+    const filters = createGraphFilterState();
+
+    syncGraphFilterStateWithResponse(filters, response, { reset: true });
+    const visible = deriveActorVisibleGraph(response, filters, makeMetadata(), {
+      expandedActorIDs: [],
+      expandedExternalChains: [],
+    });
+
+    const actor = visible.nodes.find((node) => node.id === "actor:6");
+    const valued = visible.nodes.find((node) => node.id === "valued-node");
+    const errored = visible.nodes.find((node) => node.id === "error-node");
+
+    expect(actor?.live_holdings_label).toBe("");
+    expect(actor?.live_holdings_status).toBe("available");
+    expect(valued?.live_holdings_label).toBe("$1.3K");
+    expect(valued?.live_holdings_status).toBe("available");
+    expect(errored?.live_holdings_label).toBe("");
+    expect(errored?.live_holdings_status).toBe("error");
+  });
 });

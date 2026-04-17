@@ -158,18 +158,42 @@ func (a *App) RemoveFromBlocklist(ctx context.Context, address string) error {
 }
 
 func (a *App) BuildActorGraph(ctx context.Context, req ActorTrackerRequest) (ActorTrackerResponse, error) {
+	capturedCtx, capture := withRunLogCapture(ctx)
+	ctx, cancel := context.WithTimeout(capturedCtx, a.cfg.RequestTimeout*4)
+	defer cancel()
+	defer func() {
+		if err := a.saveLastRunLog(capture); err != nil {
+			logError(ctx, "actor_tracker_last_run_log_save_failed", err, map[string]any{
+				"path": a.cfg.LastRunLogPath,
+			})
+		}
+	}()
 	return a.buildActorTracker(ctx, req)
 }
 
 func (a *App) ExpandActorGraph(ctx context.Context, req ActorTrackerExpandRequest) (ActorTrackerResponse, error) {
+	capturedCtx, capture := withRunLogCapture(ctx)
+	ctx, cancel := context.WithTimeout(capturedCtx, a.cfg.RequestTimeout*3)
+	defer cancel()
+	defer func() {
+		if err := a.saveLastRunLog(capture); err != nil {
+			logError(ctx, "actor_tracker_last_run_log_save_failed", err, map[string]any{
+				"path": a.cfg.LastRunLogPath,
+			})
+		}
+	}()
 	return a.expandActorTrackerOneHop(ctx, req)
 }
 
 func (a *App) RefreshLiveHoldings(ctx context.Context, nodes []FlowNode) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout*2)
+	defer cancel()
 	return a.refreshActorTrackerLiveHoldings(ctx, nodes)
 }
 
 func (a *App) BuildAddressExplorer(ctx context.Context, req AddressExplorerRequest) (AddressExplorerResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout*4)
+	defer cancel()
 	return a.buildAddressExplorer(ctx, req)
 }
 

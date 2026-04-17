@@ -32,14 +32,26 @@ type ActorGraphResponse struct {
 	SupportingActions []app.SupportingAction `json:"supporting_actions"`
 }
 
+type LiveHoldingsRefreshNode struct {
+	ID      string         `json:"id"`
+	Kind    string         `json:"kind"`
+	Chain   string         `json:"chain"`
+	Metrics map[string]any `json:"metrics,omitempty"`
+}
+
+type LiveHoldingsNodeUpdate struct {
+	ID      string         `json:"id"`
+	Metrics map[string]any `json:"metrics,omitempty"`
+}
+
 type LiveHoldingsRefreshRequest struct {
-	Nodes []app.FlowNode `json:"nodes"`
+	Nodes []LiveHoldingsRefreshNode `json:"nodes"`
 }
 
 type LiveHoldingsRefreshResponse struct {
-	Nodes       []app.FlowNode `json:"nodes"`
-	Warnings    []string       `json:"warnings"`
-	RefreshedAt string         `json:"refreshed_at"`
+	Nodes       []LiveHoldingsNodeUpdate `json:"nodes"`
+	Warnings    []string                 `json:"warnings"`
+	RefreshedAt string                   `json:"refreshed_at"`
 }
 
 type AddressExplorerResponse = app.AddressExplorerResponse

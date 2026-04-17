@@ -8,7 +8,7 @@ import (
 
 func TestThorClientEndpointsForPathPrefersPrimaryForAllTimeActions(t *testing.T) {
 	client := NewThorClient([]string{
-		"https://midgard.ninerealms.com/v2",
+		"https://midgard.thorchain.network/v2",
 		"https://midgard.thorchain.liquify.com/v2",
 	}, time.Second)
 
@@ -18,7 +18,7 @@ func TestThorClientEndpointsForPathPrefersPrimaryForAllTimeActions(t *testing.T)
 	second := client.endpointsForPath(path)
 
 	want := []string{
-		"https://midgard.ninerealms.com/v2",
+		"https://midgard.thorchain.network/v2",
 		"https://midgard.thorchain.liquify.com/v2",
 	}
 	if !reflect.DeepEqual(first, want) {
@@ -31,7 +31,7 @@ func TestThorClientEndpointsForPathPrefersPrimaryForAllTimeActions(t *testing.T)
 
 func TestThorClientEndpointsForPathRotatesForBoundedActions(t *testing.T) {
 	client := NewThorClient([]string{
-		"https://midgard.ninerealms.com/v2",
+		"https://midgard.thorchain.network/v2",
 		"https://midgard.thorchain.liquify.com/v2",
 	}, time.Second)
 
@@ -41,12 +41,12 @@ func TestThorClientEndpointsForPathRotatesForBoundedActions(t *testing.T) {
 	second := client.endpointsForPath(path)
 
 	wantFirst := []string{
-		"https://midgard.ninerealms.com/v2",
+		"https://midgard.thorchain.network/v2",
 		"https://midgard.thorchain.liquify.com/v2",
 	}
 	wantSecond := []string{
 		"https://midgard.thorchain.liquify.com/v2",
-		"https://midgard.ninerealms.com/v2",
+		"https://midgard.thorchain.network/v2",
 	}
 	if !reflect.DeepEqual(first, wantFirst) {
 		t.Fatalf("first endpoint order = %v, want %v", first, wantFirst)
@@ -58,7 +58,7 @@ func TestThorClientEndpointsForPathRotatesForBoundedActions(t *testing.T) {
 
 func TestThorClientEndpointsForPathPrefersPrimaryForActionLookupWithoutTimeRange(t *testing.T) {
 	client := NewThorClient([]string{
-		"https://midgard.ninerealms.com/v2",
+		"https://midgard.thorchain.network/v2",
 		"https://midgard.thorchain.liquify.com/v2",
 	}, time.Second)
 
@@ -68,7 +68,7 @@ func TestThorClientEndpointsForPathPrefersPrimaryForActionLookupWithoutTimeRange
 	second := client.endpointsForPath(path)
 
 	want := []string{
-		"https://midgard.ninerealms.com/v2",
+		"https://midgard.thorchain.network/v2",
 		"https://midgard.thorchain.liquify.com/v2",
 	}
 	if !reflect.DeepEqual(first, want) {

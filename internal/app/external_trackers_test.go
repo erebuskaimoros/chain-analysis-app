@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -758,7 +759,7 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 			},
 		},
 		HasPoolData: true,
-	}, protocolDirectory{})
+	}, protocolDirectory{}, true)
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %#v", warnings)
 	}
@@ -767,6 +768,142 @@ func TestEnrichNodesWithLiveHoldingsTHORIncludesBankLPAndBond(t *testing.T) {
 	}
 	if got, ok := nodes[0].Metrics["live_holdings_usd_spot"].(float64); !ok || got != 6014 {
 		t.Fatalf("expected THOR live_holdings_usd_spot=6014, got %#v", nodes[0].Metrics["live_holdings_usd_spot"])
+	}
+}
+
+func TestEnrichNodesWithLiveHoldingsKeepsLargeTHORBatchWithinBudget(t *testing.T) {
+	const nodeCount = 40
+	const lookupLatency = 250 * time.Millisecond
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case r.URL.Path == "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case strings.HasPrefix(r.URL.Path, "/cosmos/bank/v1beta1/balances/thor1batch"):
+			time.Sleep(lookupLatency)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"balances": []map[string]any{
+					{"denom": "rune", "amount": "100000000"},
+				},
+			})
+		case strings.HasPrefix(r.URL.Path, "/member/thor1batch"):
+			time.Sleep(lookupLatency)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pools": []map[string]any{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout: 20 * time.Second,
+			MidgardTimeout: 20 * time.Second,
+		},
+		thor:            NewThorClient([]string{server.URL}, 20*time.Second),
+		mid:             NewThorClient([]string{server.URL}, 20*time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerThrottle: newTrackerThrottleStore(),
+	}
+
+	nodes := make([]FlowNode, 0, nodeCount)
+	for i := 0; i < nodeCount; i++ {
+		address := fmt.Sprintf("thor1batch%02d", i)
+		nodes = append(nodes, FlowNode{
+			ID:      "external_address:" + address + ":external:1",
+			Kind:    "external_address",
+			Label:   address,
+			Chain:   "THOR",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": address},
+		})
+	}
+
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{"THOR.RUNE": 2},
+	}, protocolDirectory{}, true)
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings for large THOR batch: %#v", warnings)
+	}
+	for i, node := range nodes {
+		if got := node.Metrics["live_holdings_available"]; got != true {
+			t.Fatalf("expected THOR node %d live holdings available=true, got %#v", i, got)
+		}
+		if got := node.Metrics["live_holdings_status"]; got != "available" {
+			t.Fatalf("expected THOR node %d live holdings status=available, got %#v", i, got)
+		}
+		if got, ok := node.Metrics["live_holdings_usd_spot"].(float64); !ok || got != 2 {
+			t.Fatalf("expected THOR node %d live_holdings_usd_spot=2, got %#v", i, node.Metrics["live_holdings_usd_spot"])
+		}
+	}
+}
+
+func TestEnrichNodesWithLiveHoldingsInlineModeSkipsAddressLookups(t *testing.T) {
+	var bankHits atomic.Int64
+	var memberHits atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case r.URL.Path == "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case strings.HasPrefix(r.URL.Path, "/cosmos/bank/v1beta1/balances/"):
+			bankHits.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{"balances": []map[string]any{}})
+		case strings.HasPrefix(r.URL.Path, "/member/"):
+			memberHits.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{"pools": []map[string]any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout: 20 * time.Second,
+			MidgardTimeout: 20 * time.Second,
+		},
+		thor:            NewThorClient([]string{server.URL}, 20*time.Second),
+		mid:             NewThorClient([]string{server.URL}, 20*time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerThrottle: newTrackerThrottleStore(),
+	}
+
+	nodes := []FlowNode{
+		{
+			ID:      "external_address:thor1inlineonly:external:1",
+			Kind:    "external_address",
+			Label:   "thor1inlineonly",
+			Chain:   "THOR",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": "thor1inlineonly"},
+		},
+	}
+
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{"THOR.RUNE": 2},
+	}, protocolDirectory{}, false)
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings for inline-only live holdings: %#v", warnings)
+	}
+	if got := bankHits.Load(); got != 0 {
+		t.Fatalf("expected inline-only mode to skip bank lookups, got %d", got)
+	}
+	if got := memberHits.Load(); got != 0 {
+		t.Fatalf("expected inline-only mode to skip LP lookups, got %d", got)
+	}
+	if _, ok := nodes[0].Metrics["live_holdings_status"]; ok {
+		t.Fatalf("expected inline-only mode to leave address live holdings unset, got %#v", nodes[0].Metrics["live_holdings_status"])
 	}
 }
 
@@ -913,7 +1050,7 @@ func TestEnrichNodesWithLiveHoldingsValidatorNodeUsesTotalBond(t *testing.T) {
 
 	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
 		AssetUSD: map[string]float64{"THOR.RUNE": 2},
-	}, protocolDirectory{})
+	}, protocolDirectory{}, true)
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %#v", warnings)
 	}
@@ -975,7 +1112,7 @@ func TestEnrichNodesWithLiveHoldingsWhitelistedNodeNotMarkedValidator(t *testing
 
 	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
 		AssetUSD: map[string]float64{"THOR.RUNE": 2},
-	}, protocolDirectory{})
+	}, protocolDirectory{}, true)
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %#v", warnings)
 	}
@@ -1070,7 +1207,7 @@ func TestEnrichNodesWithLiveHoldingsIncludesExternalNode(t *testing.T) {
 	}
 	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
 		AssetUSD: map[string]float64{"ETH.ETH": 2000},
-	}, protocolDirectory{})
+	}, protocolDirectory{}, true)
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %#v", warnings)
 	}
@@ -1126,7 +1263,7 @@ func TestEnrichNodesWithLiveHoldingsIgnoresParentCancellation(t *testing.T) {
 
 	warnings := app.enrichNodesWithLiveHoldings(parentCtx, nodes, priceBook{
 		AssetUSD: map[string]float64{"ETH.ETH": 2000},
-	}, protocolDirectory{})
+	}, protocolDirectory{}, true)
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %#v", warnings)
 	}
@@ -1224,7 +1361,7 @@ func TestEnrichNodesWithLiveHoldingsSlowProviderDoesNotLoseFastBucket(t *testing
 			"ETH.ETH": 2000,
 			"BTC.BTC": 100000,
 		},
-	}, protocolDirectory{})
+	}, protocolDirectory{}, true)
 	if len(warnings) == 0 {
 		t.Fatalf("expected mixed-provider warnings, got none")
 	}
@@ -1241,8 +1378,11 @@ func TestEnrichNodesWithLiveHoldingsSlowProviderDoesNotLoseFastBucket(t *testing
 		t.Fatalf("expected BTC live holdings status=available, got %#v", got)
 	}
 	for i := 0; i < len(nodes)-1; i++ {
-		if got := nodes[i].Metrics["live_holdings_status"]; got != "error" {
-			t.Fatalf("expected slow ETH node %d live holdings status=error, got %#v", i, got)
+		if got := nodes[i].Metrics["live_holdings_status"]; got != "pending" {
+			t.Fatalf("expected slow ETH node %d live holdings status=pending, got %#v", i, got)
+		}
+		if got := nodes[i].Metrics["live_holdings_available"]; got != false {
+			t.Fatalf("expected slow ETH node %d live holdings available=false, got %#v", i, got)
 		}
 	}
 }
@@ -1292,7 +1432,7 @@ func TestEnrichNodesWithLiveHoldingsBoundsTotalBatchDuration(t *testing.T) {
 	started := time.Now()
 	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
 		AssetUSD: map[string]float64{"ETH.ETH": 2000},
-	}, protocolDirectory{})
+	}, protocolDirectory{}, true)
 	elapsed := time.Since(started)
 
 	if elapsed > 500*time.Millisecond {
@@ -1303,6 +1443,138 @@ func TestEnrichNodesWithLiveHoldingsBoundsTotalBatchDuration(t *testing.T) {
 	}
 	if len(warnings) == 0 {
 		t.Fatalf("expected warnings for canceled live holdings lookups, got none")
+	}
+}
+
+func TestEnrichNodesWithLiveHoldingsMarksBudgetSkippedNodesPending(t *testing.T) {
+	var balanceHits atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case r.URL.Query().Get("action") == "balance":
+			balanceHits.Add(1)
+			<-r.Context().Done()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout:  150 * time.Millisecond,
+			EtherscanAPIURL: server.URL,
+			EtherscanAPIKey: "test-key",
+		},
+		mid:             NewThorClient([]string{server.URL}, 10*time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerThrottle: newTrackerThrottleStore(),
+	}
+
+	nodes := make([]FlowNode, 0, 4)
+	for i := 0; i < 4; i++ {
+		addr := "0xslow" + string(rune('a'+i))
+		nodes = append(nodes, FlowNode{
+			ID:      "external_address:" + addr + ":external:1",
+			Kind:    "external_address",
+			Label:   addr,
+			Chain:   "ETH",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": addr},
+		})
+	}
+
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{"ETH.ETH": 2000},
+	}, protocolDirectory{}, true)
+
+	if balanceHits.Load() == 0 {
+		t.Fatal("expected slow balance lookups to be attempted")
+	}
+	if len(warnings) == 0 {
+		t.Fatalf("expected warnings for canceled live holdings lookups, got none")
+	}
+	for i, node := range nodes {
+		if got := node.Metrics["live_holdings_status"]; got != "pending" {
+			t.Fatalf("expected budget-skipped node %d live holdings status=pending, got %#v", i, got)
+		}
+		if got := node.Metrics["live_holdings_available"]; got != false {
+			t.Fatalf("expected budget-skipped node %d live holdings available=false, got %#v", i, got)
+		}
+	}
+}
+
+func TestEnrichNodesWithLiveHoldingsMarksSkippedBackgroundPhaseNodesPending(t *testing.T) {
+	var balanceHits atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{})
+		case r.URL.Query().Get("action") == "balance":
+			balanceHits.Add(1)
+			<-r.Context().Done()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout:  150 * time.Millisecond,
+			EtherscanAPIURL: server.URL,
+			EtherscanAPIKey: "test-key",
+		},
+		mid:             NewThorClient([]string{server.URL}, 10*time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerThrottle: newTrackerThrottleStore(),
+	}
+
+	nodes := []FlowNode{
+		{
+			ID:       "actor_address:0xpriority:actor_address:1",
+			Kind:     "actor_address",
+			Label:    "Priority",
+			Chain:    "ETH",
+			Stage:    "actor_address",
+			Depth:    0,
+			ActorIDs: []int64{2},
+			Metrics:  map[string]any{"address": "0xpriority"},
+		},
+		{
+			ID:      "external_address:0xbackground:external:1",
+			Kind:    "external_address",
+			Label:   "Background",
+			Chain:   "ETH",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": "0xbackground"},
+		},
+	}
+
+	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
+		AssetUSD: map[string]float64{"ETH.ETH": 2000},
+	}, protocolDirectory{}, true)
+
+	if balanceHits.Load() == 0 {
+		t.Fatal("expected phase-one balance lookups to be attempted")
+	}
+	if len(warnings) == 0 {
+		t.Fatalf("expected warnings for canceled live holdings lookups, got none")
+	}
+	for i, node := range nodes {
+		if got := node.Metrics["live_holdings_status"]; got != "pending" {
+			t.Fatalf("expected skipped node %d live holdings status=pending, got %#v", i, got)
+		}
+		if got := node.Metrics["live_holdings_available"]; got != false {
+			t.Fatalf("expected skipped node %d live holdings available=false, got %#v", i, got)
+		}
 	}
 }
 
@@ -1468,7 +1740,7 @@ func TestEnrichNodesWithLiveHoldingsSkipsPoolSnapshotWithoutPoolNodes(t *testing
 
 	warnings := app.enrichNodesWithLiveHoldings(context.Background(), nodes, priceBook{
 		AssetUSD: map[string]float64{"ETH.ETH": 2000},
-	}, protocolDirectory{})
+	}, protocolDirectory{}, true)
 
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %#v", warnings)

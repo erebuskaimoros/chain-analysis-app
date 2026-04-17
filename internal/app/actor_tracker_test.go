@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -238,6 +239,428 @@ func TestExpandActorTrackerOneHopSkipsSwapMatchedOnlyByAffiliateFeeLeg(t *testin
 	}
 	if got := intStat(resp.Stats, "swap_emitted"); got != 0 {
 		t.Fatalf("expected swap_emitted=0, got %d", got)
+	}
+}
+
+func TestBuildActorTrackerMaxHopsLimitsLiquidityPathToSingleEdge(t *testing.T) {
+	const seed = "thor1edgehopseed000000000000000000000000000000"
+	const recipient = "bc1qedgehoprecipient0000000000000000000000000"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/actions":
+			actions := []midgardAction{}
+			if normalizeAddress(r.URL.Query().Get("address")) == normalizeAddress(seed) {
+				actions = []midgardAction{
+					{
+						Date:   "1700000000000000000",
+						Height: "12345678",
+						Type:   "add_liquidity",
+						Status: "success",
+						In: []midgardActionLeg{
+							{
+								Address: seed,
+								TxID:    "EDGEHOPIN1",
+								Coins: []midgardActionCoin{
+									{Asset: "THOR.RUNE", Amount: "100000000"},
+								},
+							},
+						},
+						Out: []midgardActionLeg{
+							{
+								Address: recipient,
+								TxID:    "EDGEHOPOUT1",
+								Coins: []midgardActionCoin{
+									{Asset: "BTC.BTC", Amount: "25000000"},
+								},
+							},
+						},
+						Pools: []string{"BTC.BTC"},
+					},
+				}
+			}
+			_ = json.NewEncoder(w).Encode(midgardActionsResponse{
+				Actions: actions,
+				Meta:    midgardActionsMeta{},
+			})
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{
+				{
+					Asset:          "BTC.BTC",
+					Status:         "available",
+					AssetDepth:     "100000000",
+					RuneDepth:      "100000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "100000",
+				},
+			})
+		case r.URL.Path == "/thorchain/inbound_addresses":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	db := openTestDB(t)
+	defer db.Close()
+
+	actor, err := upsertActor(context.Background(), db, 0, ActorUpsertRequest{
+		Name:  "Edge Seed",
+		Color: "#123456",
+		Addresses: []ActorAddressInput{
+			{Address: seed, ChainHint: "THOR", Label: "Seed"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsert actor: %v", err)
+	}
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout: time.Second,
+			MidgardTimeout: time.Second,
+		},
+		db:              db,
+		thor:            NewThorClient([]string{server.URL}, time.Second),
+		mid:             NewThorClient([]string{server.URL}, time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerFeatures: newTrackerFeatureStore(),
+	}
+
+	resp, err := app.buildActorTracker(context.Background(), ActorTrackerRequest{
+		ActorIDs:  []int64{actor.ID},
+		StartTime: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		EndTime:   time.Unix(1_800_000_000, 0).UTC().Format(time.RFC3339),
+		MaxHops:   1,
+	})
+	if err != nil {
+		t.Fatalf("build actor tracker: %v", err)
+	}
+	if !hasActionClassEdge(resp.Edges, "liquidity") {
+		t.Fatalf("expected liquidity edge for first expansion step, got %#v", resp.Edges)
+	}
+	poolPresent := false
+	for _, node := range resp.Nodes {
+		if node.Kind == "pool" {
+			poolPresent = true
+			break
+		}
+	}
+	if !poolPresent {
+		t.Fatalf("expected max_hops=1 to keep the first pool edge, got nodes %#v", resp.Nodes)
+	}
+	if hasAddressNode(resp.Nodes, recipient) {
+		t.Fatalf("expected max_hops=1 to stop before second edge recipient %s, got nodes %#v", recipient, resp.Nodes)
+	}
+}
+
+func TestBuildActorTrackerMaxHopsDoesNotExpandParallelPeerInput(t *testing.T) {
+	const seed = "thor1edgehopseed000000000000000000000000000000"
+	const peer = "thor1edgehoppeer000000000000000000000000000000"
+
+	var (
+		mu          sync.Mutex
+		actionCalls = map[string]int{}
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/actions":
+			address := normalizeAddress(r.URL.Query().Get("address"))
+			mu.Lock()
+			actionCalls[address]++
+			mu.Unlock()
+
+			actions := []midgardAction{}
+			if address == normalizeAddress(seed) {
+				actions = []midgardAction{
+					{
+						Date:   "1700000000000000000",
+						Height: "12345678",
+						Type:   "add_liquidity",
+						Status: "success",
+						In: []midgardActionLeg{
+							{
+								Address: seed,
+								TxID:    "PEERHOPIN1",
+								Coins: []midgardActionCoin{
+									{Asset: "THOR.RUNE", Amount: "100000000"},
+								},
+							},
+							{
+								Address: peer,
+								TxID:    "PEERHOPIN2",
+								Coins: []midgardActionCoin{
+									{Asset: "THOR.RUNE", Amount: "50000000"},
+								},
+							},
+						},
+						Pools: []string{"BTC.BTC"},
+					},
+				}
+			}
+			_ = json.NewEncoder(w).Encode(midgardActionsResponse{
+				Actions: actions,
+				Meta:    midgardActionsMeta{},
+			})
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{
+				{
+					Asset:          "BTC.BTC",
+					Status:         "available",
+					AssetDepth:     "100000000",
+					RuneDepth:      "100000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "100000",
+				},
+			})
+		case r.URL.Path == "/thorchain/inbound_addresses":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	db := openTestDB(t)
+	defer db.Close()
+
+	actor, err := upsertActor(context.Background(), db, 0, ActorUpsertRequest{
+		Name:  "Edge Seed",
+		Color: "#123456",
+		Addresses: []ActorAddressInput{
+			{Address: seed, ChainHint: "THOR", Label: "Seed"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsert actor: %v", err)
+	}
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout: time.Second,
+			MidgardTimeout: time.Second,
+		},
+		db:              db,
+		thor:            NewThorClient([]string{server.URL}, time.Second),
+		mid:             NewThorClient([]string{server.URL}, time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerFeatures: newTrackerFeatureStore(),
+	}
+
+	resp, err := app.buildActorTracker(context.Background(), ActorTrackerRequest{
+		ActorIDs:  []int64{actor.ID},
+		StartTime: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		EndTime:   time.Unix(1_800_000_000, 0).UTC().Format(time.RFC3339),
+		MaxHops:   1,
+	})
+	if err != nil {
+		t.Fatalf("build actor tracker: %v", err)
+	}
+	if hasAddressNode(resp.Nodes, peer) {
+		t.Fatalf("expected max_hops=1 to exclude parallel peer input %s, got nodes %#v", peer, resp.Nodes)
+	}
+
+	mu.Lock()
+	peerCalls := actionCalls[normalizeAddress(peer)]
+	mu.Unlock()
+	if peerCalls != 0 {
+		t.Fatalf("expected not to fetch action history for peer input %s, got %d calls", peer, peerCalls)
+	}
+}
+
+func TestExpandActorTrackerOneHopLimitsLiquidityPathToSingleEdge(t *testing.T) {
+	const seed = "thor1edgehopseed000000000000000000000000000000"
+	const recipient = "bc1qedgehoprecipient0000000000000000000000000"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/actions":
+			actions := []midgardAction{}
+			if normalizeAddress(r.URL.Query().Get("address")) == normalizeAddress(seed) {
+				actions = []midgardAction{
+					{
+						Date:   "1700000000000000000",
+						Height: "12345678",
+						Type:   "add_liquidity",
+						Status: "success",
+						In: []midgardActionLeg{
+							{
+								Address: seed,
+								TxID:    "EDGEHOPIN1",
+								Coins: []midgardActionCoin{
+									{Asset: "THOR.RUNE", Amount: "100000000"},
+								},
+							},
+						},
+						Out: []midgardActionLeg{
+							{
+								Address: recipient,
+								TxID:    "EDGEHOPOUT1",
+								Coins: []midgardActionCoin{
+									{Asset: "BTC.BTC", Amount: "25000000"},
+								},
+							},
+						},
+						Pools: []string{"BTC.BTC"},
+					},
+				}
+			}
+			_ = json.NewEncoder(w).Encode(midgardActionsResponse{
+				Actions: actions,
+				Meta:    midgardActionsMeta{},
+			})
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{
+				{
+					Asset:          "BTC.BTC",
+					Status:         "available",
+					AssetDepth:     "100000000",
+					RuneDepth:      "100000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "100000",
+				},
+			})
+		case r.URL.Path == "/thorchain/inbound_addresses":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout: time.Second,
+			MidgardTimeout: time.Second,
+		},
+		db:              openTestDB(t),
+		thor:            NewThorClient([]string{server.URL}, time.Second),
+		mid:             NewThorClient([]string{server.URL}, time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerFeatures: newTrackerFeatureStore(),
+	}
+	defer app.db.Close()
+
+	resp, err := app.expandActorTrackerOneHop(context.Background(), ActorTrackerExpandRequest{
+		Addresses: []string{seed},
+		StartTime: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		EndTime:   time.Unix(1_800_000_000, 0).UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("expand actor tracker: %v", err)
+	}
+	if !hasActionClassEdge(resp.Edges, "liquidity") {
+		t.Fatalf("expected one-edge expansion to keep first liquidity edge, got %#v", resp.Edges)
+	}
+	poolPresent := false
+	for _, node := range resp.Nodes {
+		if node.Kind == "pool" {
+			poolPresent = true
+			break
+		}
+	}
+	if !poolPresent {
+		t.Fatalf("expected one-edge expansion to keep pool node, got %#v", resp.Nodes)
+	}
+	if hasAddressNode(resp.Nodes, recipient) {
+		t.Fatalf("expected one-edge expansion to stop before recipient %s, got nodes %#v", recipient, resp.Nodes)
+	}
+}
+
+func TestExpandActorTrackerOneHopDoesNotIncludeParallelPeerInput(t *testing.T) {
+	const seed = "thor1edgehopseed000000000000000000000000000000"
+	const peer = "thor1edgehoppeer000000000000000000000000000000"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/actions":
+			actions := []midgardAction{}
+			if normalizeAddress(r.URL.Query().Get("address")) == normalizeAddress(seed) {
+				actions = []midgardAction{
+					{
+						Date:   "1700000000000000000",
+						Height: "12345678",
+						Type:   "add_liquidity",
+						Status: "success",
+						In: []midgardActionLeg{
+							{
+								Address: seed,
+								TxID:    "PEERHOPIN1",
+								Coins: []midgardActionCoin{
+									{Asset: "THOR.RUNE", Amount: "100000000"},
+								},
+							},
+							{
+								Address: peer,
+								TxID:    "PEERHOPIN2",
+								Coins: []midgardActionCoin{
+									{Asset: "THOR.RUNE", Amount: "50000000"},
+								},
+							},
+						},
+						Pools: []string{"BTC.BTC"},
+					},
+				}
+			}
+			_ = json.NewEncoder(w).Encode(midgardActionsResponse{
+				Actions: actions,
+				Meta:    midgardActionsMeta{},
+			})
+		case r.URL.Path == "/pools":
+			_ = json.NewEncoder(w).Encode([]MidgardPool{
+				{
+					Asset:          "BTC.BTC",
+					Status:         "available",
+					AssetDepth:     "100000000",
+					RuneDepth:      "100000000",
+					LiquidityUnits: "100000000",
+					AssetPriceUSD:  "100000",
+				},
+			})
+		case r.URL.Path == "/thorchain/inbound_addresses":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/thorchain/nodes":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: Config{
+			RequestTimeout: time.Second,
+			MidgardTimeout: time.Second,
+		},
+		db:              openTestDB(t),
+		thor:            NewThorClient([]string{server.URL}, time.Second),
+		mid:             NewThorClient([]string{server.URL}, time.Second),
+		httpClient:      server.Client(),
+		trackerHealth:   newTrackerHealthStore(),
+		trackerFeatures: newTrackerFeatureStore(),
+	}
+	defer app.db.Close()
+
+	resp, err := app.expandActorTrackerOneHop(context.Background(), ActorTrackerExpandRequest{
+		Addresses: []string{seed},
+		StartTime: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		EndTime:   time.Unix(1_800_000_000, 0).UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("expand actor tracker: %v", err)
+	}
+	if hasAddressNode(resp.Nodes, peer) {
+		t.Fatalf("expected one-edge expansion to exclude parallel peer input %s, got nodes %#v", peer, resp.Nodes)
 	}
 }
 
@@ -956,6 +1379,344 @@ func TestMidgardActionKeyDistinguishesContractTypes(t *testing.T) {
 	k2 := midgardActionKey(managerUpdate)
 	if k1 == k2 {
 		t.Fatalf("contract actions with different contract types must produce distinct keys, got %q for both", k1)
+	}
+}
+
+func TestMidgardActionKeyDistinguishesContractReceiversInSameTx(t *testing.T) {
+	first := midgardAction{
+		Type:   "contract",
+		Height: "25032287",
+		Date:   "1771594964502249774",
+		In:     []midgardActionLeg{{TxID: "E04EFC19"}},
+		Out:    []midgardActionLeg{{Address: "thor1strategyalpha", TxID: "E04EFC19"}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{ContractType: "wasm-calc-strategy/process"},
+		},
+	}
+	second := midgardAction{
+		Type:   "contract",
+		Height: "25032287",
+		Date:   "1771594964502249774",
+		In:     []midgardActionLeg{{TxID: "E04EFC19"}},
+		Out:    []midgardActionLeg{{Address: "thor1strategybeta", TxID: "E04EFC19"}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{ContractType: "wasm-calc-strategy/process"},
+		},
+	}
+	k1 := midgardActionKey(first)
+	k2 := midgardActionKey(second)
+	if k1 == k2 {
+		t.Fatalf("contract actions with different receiver contracts must produce distinct keys, got %q for both", k1)
+	}
+}
+
+func TestProjectRujiraContractActionFromTraceUsesVisibleNetRoute(t *testing.T) {
+	const (
+		txID         = "157B5CE34D7704B02E01CA8DAFB19BD169FA2DBC208F3064A87674BC05359D35"
+		strategyAddr = "thor1effcyrmh0mmg49ledmvgvsmetzmptnsnpd3nrj5qgeznvhzn4xnsq60ert"
+		finAddr      = "thor1jshw3secvxhzfyza6aj530hrc73zave42zgs525n0xkc3e9d6wkqrm8j3y"
+		swapAddr     = "thor1n5a08r0zvmqca39ka2tgwlkjy9ugalutk7fjpzptfppqcccnat2ska5t4g"
+		borrowAddr   = "thor18e6gxcvmqfn06l09gurgwh3urlj9xztqagaslgspl2l74ejuujnqqlzzun"
+		repayAddr    = "thor197g3d76rp4dsvfy5zz67h5fr3aj8vjmzezmfy9c8z7t9nh63wsms85amlw"
+		finFeeAddr   = "thor1gm8q2gr25nzzsxzdp2mpja4hyvyhjlr4s6krcsgv2y953uu0js3qhwpus7"
+		swapFeeAddr  = "thor1mcy9jtp4kzl8q2lvdgfgsl8jvqrf504uphkf0pz2p9wud8tsntesjvccew"
+	)
+
+	processAction := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor109e5swg6u2f6cff9zf7g09rwhg2eay8zcsn5wh", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: strategyAddr, TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-calc-strategy/process",
+			},
+		},
+	}
+	finTradeAction := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor109e5swg6u2f6cff9zf7g09rwhg2eay8zcsn5wh", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: finAddr, TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-rujira-fin/trade",
+			},
+		},
+	}
+	swapAction := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor109e5swg6u2f6cff9zf7g09rwhg2eay8zcsn5wh", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: swapAddr, TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-rujira-thorchain-swap/swap",
+			},
+		},
+	}
+	borrowAction := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor109e5swg6u2f6cff9zf7g09rwhg2eay8zcsn5wh", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: borrowAddr, TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-rujira-ghost-vault/borrow",
+			},
+		},
+	}
+	repayAction := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor109e5swg6u2f6cff9zf7g09rwhg2eay8zcsn5wh", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: repayAddr, TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-rujira-ghost-vault/repay",
+			},
+		},
+	}
+
+	builder := &graphBuilder{
+		ownerMap:            map[string][]int64{},
+		actorsByID:          map[int64]Actor{},
+		protocols:           protocolDirectory{AddressKinds: map[string]protocolAddress{}},
+		prices:              priceBook{AssetUSD: map[string]float64{"THOR.TCY": 1, "BTC.BTC": 100000}},
+		thorTxTransfersByTx: map[string][]thorTxTransfer{},
+		midgardActionsByTx: map[string][]midgardAction{
+			txID: {processAction, finTradeAction, swapAction, borrowAction, repayAction},
+		},
+		allowedFlowTypes: flowTypeSet([]string{"swaps", "liquidity", "transfers"}),
+		nodes:            map[string]*FlowNode{},
+		edges:            map[string]*FlowEdge{},
+		actions:          map[string]*SupportingAction{},
+	}
+	builder.thorTxTransfersByTx[txID] = []thorTxTransfer{
+		{Index: 1, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(strategyAddr), To: normalizeAddress(finAddr), Asset: "THOR.TCY", AmountRaw: "431701989"},
+		{Index: 2, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(finAddr), To: normalizeAddress(swapAddr), Asset: "THOR.TCY", AmountRaw: "431701989"},
+		{Index: 3, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(borrowAddr), To: normalizeAddress(swapAddr), Asset: "BTC.BTC", AmountRaw: "829"},
+		{Index: 4, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(swapAddr), To: normalizeAddress(repayAddr), Asset: "THOR.TCY", AmountRaw: "431701989"},
+		{Index: 5, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(swapAddr), To: normalizeAddress(finAddr), Asset: "BTC.BTC", AmountRaw: "828"},
+		{Index: 6, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(finAddr), To: normalizeAddress(strategyAddr), Asset: "BTC.BTC", AmountRaw: "826"},
+		{Index: 7, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(finAddr), To: normalizeAddress(finFeeAddr), Asset: "BTC.BTC", AmountRaw: "2"},
+		{Index: 8, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(swapAddr), To: normalizeAddress(swapFeeAddr), Asset: "BTC.BTC", AmountRaw: "1"},
+	}
+
+	if skip := builder.shouldSkipActionBecauseRujiraTrace(processAction); !skip {
+		t.Fatal("expected calc strategy process row to be suppressed when trace-backed RUJI action exists")
+	}
+	if skip := builder.shouldSkipActionBecauseRujiraTrace(borrowAction); !skip {
+		t.Fatal("expected ghost-vault financing row to be suppressed when trace-backed RUJI action exists")
+	}
+	if skip := builder.shouldSkipActionBecauseRujiraTrace(finTradeAction); skip {
+		t.Fatal("did not expect FIN trade representative row to be suppressed")
+	}
+
+	finSegments, _, warnings, handled := builder.projectRujiraContractActionFromTrace(finTradeAction, lookupContractCallDescriptor("wasm-rujira-fin/trade"), 1)
+	if !handled {
+		t.Fatal("expected FIN trade to be trace-projectable")
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if len(finSegments) != 3 {
+		t.Fatalf("expected 3 visible FIN segments, got %d: %#v", len(finSegments), finSegments)
+	}
+	if finSegments[0].Source.Address != normalizeAddress(strategyAddr) || finSegments[0].Target.Address != normalizeAddress(finAddr) {
+		t.Fatalf("expected strategy -> FIN inbound segment, got %#v", finSegments[0])
+	}
+	if finSegments[1].Source.Address != normalizeAddress(finAddr) || finSegments[1].Target.Address != normalizeAddress(swapAddr) {
+		t.Fatalf("expected FIN -> THORChain Swap route segment, got %#v", finSegments[1])
+	}
+	if finSegments[2].Source.Address != normalizeAddress(finAddr) || finSegments[2].Target.Address != normalizeAddress(strategyAddr) {
+		t.Fatalf("expected FIN -> strategy payout segment, got %#v", finSegments[2])
+	}
+	if finSegments[2].AmountRaw != "826" || finSegments[2].Asset != "BTC.BTC" {
+		t.Fatalf("unexpected FIN payout segment: %#v", finSegments[2])
+	}
+
+	swapSegments, _, warnings, handled := builder.projectRujiraContractActionFromTrace(swapAction, lookupContractCallDescriptor("wasm-rujira-thorchain-swap/swap"), 1)
+	if !handled {
+		t.Fatal("expected THORChain Swap to be trace-projectable")
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if len(swapSegments) != 1 {
+		t.Fatalf("expected only the visible THORChain Swap return leg, got %d: %#v", len(swapSegments), swapSegments)
+	}
+	if swapSegments[0].Source.Address != normalizeAddress(swapAddr) || swapSegments[0].Target.Address != normalizeAddress(finAddr) {
+		t.Fatalf("expected THORChain Swap -> FIN return segment, got %#v", swapSegments[0])
+	}
+	if swapSegments[0].AmountRaw != "828" || swapSegments[0].Asset != "BTC.BTC" {
+		t.Fatalf("unexpected THORChain Swap segment: %#v", swapSegments[0])
+	}
+}
+
+func TestProjectRujiraContractActionFromTraceFallsBackWhenTransfersUnavailable(t *testing.T) {
+	const txID = "TRACEFALLBACK1"
+	action := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor109e5swg6u2f6cff9zf7g09rwhg2eay8zcsn5wh", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: "thor1jshw3secvxhzfyza6aj530hrc73zave42zgs525n0xkc3e9d6wkqrm8j3y", TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-rujira-fin/trade",
+			},
+		},
+	}
+
+	builder := &graphBuilder{
+		ownerMap:            map[string][]int64{},
+		actorsByID:          map[int64]Actor{},
+		protocols:           protocolDirectory{AddressKinds: map[string]protocolAddress{}},
+		prices:              priceBook{AssetUSD: map[string]float64{"THOR.TCY": 1, "BTC.BTC": 100000}},
+		thorTxTransfersByTx: map[string][]thorTxTransfer{txID: {}},
+		midgardActionsByTx: map[string][]midgardAction{
+			txID: {action},
+		},
+		allowedFlowTypes: flowTypeSet([]string{"swaps", "liquidity", "transfers"}),
+		nodes:            map[string]*FlowNode{},
+		edges:            map[string]*FlowEdge{},
+		actions:          map[string]*SupportingAction{},
+	}
+
+	segments, next, warnings, handled := builder.projectRujiraContractActionFromTrace(action, lookupContractCallDescriptor("wasm-rujira-fin/trade"), 1)
+	if handled {
+		t.Fatalf("expected trace projection to fall back when transfers are unavailable, got segments=%#v next=%#v warnings=%#v", segments, next, warnings)
+	}
+}
+
+func TestProjectRujiraContractActionFromTraceKeepsLargestLeafForCustodyAction(t *testing.T) {
+	const (
+		txID        = "TRACECUSTODY1"
+		stakingAddr = "thor1stakingcontract00000000000000000000000000"
+		userAddr    = "thor1stakinguser0000000000000000000000000000"
+		feeDustAddr = "thor1stakingfee00000000000000000000000000000"
+	)
+
+	action := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor1sender000000000000000000000000000000000", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: stakingAddr, TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{
+				ContractType: "wasm-rujira-staking/account.claim",
+			},
+		},
+	}
+
+	builder := &graphBuilder{
+		ownerMap:            map[string][]int64{},
+		actorsByID:          map[int64]Actor{},
+		protocols:           protocolDirectory{AddressKinds: map[string]protocolAddress{}},
+		prices:              priceBook{AssetUSD: map[string]float64{"THOR.RUNE": 2}},
+		thorTxTransfersByTx: map[string][]thorTxTransfer{},
+		midgardActionsByTx: map[string][]midgardAction{
+			txID: {action},
+		},
+		allowedFlowTypes: flowTypeSet([]string{"swaps", "liquidity", "transfers"}),
+		nodes:            map[string]*FlowNode{},
+		edges:            map[string]*FlowEdge{},
+		actions:          map[string]*SupportingAction{},
+	}
+	builder.thorTxTransfersByTx[txID] = []thorTxTransfer{
+		{Index: 1, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(stakingAddr), To: normalizeAddress(userAddr), Asset: "THOR.RUNE", AmountRaw: "1000"},
+		{Index: 2, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress(stakingAddr), To: normalizeAddress(feeDustAddr), Asset: "THOR.RUNE", AmountRaw: "3"},
+	}
+
+	segments, _, warnings, handled := builder.projectRujiraContractActionFromTrace(action, lookupContractCallDescriptor("wasm-rujira-staking/account.claim"), 1)
+	if !handled {
+		t.Fatal("expected staking claim to be trace-projectable")
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if len(segments) != 1 {
+		t.Fatalf("expected only the largest visible custody payout leg, got %d: %#v", len(segments), segments)
+	}
+	if segments[0].Source.Address != normalizeAddress(stakingAddr) || segments[0].Target.Address != normalizeAddress(userAddr) {
+		t.Fatalf("expected staking contract -> user payout, got %#v", segments[0])
+	}
+	if segments[0].AmountRaw != "1000" || segments[0].Asset != "THOR.RUNE" {
+		t.Fatalf("unexpected staking claim segment: %#v", segments[0])
+	}
+}
+
+func TestShouldSkipActionBecauseRujiraTraceSuppressesUtilityRows(t *testing.T) {
+	const txID = "TRACEUTILITY1"
+
+	finTrade := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor1sender000000000000000000000000000000000", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: "thor1jshw3secvxhzfyza6aj530hrc73zave42zgs525n0xkc3e9d6wkqrm8j3y", TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{ContractType: "wasm-rujira-fin/trade"},
+		},
+	}
+	utility := midgardAction{
+		Date:   "1771594964502249774",
+		Height: "25560553",
+		Type:   "contract",
+		Status: "success",
+		In:     []midgardActionLeg{{Address: "thor1sender000000000000000000000000000000000", TxID: txID}},
+		Out:    []midgardActionLeg{{Address: "thor1utility000000000000000000000000000000", TxID: txID}},
+		Metadata: midgardActionMetadata{
+			Contract: &midgardContractMetadata{ContractType: "wasm-rujira-template/init"},
+		},
+	}
+
+	builder := &graphBuilder{
+		thorTxTransfersByTx: map[string][]thorTxTransfer{
+			txID: {
+				{Index: 1, TxID: txID, Height: 25560553, Time: time.Unix(1_771_594_964, 0).UTC(), From: normalizeAddress("thor1sender000000000000000000000000000000000"), To: normalizeAddress("thor1jshw3secvxhzfyza6aj530hrc73zave42zgs525n0xkc3e9d6wkqrm8j3y"), Asset: "THOR.TCY", AmountRaw: "1000"},
+			},
+		},
+		midgardActionsByTx: map[string][]midgardAction{
+			txID: {finTrade, utility},
+		},
+	}
+
+	if !builder.shouldSkipActionBecauseRujiraTrace(utility) {
+		t.Fatal("expected non-capital RUJI utility row to be suppressed when a trace-backed RUJI route exists")
+	}
+	if builder.shouldSkipActionBecauseRujiraTrace(finTrade) {
+		t.Fatal("did not expect funds-moving FIN trade row to be suppressed")
+	}
+}
+
+func TestTraceProjectableRujiraContractTypeRejectsUtilityFamilies(t *testing.T) {
+	if !isTraceProjectableRujiraContractType("wasm-rujira-staking/account.claim") {
+		t.Fatal("expected staking claim to be trace-projectable")
+	}
+	if !isTraceProjectableRujiraContractType("wasm-rujira-merge/withdraw") {
+		t.Fatal("expected merge withdraw to be trace-projectable")
+	}
+	if isTraceProjectableRujiraContractType("wasm-rujira-template/init") {
+		t.Fatal("did not expect template init to be trace-projectable")
+	}
+	if isTraceProjectableRujiraContractType("wasm-rujira-demo/run") {
+		t.Fatal("did not expect demo run to be trace-projectable")
 	}
 }
 
