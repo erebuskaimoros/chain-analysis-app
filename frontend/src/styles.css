@@ -559,6 +559,10 @@ textarea {
   position: absolute;
   left: 0;
   top: 0;
+  /* The per-node anchor has zero width; without max-content, absolutely
+     positioned labels shrink-wrap against it and stack one character per
+     line. */
+  width: max-content;
   max-width: 150px;
   text-align: center;
   text-shadow: 0 1px 8px rgba(4, 11, 22, 0.95);
@@ -585,6 +589,199 @@ textarea {
   color: #ffd08a;
 }
 
+.graph-node-anchor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.graph-surface.is-space-pan {
+  cursor: grab;
+}
+
+.graph-surface.is-panning {
+  cursor: grabbing;
+}
+
+.graph-surface.is-node-hover {
+  cursor: pointer;
+}
+
+.graph-search {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid rgba(109, 152, 222, 0.28);
+  border-radius: 8px;
+  background: rgba(9, 18, 35, 0.88);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.graph-search input {
+  width: 170px;
+  border: none;
+  background: transparent;
+  color: #f5fbff;
+  font-size: 0.78rem;
+  outline: none;
+  padding: 2px 0;
+}
+
+.graph-search input::placeholder {
+  color: #7d95b5;
+}
+
+.graph-search-count {
+  color: #b9cfe6;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.graph-search-clear {
+  border: none;
+  background: transparent;
+  color: #b9cfe6;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.graph-search-clear:hover {
+  color: #f5fbff;
+  transform: none;
+}
+
+.graph-minimap {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 10;
+  border: 1px solid rgba(109, 152, 222, 0.28);
+  border-radius: 10px;
+  background: rgba(9, 18, 35, 0.82);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.graph-hover-card {
+  position: absolute;
+  z-index: 14;
+  display: grid;
+  gap: 3px;
+  max-width: 280px;
+  padding: 8px 11px;
+  border: 1px solid rgba(162, 196, 255, 0.4);
+  border-radius: 10px;
+  background: rgba(9, 18, 35, 0.96);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+  color: #f5fbff;
+  font-size: 0.76rem;
+  pointer-events: none;
+}
+
+.graph-hover-card strong {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.graph-hover-card code {
+  font-size: 0.68rem;
+  color: #9fc3ec;
+  overflow-wrap: anywhere;
+}
+
+.graph-hover-kind {
+  color: #b9cfe6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.graph-timeline {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(109, 152, 222, 0.16);
+  border-radius: 12px;
+  background: rgba(9, 18, 35, 0.5);
+}
+
+.graph-timeline-track {
+  position: relative;
+  height: 22px;
+}
+
+.graph-timeline-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.graph-timeline-track input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #0a1524;
+  background: #6d98de;
+  cursor: ew-resize;
+}
+
+.graph-timeline-track input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #0a1524;
+  background: #6d98de;
+  cursor: ew-resize;
+}
+
+.graph-timeline-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 9px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(109, 152, 222, 0.22);
+}
+
+.graph-timeline-window {
+  position: absolute;
+  top: 9px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(120, 214, 196, 0.7);
+}
+
+.graph-timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  color: #b9cfe6;
+  font-size: 0.72rem;
+}
+
 .graph-toolbar {
   position: absolute;
   top: 12px;
@@ -593,6 +790,13 @@ textarea {
   flex-direction: column;
   gap: 4px;
   z-index: 10;
+}
+
+.graph-toolbar button.wheel-mode {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .graph-toolbar button {
@@ -772,6 +976,10 @@ textarea {
   height: 100vh;
   border-radius: 0;
   border: none;
+}
+
+.graph-card-shell.fullscreen .graph-search {
+  top: 96px;
 }
 
 .graph-context-menu {

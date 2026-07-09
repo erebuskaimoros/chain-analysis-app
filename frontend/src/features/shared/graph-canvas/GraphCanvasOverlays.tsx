@@ -1,5 +1,23 @@
 import type { ReactNode, RefObject } from "react";
-import type { ContextMenuState, GraphCanvasFilters, GraphCanvasNodeMenuActions, GraphCanvasPaneMenuActions } from "./types";
+import type { VisibleGraphNode } from "../../../lib/graph";
+import type {
+  ContextMenuState,
+  GraphCanvasFilters,
+  GraphCanvasNodeMenuActions,
+  GraphCanvasPaneMenuActions,
+  GraphHoverCardState,
+  GraphWheelMode,
+} from "./types";
+
+interface GraphSearchControls {
+  query: string;
+  setQuery: (value: string) => void;
+  matches: VisibleGraphNode[];
+  activeIndex: number;
+  next: () => void;
+  prev: () => void;
+  clear: () => void;
+}
 
 interface GraphCanvasOverlaysProps {
   filters?: GraphCanvasFilters;
@@ -10,9 +28,27 @@ interface GraphCanvasOverlaysProps {
   paneMenuActions?: GraphCanvasPaneMenuActions;
   doubleActivateLabel: string;
   showSaveState: boolean;
+  search: GraphSearchControls;
+  searchInputRef: RefObject<HTMLInputElement>;
+  wheelMode: GraphWheelMode;
+  onCycleWheelMode: () => void;
+  hoverCard: GraphHoverCardState | null;
+  minimapCanvasRef: RefObject<HTMLCanvasElement>;
   onToolbarAction: (action: "zoom-in" | "zoom-out" | "fit" | "fullscreen" | "filters" | "save") => void;
   onContextMenuAction: (action: string) => void;
 }
+
+const WHEEL_MODE_LABEL: Record<GraphWheelMode, string> = {
+  auto: "Auto",
+  zoom: "Zoom",
+  pan: "Pan",
+};
+
+const WHEEL_MODE_TITLE: Record<GraphWheelMode, string> = {
+  auto: "Scroll wheel: Auto (detect mouse vs trackpad) — click to switch",
+  zoom: "Scroll wheel: Always zoom — click to switch",
+  pan: "Scroll wheel: Always pan — click to switch",
+};
 
 export function GraphCanvasOverlays({
   filters,
@@ -23,11 +59,52 @@ export function GraphCanvasOverlays({
   paneMenuActions,
   doubleActivateLabel,
   showSaveState,
+  search,
+  searchInputRef,
+  wheelMode,
+  onCycleWheelMode,
+  hoverCard,
+  minimapCanvasRef,
   onToolbarAction,
   onContextMenuAction,
 }: GraphCanvasOverlaysProps) {
   return (
     <>
+      <div className="graph-search">
+        <input
+          ref={searchInputRef}
+          type="text"
+          placeholder="Search nodes (/)"
+          value={search.query}
+          onChange={(event) => search.setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              if (event.shiftKey) {
+                search.prev();
+              } else {
+                search.next();
+              }
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              search.clear();
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        {search.query ? (
+          <span className="graph-search-count">
+            {search.matches.length ? `${search.activeIndex + 1}/${search.matches.length}` : "0"}
+          </span>
+        ) : null}
+        {search.query ? (
+          <button type="button" className="graph-search-clear" title="Clear search" onClick={search.clear}>
+            ×
+          </button>
+        ) : null}
+      </div>
+
       <div className="graph-toolbar">
         {showSaveState ? (
           <ToolbarButton title="Save graph state" onClick={() => onToolbarAction("save")}>
@@ -70,6 +147,14 @@ export function GraphCanvasOverlays({
             <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" />
           </svg>
         </ToolbarButton>
+        <button
+          type="button"
+          className={`wheel-mode${wheelMode !== "auto" ? " is-active" : ""}`}
+          title={WHEEL_MODE_TITLE[wheelMode]}
+          onClick={onCycleWheelMode}
+        >
+          {WHEEL_MODE_LABEL[wheelMode]}
+        </button>
       </div>
 
       {filters?.isOpen ? (
@@ -78,9 +163,13 @@ export function GraphCanvasOverlays({
         </div>
       ) : null}
 
+      <canvas className="graph-minimap" ref={minimapCanvasRef} width={168} height={112} />
+
+      {hoverCard ? <GraphHoverCard hoverCard={hoverCard} /> : null}
+
       <div className="graph-help">
-        Wheel or pinch to zoom · Trackpad scroll or middle-drag to pan · Left-drag to box-select · Right-click for
-        actions · Double-click to {doubleActivateLabel.toLowerCase()}
+        Wheel or pinch to zoom · Trackpad scroll, middle-drag, or space+drag to pan · Left-drag to box-select ·
+        Right-click for actions · Double-click to {doubleActivateLabel.toLowerCase()}
       </div>
 
       {menuState ? (
@@ -128,6 +217,32 @@ export function GraphCanvasOverlays({
       ) : null}
     </>
   );
+}
+
+function GraphHoverCard({ hoverCard }: { hoverCard: GraphHoverCardState }) {
+  const { node, x, y } = hoverCard;
+  const address = node.metrics && typeof node.metrics === "object" ? String(node.metrics.address ?? "") : "";
+  const flowUSD = node.metrics && typeof node.metrics === "object" ? Number(node.metrics.usd_spot ?? 0) : 0;
+  return (
+    <div className="graph-hover-card" style={{ left: `${x + 14}px`, top: `${y + 14}px` }}>
+      <strong>{node.displayLabel || node.label || node.id}</strong>
+      <span className="graph-hover-kind">
+        {node.kind}
+        {node.chain ? ` · ${node.chain}` : ""}
+      </span>
+      {address ? <code>{address}</code> : null}
+      {node.live_holdings_label ? <span>Live: {node.live_holdings_label}</span> : null}
+      {flowUSD > 0 ? <span>Flow: {formatHoverUSD(flowUSD)}</span> : null}
+    </div>
+  );
+}
+
+function formatHoverUSD(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 function ToolbarButton({

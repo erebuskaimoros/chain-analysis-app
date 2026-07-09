@@ -142,8 +142,6 @@ export function graphStylesheet(mode: "actor" | "explorer"): CytoscapeStyleBlock
       selector: "edge",
       style: {
         label: "data(edgeLabel)",
-        "source-label": "data(edgeLabel)",
-        "target-label": "data(edgeLabel)",
         width: "data(width)",
         "line-color": "data(lineColor)",
         "target-arrow-color": "data(lineColor)",
@@ -153,6 +151,9 @@ export function graphStylesheet(mode: "actor" | "explorer"): CytoscapeStyleBlock
         opacity: 0.82,
         color: "#d9ecff",
         "font-size": 9,
+        // Auto-hide edge text once it would render smaller than ~7px, so a
+        // zoomed-out graph shows clean lines instead of unreadable clutter.
+        "min-zoomed-font-size": 7,
         "text-wrap": "wrap",
         "text-max-width": 190,
         "text-rotation": "autorotate",
@@ -162,25 +163,46 @@ export function graphStylesheet(mode: "actor" | "explorer"): CytoscapeStyleBlock
         "text-background-padding": "3px",
         "text-events": "no",
         "text-margin-y": -8,
-        "source-text-rotation": "autorotate",
-        "source-text-offset": 60,
-        "source-text-margin-y": -8,
-        "target-text-rotation": "autorotate",
-        "target-text-offset": 60,
-        "target-text-margin-y": -8,
       },
     },
     {
       selector: "edge[actionClass = 'ownership']",
       style: {
         label: "",
-        "source-label": "",
-        "target-label": "",
         width: 1.4,
         "line-style": "dashed",
         "line-color": "#7a94bb",
         "target-arrow-color": "#7a94bb",
         opacity: 0.5,
+      },
+    },
+    {
+      selector: "node.graph-dimmed, edge.graph-dimmed",
+      style: {
+        opacity: 0.16,
+        "text-opacity": 0.1,
+      },
+    },
+    {
+      selector: "edge.graph-highlighted",
+      style: {
+        opacity: 1,
+      },
+    },
+    {
+      selector: "node.graph-search-match",
+      style: {
+        "border-color": "#ffdd44",
+        "border-width": 5,
+      },
+    },
+    {
+      selector: "node.graph-search-active",
+      style: {
+        "border-color": "#ff9a3d",
+        "border-width": 6,
+        "overlay-color": "rgba(255, 154, 61, 0.25)",
+        "overlay-opacity": 0.35,
       },
     },
   ];

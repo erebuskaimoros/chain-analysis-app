@@ -1,5 +1,5 @@
 import { formatShortDateTime } from "../../lib/format";
-import type { Actor, GraphRun } from "../../lib/types";
+import type { Actor, GraphRun, GraphStateSummary } from "../../lib/types";
 
 export interface GraphFormState {
   start_time: string;
@@ -29,6 +29,15 @@ interface ActorGraphSidebarProps {
   isDeletingRun: boolean;
   hasSelectedRun: boolean;
   isLoadingRuns: boolean;
+  savedStates: GraphStateSummary[];
+  selectedSavedStateID: string;
+  onSelectedSavedStateIDChange: (value: string) => void;
+  onLoadSavedState: () => void;
+  onDeleteSavedState: () => void;
+  onExportSavedState: () => void;
+  isDeletingSavedState: boolean;
+  hasSelectedSavedState: boolean;
+  isLoadingSavedStates: boolean;
 }
 
 export function ActorGraphSidebar({
@@ -52,6 +61,15 @@ export function ActorGraphSidebar({
   isDeletingRun,
   hasSelectedRun,
   isLoadingRuns,
+  savedStates,
+  selectedSavedStateID,
+  onSelectedSavedStateIDChange,
+  onLoadSavedState,
+  onDeleteSavedState,
+  onExportSavedState,
+  isDeletingSavedState,
+  hasSelectedSavedState,
+  isLoadingSavedStates,
 }: ActorGraphSidebarProps) {
   return (
     <div className="page-stack">
@@ -169,6 +187,54 @@ export function ActorGraphSidebar({
               Delete
             </button>
           </div>
+        </div>
+      </section>
+
+      <section className="panel page-panel">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">States</span>
+            <h2>Saved Graph States</h2>
+          </div>
+          <span className="status-pill ok">{savedStates.length}</span>
+        </div>
+        {isLoadingSavedStates ? <div className="empty-state">Loading saved states…</div> : null}
+        <div className="stack">
+          <select value={selectedSavedStateID} onChange={(event) => onSelectedSavedStateIDChange(event.target.value)}>
+            <option value="">Select a saved state</option>
+            {savedStates.map((state) => (
+              <option key={state.id} value={state.id}>
+                {state.name} · {state.node_count}N/{state.edge_count}E · {formatShortDateTime(state.updated_at)}
+              </option>
+            ))}
+          </select>
+          <div className="button-row">
+            <button
+              type="button"
+              className="button secondary"
+              disabled={!hasSelectedSavedState}
+              onClick={onLoadSavedState}
+            >
+              Load
+            </button>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={!hasSelectedSavedState}
+              onClick={onExportSavedState}
+            >
+              Export
+            </button>
+            <button
+              type="button"
+              className="button secondary danger"
+              disabled={!hasSelectedSavedState || isDeletingSavedState}
+              onClick={onDeleteSavedState}
+            >
+              Delete
+            </button>
+          </div>
+          <p className="hint">The save button on the graph toolbar stores the current layout here.</p>
         </div>
       </section>
     </div>

@@ -4,6 +4,7 @@ import { listAnnotations } from "../../lib/api";
 import { formatShortDateTime, formatUSD, shortHash } from "../../lib/format";
 import { GraphFilterPopover } from "../shared/GraphFilterPopover";
 import { GraphStateLoaderButton } from "../shared/GraphStateLoaderButton";
+import { GraphTimeScrubber } from "../shared/GraphTimeScrubber";
 import { SelectionInspector } from "../shared/SelectionInspector";
 import { ActionLookupPanel } from "../shared/ActionLookupPanel";
 import { SupportingActionsTable } from "../shared/SupportingActionsTable";
@@ -336,6 +337,14 @@ export function ExplorerPage() {
                 )}
               </div>
             )}
+
+            {!isGraphFullscreen ? (
+              <GraphTimeScrubber
+                filterState={controller.graphFilters}
+                onStartTimeChange={(value) => controller.filterActions.updateDate("startTime", value)}
+                onEndTimeChange={(value) => controller.filterActions.updateDate("endTime", value)}
+              />
+            ) : null}
 
             {controller.currentGraph.has_more ? (
               <div className="button-row">

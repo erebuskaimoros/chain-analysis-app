@@ -31,6 +31,7 @@ type App struct {
 	protocolDirectory cachedMetadataResult[protocolDirectory]
 	priceBook         cachedMetadataResult[priceBook]
 	trackerEndpointRR atomic.Uint64
+	buildProgress     *progressRegistry
 }
 
 func New(cfg Config) (*App, error) {
@@ -73,6 +74,7 @@ func New(cfg Config) (*App, error) {
 		trackerThrottle:  newTrackerThrottleStore(),
 		trackerFeatures:  newTrackerFeatureStore(),
 		trackerBlockNums: newTrackerBlockNumberStore(),
+		buildProgress:    newProgressRegistry(),
 	}
 	if a.httpClient.Timeout < 30*time.Second {
 		a.httpClient.Timeout = 30 * time.Second

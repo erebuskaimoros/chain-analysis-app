@@ -49,11 +49,14 @@ The root UI is now a React/TypeScript shell served by the Go app. The full legac
 - `POST /api/v1/analysis/actor-graph`
 - `POST /api/v1/analysis/actor-graph/expand`
 - `POST /api/v1/analysis/actor-graph/live-holdings`
+- `GET /api/v1/analysis/actor-graph/progress/{token}`
 - `POST /api/v1/analysis/address-explorer`
 - `GET /api/v1/runs/actor-graph`
 - `DELETE /api/v1/runs/actor-graph/{id}`
 - `GET /api/v1/runs/address-explorer`
 - `DELETE /api/v1/runs/address-explorer/{id}`
+- `GET|POST /api/v1/graph-states`
+- `GET|DELETE /api/v1/graph-states/{id}`
 
 ## Run
 

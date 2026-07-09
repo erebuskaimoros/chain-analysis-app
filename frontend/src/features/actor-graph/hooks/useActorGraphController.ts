@@ -2,10 +2,15 @@ import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   buildActorGraph,
+  createGraphState,
   deleteActorGraphRun,
+  deleteGraphState,
   expandActorGraph,
+  getActorGraphBuildProgress,
+  getGraphState,
   listActorGraphRuns,
   listActors,
+  listGraphStates,
   lookupAction,
   refreshLiveHoldings,
 } from "../../../lib/api";
@@ -34,6 +39,7 @@ import {
 import type {
   ActionLookupResponse,
   Actor,
+  ActorGraphBuildProgress,
   ActorGraphRequest,
   ActorGraphResponse,
 } from "../../../lib/types";
@@ -178,6 +184,21 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+const BUILD_PROGRESS_POLL_MS = 700;
+
+function newProgressToken() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `build-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+}
+
+function buildProgressText(progress: ActorGraphBuildProgress) {
+  const fraction = progress.total > 0 ? ` ${Math.min(progress.done, progress.total)}/${progress.total}` : "";
+  const detail = progress.message ? ` (${progress.message})` : "";
+  return `Building graph — ${progress.stage}${fraction}${detail}…`;
+}
+
 export function useActorGraphController() {
   const queryClient = useQueryClient();
   const actorsQuery = useQuery({
@@ -187,6 +208,10 @@ export function useActorGraphController() {
   const runsQuery = useQuery({
     queryKey: ["actor-graph-runs"],
     queryFn: listActorGraphRuns,
+  });
+  const savedStatesQuery = useQuery({
+    queryKey: ["graph-states", "actor-graph"],
+    queryFn: () => listGraphStates("actor-graph"),
   });
   const { metadata } = useGraphMetadata();
   const {
@@ -208,6 +233,7 @@ export function useActorGraphController() {
   const [graph, setGraph] = useState<ActorGraphResponse | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [selectedRunID, setSelectedRunID] = useState("");
+  const [selectedSavedStateID, setSelectedSavedStateID] = useState("");
   const [statusText, setStatusText] = useState("Select actors and build a graph.");
   const [lookupResult, setLookupResult] = useState<ActionLookupResponse | null>(null);
   const [lookupError, setLookupError] = useState("");
@@ -350,6 +376,14 @@ export function useActorGraphController() {
     },
   });
 
+  const deleteSavedStateMutation = useMutation({
+    mutationFn: deleteGraphState,
+    onSuccess: async () => {
+      setSelectedSavedStateID("");
+      await queryClient.invalidateQueries({ queryKey: ["graph-states", "actor-graph"] });
+    },
+  });
+
   const lookupMutation = useMutation({
     mutationFn: lookupAction,
     onSuccess: (response) => {
@@ -364,6 +398,11 @@ export function useActorGraphController() {
   const selectedRun = useMemo(
     () => runsQuery.data?.find((run) => String(run.id) === selectedRunID) ?? null,
     [runsQuery.data, selectedRunID]
+  );
+
+  const selectedSavedState = useMemo(
+    () => savedStatesQuery.data?.find((state) => String(state.id) === selectedSavedStateID) ?? null,
+    [savedStatesQuery.data, selectedSavedStateID]
   );
 
   const visibleGraph = useMemo(
@@ -405,7 +444,30 @@ export function useActorGraphController() {
   }
 
   async function onBuild() {
-    await buildMutation.mutateAsync(requestFromState(form, selectedActorIDs));
+    await buildWithProgress(requestFromState(form, selectedActorIDs));
+  }
+
+  // Polls the server-side progress entry while the build request is in
+  // flight so long uncached scans narrate what they're doing.
+  async function buildWithProgress(request: ActorGraphRequest) {
+    const token = newProgressToken();
+    setStatusText("Building graph…");
+    const timer = window.setInterval(() => {
+      void getActorGraphBuildProgress(token)
+        .then((progress) => {
+          if (!progress.finished) {
+            setStatusText(buildProgressText(progress));
+          }
+        })
+        .catch(() => {
+          // Progress entry may not exist yet (or server restarted); keep quiet.
+        });
+    }, BUILD_PROGRESS_POLL_MS);
+    try {
+      await buildMutation.mutateAsync({ ...request, progress_token: token });
+    } finally {
+      window.clearInterval(timer);
+    }
   }
 
   async function onLoadRun() {
@@ -413,7 +475,7 @@ export function useActorGraphController() {
       return;
     }
     setStatusText("Rebuilding saved run...");
-    await buildMutation.mutateAsync(selectedRun.request);
+    await buildWithProgress(selectedRun.request);
   }
 
   async function onDeleteRun() {
@@ -511,15 +573,14 @@ export function useActorGraphController() {
     return false;
   }
 
-  function onSaveGraphState(canvasState: SavedGraphCanvasState) {
+  // The state payload persisted server-side and exported to files. Derived
+  // data (visible graph, filtered actions) is intentionally omitted — it is
+  // recomputed on load.
+  function buildGraphStatePayload(canvasState: SavedGraphCanvasState | null) {
     if (!graph) {
-      return;
+      return null;
     }
-    const filename = buildGraphStateFilename(
-      "actor-graph",
-      actorNames(graph.actors) || selectedActorIDs.join("-")
-    );
-    downloadJSON(filename, {
+    return {
       schema_version: 1,
       kind: "actor-graph",
       exported_at: new Date().toISOString(),
@@ -536,52 +597,115 @@ export function useActorGraphController() {
         canvas: canvasState,
       },
       graph,
-      visible_graph: visibleGraph,
-      filtered_actions: filteredActions,
-    });
-    setStatusText(`Saved graph state to ${filename}.`);
+    };
+  }
+
+  async function onSaveGraphState(canvasState: SavedGraphCanvasState) {
+    const payload = buildGraphStatePayload(canvasState);
+    if (!payload || !graph) {
+      return;
+    }
+    const defaultName = `${actorNames(graph.actors) || selectedActorIDs.join("-") || "graph"} — ${formatShortDateTime(
+      new Date().toISOString()
+    )}`;
+    const name = window.prompt("Name this graph state:", defaultName);
+    if (name === null) {
+      return;
+    }
+    try {
+      const summary = await createGraphState({
+        kind: "actor-graph",
+        name: name.trim() || defaultName,
+        state: payload,
+        node_count: graph.nodes.length,
+        edge_count: graph.edges.length,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["graph-states", "actor-graph"] });
+      setSelectedSavedStateID(String(summary.id));
+      setStatusText(`Saved graph state "${summary.name}".`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? `Could not save graph state: ${error.message}` : "Could not save graph state.");
+    }
+  }
+
+  function applyGraphStatePayload(parsed: unknown, sourceLabel: string) {
+    if (!isRecord(parsed)) {
+      setStatusText(`Could not load ${sourceLabel}: invalid graph state payload.`);
+      return false;
+    }
+    if (parsed.kind !== "actor-graph") {
+      const foundKind = typeof parsed.kind === "string" ? parsed.kind : "unknown";
+      setStatusText(`Could not load ${sourceLabel}: expected an actor-graph state, found ${foundKind}.`);
+      return false;
+    }
+    const nextGraph = parsed.graph;
+    if (!isRecord(nextGraph)) {
+      setStatusText(`Could not load ${sourceLabel}: saved graph data is missing.`);
+      return false;
+    }
+
+    const graphState = nextGraph as unknown as ActorGraphResponse;
+    const savedRequest = normalizeActorGraphRequest(parsed.request, graphState);
+    const uiState = isRecord(parsed.ui_state) ? parsed.ui_state : {};
+    const nextSelectedActorIDs = readNumberArray(uiState.selected_actor_ids);
+
+    setForm(normalizeActorFormState(uiState.form, stateFromRequest(savedRequest)));
+    setSelectedActorIDs(nextSelectedActorIDs.length ? nextSelectedActorIDs : [...savedRequest.actor_ids]);
+    setGraph(graphState);
+    setSelection((uiState.selection as GraphSelection | null) ?? null);
+    setLookupResult(null);
+    setLookupError("");
+    setExpandedActorIDs(readNumberArray(uiState.expanded_actor_ids));
+    setExpandedExternalChains(readStringArray(uiState.expanded_external_chains));
+    setExpandedHopSeeds(readStringArray(uiState.expanded_hop_seeds));
+    setSavedCanvasState(readSavedGraphCanvasState(uiState.canvas));
+    setSelectedRunID("");
+    setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
+    setGraphResetKey((value) => value + 1);
+    setStatusText(`Loaded graph state from ${sourceLabel}.`);
+    void refreshGraphLiveHoldings(graphState.nodes, "auto");
+    return true;
   }
 
   async function onLoadGraphState(file: File) {
     try {
       const parsed = await readJSONFile(file);
-      if (!isRecord(parsed)) {
-        setStatusText(`Could not load ${file.name}: invalid graph state file.`);
-        return;
-      }
-      if (parsed.kind !== "actor-graph") {
-        const foundKind = typeof parsed.kind === "string" ? parsed.kind : "unknown";
-        setStatusText(`Could not load ${file.name}: expected an actor-graph state, found ${foundKind}.`);
-        return;
-      }
-      const nextGraph = parsed.graph;
-      if (!isRecord(nextGraph)) {
-        setStatusText(`Could not load ${file.name}: saved graph data is missing.`);
-        return;
-      }
-
-      const graphState = nextGraph as unknown as ActorGraphResponse;
-      const savedRequest = normalizeActorGraphRequest(parsed.request, graphState);
-      const uiState = isRecord(parsed.ui_state) ? parsed.ui_state : {};
-      const nextSelectedActorIDs = readNumberArray(uiState.selected_actor_ids);
-
-      setForm(normalizeActorFormState(uiState.form, stateFromRequest(savedRequest)));
-      setSelectedActorIDs(nextSelectedActorIDs.length ? nextSelectedActorIDs : [...savedRequest.actor_ids]);
-      setGraph(graphState);
-      setSelection((uiState.selection as GraphSelection | null) ?? null);
-      setLookupResult(null);
-      setLookupError("");
-      setExpandedActorIDs(readNumberArray(uiState.expanded_actor_ids));
-      setExpandedExternalChains(readStringArray(uiState.expanded_external_chains));
-      setExpandedHopSeeds(readStringArray(uiState.expanded_hop_seeds));
-      setSavedCanvasState(readSavedGraphCanvasState(uiState.canvas));
-      setSelectedRunID("");
-      setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
-      setGraphResetKey((value) => value + 1);
-      setStatusText(`Loaded graph state from ${file.name}.`);
-      void refreshGraphLiveHoldings(graphState.nodes, "auto");
+      applyGraphStatePayload(parsed, file.name);
     } catch (error) {
       setStatusText(error instanceof Error ? `Could not load ${file.name}: ${error.message}` : `Could not load ${file.name}.`);
+    }
+  }
+
+  async function onLoadSavedState() {
+    if (!selectedSavedState) {
+      return;
+    }
+    try {
+      const detail = await getGraphState(selectedSavedState.id);
+      applyGraphStatePayload(detail.state, `"${detail.name}"`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? `Could not load saved state: ${error.message}` : "Could not load saved state.");
+    }
+  }
+
+  async function onDeleteSavedState() {
+    if (!selectedSavedState) {
+      return;
+    }
+    await deleteSavedStateMutation.mutateAsync(selectedSavedState.id);
+  }
+
+  async function onExportSavedState() {
+    if (!selectedSavedState) {
+      return;
+    }
+    try {
+      const detail = await getGraphState(selectedSavedState.id);
+      const filename = buildGraphStateFilename("actor-graph", detail.name);
+      downloadJSON(filename, detail.state);
+      setStatusText(`Exported "${detail.name}" to ${filename}.`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? `Could not export saved state: ${error.message}` : "Could not export saved state.");
     }
   }
 
@@ -615,6 +739,15 @@ export function useActorGraphController() {
     isDeletingRun: deleteRunMutation.isPending,
     hasSelectedRun: Boolean(selectedRun),
     isLoadingRuns: runsQuery.isLoading,
+    savedStates: savedStatesQuery.data ?? [],
+    selectedSavedStateID,
+    setSelectedSavedStateID,
+    onLoadSavedState,
+    onDeleteSavedState,
+    onExportSavedState,
+    isDeletingSavedState: deleteSavedStateMutation.isPending,
+    hasSelectedSavedState: Boolean(selectedSavedState),
+    isLoadingSavedStates: savedStatesQuery.isLoading,
     graph,
     visibleGraph,
     filteredActions,

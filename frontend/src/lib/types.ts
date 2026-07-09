@@ -176,6 +176,17 @@ export interface ActorGraphRequest {
   min_usd: number;
   collapse_external: boolean;
   display_mode: string;
+  progress_token?: string;
+}
+
+export interface ActorGraphBuildProgress {
+  token: string;
+  stage: string;
+  done: number;
+  total: number;
+  message?: string;
+  finished: boolean;
+  updated_at: string;
 }
 
 export interface ActorGraphExpandRequest {
@@ -291,6 +302,24 @@ export interface AddressExplorerRun {
 
 export interface AddressExplorerRunsResponse {
   runs: AddressExplorerRun[];
+}
+
+export interface GraphStateSummary {
+  id: number;
+  kind: string;
+  name: string;
+  node_count: number;
+  edge_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GraphStateDetail extends GraphStateSummary {
+  state: unknown;
+}
+
+export interface GraphStateListResponse {
+  states: GraphStateSummary[] | null;
 }
 
 export interface ActionLookupAction {

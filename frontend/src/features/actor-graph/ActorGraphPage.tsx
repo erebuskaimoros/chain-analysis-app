@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { formatDateTime, formatUSD } from "../../lib/format";
 import { GraphFilterPopover } from "../shared/GraphFilterPopover";
+import { GraphTimeScrubber } from "../shared/GraphTimeScrubber";
 import { GraphStateLoaderButton } from "../shared/GraphStateLoaderButton";
 import { SelectionInspector } from "../shared/SelectionInspector";
 import { ActionLookupPanel } from "../shared/ActionLookupPanel";
@@ -45,6 +46,21 @@ export function ActorGraphPage() {
         isDeletingRun={controller.isDeletingRun}
         hasSelectedRun={controller.hasSelectedRun}
         isLoadingRuns={controller.isLoadingRuns}
+        savedStates={controller.savedStates}
+        selectedSavedStateID={controller.selectedSavedStateID}
+        onSelectedSavedStateIDChange={controller.setSelectedSavedStateID}
+        onLoadSavedState={() => {
+          void controller.onLoadSavedState();
+        }}
+        onDeleteSavedState={() => {
+          void controller.onDeleteSavedState();
+        }}
+        onExportSavedState={() => {
+          void controller.onExportSavedState();
+        }}
+        isDeletingSavedState={controller.isDeletingSavedState}
+        hasSelectedSavedState={controller.hasSelectedSavedState}
+        isLoadingSavedStates={controller.isLoadingSavedStates}
       />
 
       <div className="page-stack">
@@ -125,6 +141,10 @@ export function ActorGraphPage() {
                     selection={controller.selection}
                     onSelectionChange={controller.setSelection}
                     onNodePrimaryAction={controller.onNodePrimaryAction}
+                    nodeHasPrimaryAction={(node) =>
+                      (node.kind === "actor" && node.actor_ids.length === 1) ||
+                      (node.kind === "external_cluster" && Boolean(node.chain))
+                    }
                     onNodeDoubleActivate={(node) => {
                       void controller.onExpandNode(node);
                     }}
@@ -198,6 +218,14 @@ export function ActorGraphPage() {
                   )}
                 </div>
               )}
+
+              {!isGraphFullscreen ? (
+                <GraphTimeScrubber
+                  filterState={controller.graphFilters}
+                  onStartTimeChange={(value) => controller.filterActions.updateDate("startTime", value)}
+                  onEndTimeChange={(value) => controller.filterActions.updateDate("endTime", value)}
+                />
+              ) : null}
             </>
           ) : (
             <div className="empty-state">Build a graph to inspect relationships and supporting actions.</div>

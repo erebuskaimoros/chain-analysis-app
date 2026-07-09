@@ -1,8 +1,14 @@
-import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type cytoscape from "cytoscape";
 import type { SavedGraphCanvasState } from "../../../lib/graphState";
 import { clusterGraphNodes, graphNodeAtClientPoint, clamp, selectedGraphNodes } from "./utils";
-import type { ContextMenuState, GraphCanvasFilters, GraphCanvasNodeMenuActions, GraphCanvasPaneMenuActions } from "./types";
+import type {
+  ContextMenuState,
+  GraphCanvasFilters,
+  GraphCanvasNodeMenuActions,
+  GraphCanvasPaneMenuActions,
+  GraphWheelMode,
+} from "./types";
 import type { GraphSelection, VisibleGraphNode } from "../../../lib/graph";
 
 const TRACKPAD_PAN_GESTURE_LOCK_MS = 400;
@@ -27,6 +33,7 @@ interface UseGraphCanvasInteractionsOptions {
   setMenuState: Dispatch<SetStateAction<ContextMenuState>>;
   isFullscreen: boolean;
   setIsFullscreen: Dispatch<SetStateAction<boolean>>;
+  wheelMode: GraphWheelMode;
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
   onSaveState?: (canvasState: SavedGraphCanvasState) => void;
   scheduleLabelRender: () => void;
@@ -50,10 +57,13 @@ export function useGraphCanvasInteractions({
   setMenuState,
   isFullscreen,
   setIsFullscreen,
+  wheelMode,
   onNodeDoubleActivate,
   onSaveState,
   scheduleLabelRender,
 }: UseGraphCanvasInteractionsOptions) {
+  const spaceHeldRef = useRef(false);
+
   useEffect(() => {
     const cy = cyRef.current;
     const surface = surfaceRef.current;
@@ -65,7 +75,7 @@ export function useGraphCanvasInteractions({
     const surfaceElement = surface;
     const selectionBox = box;
 
-    let middlePanning = false;
+    let dragPanning = false;
     let panStart = { x: 0, y: 0 };
     let panOrigin = { x: 0, y: 0 };
     let boxSelecting = false;
@@ -74,6 +84,7 @@ export function useGraphCanvasInteractions({
     let boxStart = { x: 0, y: 0 };
     let boxCurrent = { x: 0, y: 0 };
     let lastTrackpadPanAt = 0;
+    let windowListenersAttached = false;
 
     function renderedSelectionRect() {
       const rect = surfaceElement.getBoundingClientRect();
@@ -153,15 +164,55 @@ export function useGraphCanvasInteractions({
       return graphNodeAtClientPoint(cyInstance, surfaceElement, clientX, clientY);
     }
 
+    function setPanningCursor(active: boolean) {
+      surfaceElement.classList.toggle("is-panning", active);
+    }
+
+    // Drag gestures track the pointer at the window level (capture phase) so
+    // they survive the pointer leaving the canvas, and so our mouseup runs
+    // before cytoscape's own window-level handlers emit taps.
+    function attachWindowDragListeners() {
+      if (windowListenersAttached) {
+        return;
+      }
+      windowListenersAttached = true;
+      window.addEventListener("mousemove", onWindowMouseMove, true);
+      window.addEventListener("mouseup", onWindowMouseUp, true);
+    }
+
+    function detachWindowDragListeners() {
+      if (!windowListenersAttached) {
+        return;
+      }
+      windowListenersAttached = false;
+      window.removeEventListener("mousemove", onWindowMouseMove, true);
+      window.removeEventListener("mouseup", onWindowMouseUp, true);
+    }
+
+    function startDragPan(event: MouseEvent) {
+      dragPanning = true;
+      panStart = { x: event.clientX, y: event.clientY };
+      panOrigin = { ...cyInstance.pan() };
+      setPanningCursor(true);
+      attachWindowDragListeners();
+      event.preventDefault();
+    }
+
     function onMouseDown(event: MouseEvent) {
+      // Overlay widgets (search, toolbar, minimap, popovers) live inside the
+      // surface; their clicks must focus/act normally, not start gestures.
+      if (isGraphOverlayTarget(event.target)) {
+        return;
+      }
       if (event.button === 1) {
-        middlePanning = true;
-        panStart = { x: event.clientX, y: event.clientY };
-        panOrigin = { ...cyInstance.pan() };
-        event.preventDefault();
+        startDragPan(event);
         return;
       }
       if (event.button !== 0) {
+        return;
+      }
+      if (spaceHeldRef.current) {
+        startDragPan(event);
         return;
       }
       if (hitNodeAtClientPoint(event.clientX, event.clientY)) {
@@ -173,11 +224,12 @@ export function useGraphCanvasInteractions({
       boxStart = { x: event.clientX, y: event.clientY };
       boxCurrent = { ...boxStart };
       selectionBox.style.display = "none";
+      attachWindowDragListeners();
       event.preventDefault();
     }
 
-    function onMouseMove(event: MouseEvent) {
-      if (middlePanning) {
+    function onWindowMouseMove(event: MouseEvent) {
+      if (dragPanning) {
         cyInstance.pan({
           x: panOrigin.x + (event.clientX - panStart.x),
           y: panOrigin.y + (event.clientY - panStart.y),
@@ -200,26 +252,25 @@ export function useGraphCanvasInteractions({
       event.preventDefault();
     }
 
-    function onMouseUp(event: MouseEvent) {
-      if (event.button === 1) {
-        middlePanning = false;
-      }
-      if (event.button !== 0 || !boxSelecting) {
-        return;
-      }
-      if (boxDragged) {
-        applyBoxSelection();
-        syncSelectionFromSelectedNodes();
+    function onWindowMouseUp(event: MouseEvent) {
+      if (dragPanning && (event.button === 1 || event.button === 0)) {
+        dragPanning = false;
+        setPanningCursor(false);
         suppressTapUntilRef.current = Date.now() + 160;
-        event.preventDefault();
-        event.stopPropagation();
       }
-      stopBoxSelection();
-    }
-
-    function onMouseLeave() {
-      middlePanning = false;
-      stopBoxSelection();
+      if (event.button === 0 && boxSelecting) {
+        if (boxDragged) {
+          applyBoxSelection();
+          syncSelectionFromSelectedNodes();
+          suppressTapUntilRef.current = Date.now() + 160;
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        stopBoxSelection();
+      }
+      if (!dragPanning && !boxSelecting) {
+        detachWindowDragListeners();
+      }
     }
 
     function onAuxClick(event: MouseEvent) {
@@ -228,19 +279,17 @@ export function useGraphCanvasInteractions({
       }
     }
 
-    function onWheel(event: WheelEvent) {
-      if (shouldPanFromWheel(event, lastTrackpadPanAt)) {
-        lastTrackpadPanAt = Date.now();
-        const currentPan = cyInstance.pan();
-        const panScale = wheelPanScale(event, surfaceElement);
-        cyInstance.pan({
-          x: currentPan.x - event.deltaX * panScale,
-          y: currentPan.y - event.deltaY * panScale,
-        });
-        event.preventDefault();
-        return;
-      }
+    function applyWheelPan(event: WheelEvent) {
+      const currentPan = cyInstance.pan();
+      const panScale = wheelPanScale(event, surfaceElement);
+      cyInstance.pan({
+        x: currentPan.x - event.deltaX * panScale,
+        y: currentPan.y - event.deltaY * panScale,
+      });
+      event.preventDefault();
+    }
 
+    function applyWheelZoom(event: WheelEvent) {
       const rect = surfaceElement.getBoundingClientRect();
       const renderedPosition = {
         x: event.clientX - rect.left,
@@ -249,13 +298,31 @@ export function useGraphCanvasInteractions({
       const currentZoom = Number(cyInstance.zoom() || 1);
       const zoomSensitivity = event.ctrlKey ? PINCH_ZOOM_SENSITIVITY : WHEEL_ZOOM_SENSITIVITY;
       const zoomFactor = Math.exp(-event.deltaY * zoomSensitivity);
-      const minZoom = typeof cyInstance.minZoom === "function" ? Number(cyInstance.minZoom() || 0.05) : 0.05;
-      const maxZoom = typeof cyInstance.maxZoom === "function" ? Number(cyInstance.maxZoom() || 10) : 10;
+      const minZoom = typeof cyInstance.minZoom === "function" ? Number(cyInstance.minZoom()) || 0.05 : 0.05;
+      const maxZoom = typeof cyInstance.maxZoom === "function" ? Number(cyInstance.maxZoom()) || 10 : 10;
       cyInstance.zoom({
         level: clamp(currentZoom * zoomFactor, minZoom, maxZoom),
         renderedPosition,
       });
       event.preventDefault();
+    }
+
+    function onWheel(event: WheelEvent) {
+      // Let overlay widgets (filter popover lists, search) scroll natively.
+      if (isGraphOverlayTarget(event.target)) {
+        return;
+      }
+      // Pinch gestures (ctrl+wheel) always zoom, regardless of preference.
+      if (!event.ctrlKey && wheelMode === "pan") {
+        applyWheelPan(event);
+        return;
+      }
+      if (!event.ctrlKey && wheelMode === "auto" && shouldPanFromWheel(event, lastTrackpadPanAt)) {
+        lastTrackpadPanAt = Date.now();
+        applyWheelPan(event);
+        return;
+      }
+      applyWheelZoom(event);
     }
 
     function onNativeContextMenu(event: MouseEvent) {
@@ -284,23 +351,19 @@ export function useGraphCanvasInteractions({
     }
 
     surfaceElement.addEventListener("mousedown", onMouseDown);
-    surfaceElement.addEventListener("mousemove", onMouseMove);
-    surfaceElement.addEventListener("mouseup", onMouseUp);
-    surfaceElement.addEventListener("mouseleave", onMouseLeave);
     surfaceElement.addEventListener("auxclick", onAuxClick);
     surfaceElement.addEventListener("wheel", onWheel, { passive: false });
     surfaceElement.addEventListener("contextmenu", onNativeContextMenu);
 
     return () => {
       surfaceElement.removeEventListener("mousedown", onMouseDown);
-      surfaceElement.removeEventListener("mousemove", onMouseMove);
-      surfaceElement.removeEventListener("mouseup", onMouseUp);
-      surfaceElement.removeEventListener("mouseleave", onMouseLeave);
       surfaceElement.removeEventListener("auxclick", onAuxClick);
       surfaceElement.removeEventListener("wheel", onWheel);
       surfaceElement.removeEventListener("contextmenu", onNativeContextMenu);
+      detachWindowDragListeners();
+      setPanningCursor(false);
     };
-  }, [cyRef, onSelectionChange, scheduleLabelRender, selection, selectionBoxRef, setMenuState, surfaceRef, suppressTapUntilRef]);
+  }, [cyRef, onSelectionChange, scheduleLabelRender, selection, selectionBoxRef, setMenuState, surfaceRef, suppressTapUntilRef, wheelMode]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -318,6 +381,16 @@ export function useGraphCanvasInteractions({
         return;
       }
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        return;
+      }
+      if (event.key === " " || event.code === "Space") {
+        if (!spaceHeldRef.current) {
+          spaceHeldRef.current = true;
+          surfaceElement.classList.add("is-space-pan");
+        }
+        if (tag !== "BUTTON") {
+          event.preventDefault();
+        }
         return;
       }
       const cy = cyRef.current;
@@ -350,6 +423,17 @@ export function useGraphCanvasInteractions({
       }
     }
 
+    function releaseSpacePan() {
+      spaceHeldRef.current = false;
+      surfaceElement.classList.remove("is-space-pan");
+    }
+
+    function onKeyUp(event: KeyboardEvent) {
+      if (event.key === " " || event.code === "Space") {
+        releaseSpacePan();
+      }
+    }
+
     function onDocumentMouseDown(event: MouseEvent) {
       const target = event.target instanceof Node ? event.target : null;
       const targetElement = event.target instanceof Element ? event.target : null;
@@ -368,16 +452,23 @@ export function useGraphCanvasInteractions({
     }
 
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", releaseSpacePan);
     document.addEventListener("mousedown", onDocumentMouseDown);
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", releaseSpacePan);
       document.removeEventListener("mousedown", onDocumentMouseDown);
+      releaseSpacePan();
     };
   }, [cyRef, filterPopoverRef, filters, menuRef, scheduleLabelRender, setIsFullscreen, setMenuState, surfaceRef, viewportRef]);
 
   useEffect(() => {
     const shell = rootRef.current?.closest(".graph-card-shell");
+    const surface = surfaceRef.current;
+    const previousSize = surface ? { width: surface.clientWidth, height: surface.clientHeight } : null;
     if (shell instanceof HTMLElement) {
       shell.classList.toggle("fullscreen", isFullscreen);
     }
@@ -394,9 +485,15 @@ export function useGraphCanvasInteractions({
 
     const frame = window.requestAnimationFrame(() => {
       cy.resize();
-      if (!isFullscreen) {
-        cy.fit(cy.elements(), 40);
-        viewportRef.current = null;
+      // Keep whatever was centered before the resize centered after it, instead
+      // of refitting and losing the user's place.
+      if (surface && previousSize && (previousSize.width || previousSize.height)) {
+        const dx = (surface.clientWidth - previousSize.width) / 2;
+        const dy = (surface.clientHeight - previousSize.height) / 2;
+        if (dx || dy) {
+          const pan = cy.pan();
+          cy.pan({ x: pan.x + dx, y: pan.y + dy });
+        }
       }
       scheduleLabelRender();
     });
@@ -408,7 +505,7 @@ export function useGraphCanvasInteractions({
       }
       document.body.style.overflow = "";
     };
-  }, [cyRef, isFullscreen, rootRef, scheduleLabelRender, viewportRef]);
+  }, [cyRef, isFullscreen, rootRef, scheduleLabelRender, surfaceRef, viewportRef]);
 
   useEffect(() => {
     const menu = menuState;
@@ -560,6 +657,17 @@ export function useGraphCanvasInteractions({
     handleToolbarAction,
     handleContextMenuAction,
   };
+}
+
+function isGraphOverlayTarget(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        ".graph-search, .graph-toolbar, .graph-minimap, .graph-filter-popover, .graph-context-menu, .graph-hover-card"
+      )
+    )
+  );
 }
 
 function shouldPanFromWheel(event: WheelEvent, lastTrackpadPanAt: number) {

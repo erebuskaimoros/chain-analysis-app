@@ -78,6 +78,9 @@ type ActorTrackerRequest struct {
 	MinUSD           float64  `json:"min_usd"`
 	CollapseExternal bool     `json:"collapse_external"`
 	DisplayMode      string   `json:"display_mode"`
+	// ProgressToken, when set by the client, keys an in-memory progress entry
+	// that can be polled at /api/v1/analysis/actor-graph/progress/{token}.
+	ProgressToken string `json:"progress_token,omitempty"`
 }
 
 type ActorTrackerExpandRequest struct {

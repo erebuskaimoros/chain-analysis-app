@@ -1,4 +1,4 @@
-import type { GraphMetadata, VisibleGraphNode } from "../lib/graph";
+import type { GraphMetadata, VisibleGraphEdge, VisibleGraphNode } from "../lib/graph";
 import type {
   Actor,
   ActorGraphResponse,
@@ -317,6 +317,41 @@ export function makeMetadata(overrides: Partial<GraphMetadata> = {}): GraphMetad
   return {
     annotations: [...(overrides.annotations ?? [])],
     blocklist: [...(overrides.blocklist ?? [])],
+  };
+}
+
+export function makeVisibleEdge(overrides: Partial<VisibleGraphEdge> = {}): VisibleGraphEdge {
+  const source = overrides.source ?? overrides.from ?? "node-1";
+  const target = overrides.target ?? overrides.to ?? "node-2";
+  const base = makeEdge({
+    id: overrides.id ?? `${source}->${target}`,
+    from: source,
+    to: target,
+  });
+
+  return {
+    ...base,
+    ...overrides,
+    id: overrides.id ?? base.id,
+    from: source,
+    to: target,
+    source,
+    target,
+    width: overrides.width ?? 2.2,
+    lineColor: overrides.lineColor ?? "#cfdcff",
+    edgeLabel: overrides.edgeLabel ?? "Transfer",
+    action_classes: overrides.action_classes ? [...overrides.action_classes] : ["transfers"],
+    action_keys: overrides.action_keys ? [...overrides.action_keys] : ["transfer"],
+    action_labels: overrides.action_labels ? [...overrides.action_labels] : ["Transfer"],
+    action_domains: overrides.action_domains ? [...overrides.action_domains] : ["transfer"],
+    action_buckets: overrides.action_buckets ? [...overrides.action_buckets] : ["transfer"],
+    validator_addresses: overrides.validator_addresses ? [...overrides.validator_addresses] : [],
+    validator_labels: overrides.validator_labels ? [...overrides.validator_labels] : [],
+    contract_types: overrides.contract_types ? [...overrides.contract_types] : [],
+    contract_protocols: overrides.contract_protocols ? [...overrides.contract_protocols] : [],
+    chain_set: overrides.chain_set ? [...overrides.chain_set] : ["THOR"],
+    raw_edge_ids: overrides.raw_edge_ids ? [...overrides.raw_edge_ids] : [overrides.id ?? base.id],
+    inspect: overrides.inspect ?? {},
   };
 }
 
