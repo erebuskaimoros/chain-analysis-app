@@ -128,7 +128,7 @@ func LoadConfigFromEnv() Config {
 		cfg.UIBuildDirOverride = true
 	}
 
-	thornodeEndpoints := getEnv("THORNODE_ENDPOINTS", "https://thornode.thorchain.network,https://thornode.thorchain.liquify.com")
+	thornodeEndpoints := getEnv("THORNODE_ENDPOINTS", "https://gateway.liquify.com/chain/thorchain_api")
 	for _, raw := range strings.Split(thornodeEndpoints, ",") {
 		v := strings.TrimSpace(raw)
 		if v == "" {
@@ -137,7 +137,7 @@ func LoadConfigFromEnv() Config {
 		cfg.ThornodeEndpoints = append(cfg.ThornodeEndpoints, strings.TrimRight(v, "/"))
 	}
 
-	midgardEndpoints := getEnv("MIDGARD_ENDPOINTS", "https://midgard.thorchain.network/v2,https://midgard.thorchain.liquify.com/v2")
+	midgardEndpoints := getEnv("MIDGARD_ENDPOINTS", "https://gateway.liquify.com/chain/thorchain_midgard/v2")
 	for _, raw := range strings.Split(midgardEndpoints, ",") {
 		v := strings.TrimSpace(raw)
 		if v == "" {
