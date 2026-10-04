@@ -1,0 +1,106 @@
+{
+  "description": "Acceptance case A: TC Treasury actor (16 addresses across THOR, ETH, BTC, SOL, DOGE, BCH, TRON) over the week ending 2026-10-01.",
+  "actors": [
+    {
+      "name": "TC Treasury",
+      "color": "#58ff4d",
+      "notes": "edited",
+      "addresses": [
+        {
+          "address": "0x02d9e8506ba56d3f9be6007f712720eeadac5fdc",
+          "chain_hint": "",
+          "label": "New ETH Treasury"
+        },
+        {
+          "address": "0x04c5998ded94f89263370444ce64a99b7dbc9f46",
+          "chain_hint": "",
+          "label": "TreasuryLP - ETH"
+        },
+        {
+          "address": "0x0B354326E140bDFb605b90AFF0Fe2CB07D48F7a3",
+          "chain_hint": "",
+          "label": "Treasury ETH Active"
+        },
+        {
+          "address": "bc1qq2z2f4gs4nd7t0a9jjp90y9l9zzjtegu4nczha",
+          "chain_hint": "",
+          "label": "TreasuryLP - BTC"
+        },
+        {
+          "address": "BEcrPLugbAY1zEJGUNYgzcsxMi72rPeVwG6qKm96LK5g",
+          "chain_hint": "",
+          "label": "SOL Treasury Active"
+        },
+        {
+          "address": "D8U1PL31zA8Q8LucFKfVDbTWUJs2EoLGDc",
+          "chain_hint": "",
+          "label": "TreasuryLP - DOGE"
+        },
+        {
+          "address": "qz7262r7uufxk89ematxrf6yquk7zfwrjqm97vskzw",
+          "chain_hint": "",
+          "label": "TreasuryLP - BCH"
+        },
+        {
+          "address": "thor10qh5272ktq4wes8ex343ky9rsuehcypddjh08k",
+          "chain_hint": "",
+          "label": "TC Public Treasury"
+        },
+        {
+          "address": "thor14n2q7tpemxcha8zc26j0g5pksx4x3a9xw9ryq9",
+          "chain_hint": "TREASURY2",
+          "label": ""
+        },
+        {
+          "address": "thor19phfqh3ce3nnjhh0cssn433nydq9shx7wfmk7k",
+          "chain_hint": "",
+          "label": ""
+        },
+        {
+          "address": "thor1egxvam70a86jafa8gcg3kqfmfax3s0m2g3m754",
+          "chain_hint": "TREASURYLP",
+          "label": ""
+        },
+        {
+          "address": "thor1lhufh0mwasa0lk9udppdegmvnkgqt08f0m9p5g",
+          "chain_hint": "",
+          "label": "Treasury Vultisig 2"
+        },
+        {
+          "address": "thor1sngd0zz6pwdx2e20sml27354vzkrwa4fnjxvnc",
+          "chain_hint": "",
+          "label": "Treasury Node"
+        },
+        {
+          "address": "thor1wfe7hsuvup27lx04p5al4zlcnx6elsnyft7dzm",
+          "chain_hint": "TREASURYLP2",
+          "label": ""
+        },
+        {
+          "address": "TJ8LE5jBifN2CQmgE5TLiLZGFGVNny1dHT",
+          "chain_hint": "",
+          "label": ""
+        },
+        {
+          "address": "bc1qpqwd0wf8egke8f28twlt4hv2ergcr4v86djxek",
+          "chain_hint": "",
+          "label": "BTC Treasury Active"
+        }
+      ]
+    }
+  ],
+  "request": {
+    "start_time": "2026-09-24T00:00:00Z",
+    "end_time": "2026-10-01T00:00:00Z",
+    "max_hops": 2,
+    "flow_types": [
+      "liquidity",
+      "swaps",
+      "bonds",
+      "transfers"
+    ],
+    "min_usd": 0,
+    "collapse_external": false,
+    "display_mode": "combined"
+  }
+}

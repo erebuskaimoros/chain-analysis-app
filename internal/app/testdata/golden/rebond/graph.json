@@ -1,0 +1,1019 @@
+{
+ "actors": [
+  {
+   "addresses": [
+    {
+     "actor_id": 1,
+     "address": "thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa",
+     "chain_hint": "",
+     "id": 1,
+     "label": "Old bond address",
+     "normalized_address": "thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa"
+    }
+   ],
+   "color": "#4b8bd9",
+   "id": 1,
+   "name": "Rebond sender",
+   "notes": ""
+  }
+ ],
+ "edges": [
+  {
+   "action_class": "ownership",
+   "action_domain": "",
+   "action_key": "ownership",
+   "action_label": "Ownership",
+   "actor_ids": [
+    1
+   ],
+   "assets": [
+    {
+     "amount_raw": "0",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 0
+    }
+   ],
+   "confidence": 1,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "actor:1",
+   "heights": [
+    0
+   ],
+   "id": "actor:1|actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1|ownership",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "0",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 0
+      }
+     ],
+     "height": 0,
+     "source_protocol": "THOR",
+     "tx_id": "",
+     "usd_spot": 0
+    }
+   ],
+   "tx_ids": null,
+   "usd_spot": 0
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [
+    1
+   ],
+   "assets": [
+    {
+     "amount_raw": "6609356217",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 53.039021554437056
+    }
+   ],
+   "confidence": 0.9,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "heights": [
+    28069581
+   ],
+   "id": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1|external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1|midgard.rebond|validator:thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "6609356217",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 53.039021554437056
+      }
+     ],
+     "height": 28069581,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T09:59:39.504905501Z",
+     "tx_id": "76032241C09CA2722A66481696474B378D49C771BF6B1CC35D31295D94924472",
+     "usd_spot": 53.039021554437056
+    }
+   ],
+   "tx_ids": [
+    "76032241C09CA2722A66481696474B378D49C771BF6B1CC35D31295D94924472"
+   ],
+   "usd_spot": 53.039021554437056,
+   "validator_address": "thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
+   "validator_label": "Node thor1j2p…arptfk"
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [
+    1
+   ],
+   "assets": [
+    {
+     "amount_raw": "46465470195",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 372.87793157081364
+    }
+   ],
+   "confidence": 0.9,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "heights": [
+    28069596
+   ],
+   "id": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1|external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1|midgard.rebond|validator:thor1k8lchd5f88sus0fcjnujuqad8rhe8wl6yzc3aj",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "46465470195",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 372.87793157081364
+      }
+     ],
+     "height": 28069596,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T10:01:11.117256009Z",
+     "tx_id": "CF6A630242BE008E942B2619B9E74E70FAD57355C5503AEB50CB474923ADA6C1",
+     "usd_spot": 372.87793157081364
+    }
+   ],
+   "tx_ids": [
+    "CF6A630242BE008E942B2619B9E74E70FAD57355C5503AEB50CB474923ADA6C1"
+   ],
+   "usd_spot": 372.87793157081364,
+   "validator_address": "thor1k8lchd5f88sus0fcjnujuqad8rhe8wl6yzc3aj",
+   "validator_label": "Node thor1k8l…yzc3aj"
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [
+    1
+   ],
+   "assets": [
+    {
+     "amount_raw": "46567345135",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 373.69546159357424
+    }
+   ],
+   "confidence": 0.9,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "heights": [
+    28069602
+   ],
+   "id": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1|external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1|midgard.rebond|validator:thor1nyq6247h0r343ljru65ct27l90wd6eadgejnlg",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "46567345135",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 373.69546159357424
+      }
+     ],
+     "height": 28069602,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T10:01:47.545127946Z",
+     "tx_id": "7043BC1968B373DB503F358AEDC120E991679E037C1EE3163B514B06CFFBA0FB",
+     "usd_spot": 373.69546159357424
+    }
+   ],
+   "tx_ids": [
+    "7043BC1968B373DB503F358AEDC120E991679E037C1EE3163B514B06CFFBA0FB"
+   ],
+   "usd_spot": 373.69546159357424,
+   "validator_address": "thor1nyq6247h0r343ljru65ct27l90wd6eadgejnlg",
+   "validator_label": "Node thor1nyq…gejnlg"
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [
+    1
+   ],
+   "assets": [
+    {
+     "amount_raw": "6941554136",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 55.70485647204385
+    }
+   ],
+   "confidence": 0.9,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "heights": [
+    28069590
+   ],
+   "id": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1|external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1|midgard.rebond|validator:thor1s6xz88ell5c6erd7hspfjw8syce89mgn32z6gr",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "6941554136",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 55.70485647204385
+      }
+     ],
+     "height": 28069590,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T10:00:34.000095461Z",
+     "tx_id": "A1C3AE4EFA535CA17AC7046FDB0C16457C49638B92CB7E2D5956CC8554D0A45A",
+     "usd_spot": 55.70485647204385
+    }
+   ],
+   "tx_ids": [
+    "A1C3AE4EFA535CA17AC7046FDB0C16457C49638B92CB7E2D5956CC8554D0A45A"
+   ],
+   "usd_spot": 55.70485647204385,
+   "validator_address": "thor1s6xz88ell5c6erd7hspfjw8syce89mgn32z6gr",
+   "validator_label": "Node thor1s6x…32z6gr"
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.bond",
+   "action_label": "Bond",
+   "actor_ids": [
+    1
+   ],
+   "assets": [
+    {
+     "amount_raw": "100100000000",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 803.2864144836498
+    }
+   ],
+   "confidence": 0.9,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "heights": [
+    28069617
+   ],
+   "id": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1|node:thor1x3mdxg02mcdnt9s9ms2sy32wl4380ds9y0pja7:thor:node_bond:2|midgard.bond",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "node:thor1x3mdxg02mcdnt9s9ms2sy32wl4380ds9y0pja7:thor:node_bond:2",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "100100000000",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 803.2864144836498
+      }
+     ],
+     "height": 28069617,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T10:03:19.249216246Z",
+     "tx_id": "715ACC2CDAD1CC6BC48419F6B23097E57FEC01542BB3A216E86BCEDB5C9EAD94",
+     "usd_spot": 803.2864144836498
+    }
+   ],
+   "tx_ids": [
+    "715ACC2CDAD1CC6BC48419F6B23097E57FEC01542BB3A216E86BCEDB5C9EAD94"
+   ],
+   "usd_spot": 803.2864144836498
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [],
+   "assets": [
+    {
+     "amount_raw": "6237692029",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 50.056476170116404
+    }
+   ],
+   "confidence": 0.9,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
+   "heights": [
+    28065279
+   ],
+   "id": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3|external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1|midgard.rebond|validator:thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "6237692029",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 50.056476170116404
+      }
+     ],
+     "height": 28065279,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T02:39:02.154546121Z",
+     "tx_id": "34AAC027A03A54AFD4B01D5B53C344775960674AB7AF78370590C6B2AA31151F",
+     "usd_spot": 50.056476170116404
+    }
+   ],
+   "tx_ids": [
+    "34AAC027A03A54AFD4B01D5B53C344775960674AB7AF78370590C6B2AA31151F"
+   ],
+   "usd_spot": 50.056476170116404,
+   "validator_address": "thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
+   "validator_label": "Node thor1j2p…arptfk"
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [],
+   "assets": [
+    {
+     "amount_raw": "10835583536",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 86.95381665805701
+    }
+   ],
+   "confidence": 0.9,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
+   "heights": [
+    28065273
+   ],
+   "id": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3|external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1|midgard.rebond|validator:thor1vt207wgvefjgk88mtfjuurcl3vw6z4d2gu5psw",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "10835583536",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 86.95381665805701
+      }
+     ],
+     "height": 28065273,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T02:38:26.051478905Z",
+     "tx_id": "533A8A37347392CBC3F2AF4F184B38573D4B6E43D84B0C7424090F901A8C8B04",
+     "usd_spot": 86.95381665805701
+    }
+   ],
+   "tx_ids": [
+    "533A8A37347392CBC3F2AF4F184B38573D4B6E43D84B0C7424090F901A8C8B04"
+   ],
+   "usd_spot": 86.95381665805701,
+   "validator_address": "thor1vt207wgvefjgk88mtfjuurcl3vw6z4d2gu5psw",
+   "validator_label": "Node thor1vt2…gu5psw"
+  },
+  {
+   "action_class": "transfers",
+   "action_domain": "transfers",
+   "action_key": "midgard.send",
+   "action_label": "Send",
+   "actor_ids": [
+    1
+   ],
+   "assets": [
+    {
+     "amount_raw": "101254539398",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 812.551407624504
+    }
+   ],
+   "confidence": 0.72,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "heights": [
+    28069582,
+    28069591,
+    28069597,
+    28069603
+   ],
+   "id": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1|actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1|midgard.send",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "6278888406",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 50.38707047551148
+      }
+     ],
+     "height": 28069582,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T09:59:45.7128394Z",
+     "tx_id": "C539D011CDE4204437FC5FE4F40516D9D23762AB6B8E42E01648712B77DD6D14",
+     "usd_spot": 50.38707047551148
+    },
+    {
+     "assets": [
+      {
+       "amount_raw": "6594476429",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 52.91961364683668
+      }
+     ],
+     "height": 28069591,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T10:00:40.712059294Z",
+     "tx_id": "4B9B98937593C3E17894001EE819F0906DD40C9624E3E99B199F3BAF9410A667",
+     "usd_spot": 52.91961364683668
+    },
+    {
+     "assets": [
+      {
+       "amount_raw": "44142196685",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 354.2340349902667
+      }
+     ],
+     "height": 28069597,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T10:01:16.999215343Z",
+     "tx_id": "4767FD9571F034580E57336584288E40401857DAE9755C1618F3A0785E826573",
+     "usd_spot": 354.2340349902667
+    },
+    {
+     "assets": [
+      {
+       "amount_raw": "44238977878",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 355.01068851188927
+      }
+     ],
+     "height": 28069603,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T10:01:53.484709297Z",
+     "tx_id": "AE2C6129A2C872211420436293B4A822ED7B71EAF5525EFE2804B5DF30BD6668",
+     "usd_spot": 355.01068851188927
+    }
+   ],
+   "tx_ids": [
+    "4767FD9571F034580E57336584288E40401857DAE9755C1618F3A0785E826573",
+    "4B9B98937593C3E17894001EE819F0906DD40C9624E3E99B199F3BAF9410A667",
+    "AE2C6129A2C872211420436293B4A822ED7B71EAF5525EFE2804B5DF30BD6668",
+    "C539D011CDE4204437FC5FE4F40516D9D23762AB6B8E42E01648712B77DD6D14"
+   ],
+   "usd_spot": 812.551407624504
+  },
+  {
+   "action_class": "transfers",
+   "action_domain": "transfers",
+   "action_key": "midgard.send",
+   "action_label": "Send",
+   "actor_ids": [],
+   "assets": [
+    {
+     "amount_raw": "16219611786",
+     "asset": "THOR.RUNE",
+     "asset_kind": "native",
+     "usd_spot": 130.15977818074612
+    }
+   ],
+   "confidence": 0.72,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "heights": [
+    28065274,
+    28065281
+   ],
+   "id": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1|external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3|midgard.send",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "10293804359",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 82.6061258235492
+      }
+     ],
+     "height": 28065274,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T02:38:32.08352952Z",
+     "tx_id": "B2AF770D859B7F1AC9E89856E647ED3CFBE093A942FE3509167A0E752F7D1BCB",
+     "usd_spot": 82.6061258235492
+    },
+    {
+     "assets": [
+      {
+       "amount_raw": "5925807427",
+       "asset": "THOR.RUNE",
+       "asset_kind": "native",
+       "usd_spot": 47.553652357196924
+      }
+     ],
+     "height": 28065281,
+     "source_protocol": "THOR",
+     "time": "2026-10-02T02:39:14.291543488Z",
+     "tx_id": "3A9D4786C9169DDEE2FA4F66F475922EF1A7FF581FCBC7A0453E6DECD988C53F",
+     "usd_spot": 47.553652357196924
+    }
+   ],
+   "tx_ids": [
+    "3A9D4786C9169DDEE2FA4F66F475922EF1A7FF581FCBC7A0453E6DECD988C53F",
+    "B2AF770D859B7F1AC9E89856E647ED3CFBE093A942FE3509167A0E752F7D1BCB"
+   ],
+   "usd_spot": 130.15977818074612
+  }
+ ],
+ "nodes": [
+  {
+   "actor_ids": [
+    1
+   ],
+   "chain": "",
+   "collapsed": false,
+   "depth": 0,
+   "id": "actor:1",
+   "kind": "actor",
+   "label": "Rebond sender",
+   "metrics": {
+    "color": "#4b8bd9",
+    "notes": "",
+    "out_edges": 1,
+    "source_protocol": "THOR",
+    "source_protocols": [
+     "THOR"
+    ]
+   },
+   "shared": false,
+   "stage": "actor"
+  },
+  {
+   "actor_ids": [
+    1
+   ],
+   "chain": "THOR",
+   "collapsed": true,
+   "depth": 1,
+   "id": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "kind": "actor_address",
+   "label": "Old bond address",
+   "metrics": {
+    "address": "thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa",
+    "in_edges": 5,
+    "out_edges": 5,
+    "source_protocol": "THOR",
+    "source_protocols": [
+     "THOR"
+    ]
+   },
+   "shared": false,
+   "stage": "actor_address"
+  },
+  {
+   "actor_ids": [],
+   "chain": "THOR",
+   "collapsed": true,
+   "depth": 2,
+   "id": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
+   "kind": "external_address",
+   "label": "thor19yu…cj8fnu",
+   "metrics": {
+    "address": "thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu",
+    "in_edges": 2,
+    "out_edges": 2,
+    "source_protocol": "THOR",
+    "source_protocols": [
+     "THOR"
+    ]
+   },
+   "shared": false,
+   "stage": "external"
+  },
+  {
+   "actor_ids": [],
+   "chain": "THOR",
+   "collapsed": true,
+   "depth": 1,
+   "id": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "kind": "external_address",
+   "label": "thor1dk9…xl8x2l",
+   "metrics": {
+    "address": "thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l",
+    "in_edges": 6,
+    "out_edges": 6,
+    "source_protocol": "THOR",
+    "source_protocols": [
+     "THOR"
+    ]
+   },
+   "shared": false,
+   "stage": "external"
+  },
+  {
+   "actor_ids": [],
+   "chain": "THOR",
+   "collapsed": false,
+   "depth": 2,
+   "id": "node:thor1x3mdxg02mcdnt9s9ms2sy32wl4380ds9y0pja7:thor:node_bond:2",
+   "kind": "node",
+   "label": "Validator thor1x3m…y0pja7",
+   "metrics": {
+    "address": "thor1x3mdxg02mcdnt9s9ms2sy32wl4380ds9y0pja7",
+    "in_edges": 1,
+    "node_status": "Active",
+    "node_total_bond": "61460312322358",
+    "source_protocol": "THOR",
+    "source_protocols": [
+     "THOR"
+    ]
+   },
+   "shared": false,
+   "stage": "node_bond"
+  }
+ ],
+ "query": {
+  "actor_ids": [
+   1
+  ],
+  "blocks_scanned": 0,
+  "collapse_external": false,
+  "coverage_satisfied": true,
+  "display_mode": "combined",
+  "end_time": "2026-10-03T00:00:00Z",
+  "flow_types": [
+   "liquidity",
+   "swaps",
+   "bonds",
+   "transfers"
+  ],
+  "max_hops": 2,
+  "min_usd": 0,
+  "start_time": "2026-10-02T00:00:00Z"
+ },
+ "stats": {
+  "actor_count": 1,
+  "contract_sub_suppressed": 0,
+  "coverage_satisfied": true,
+  "edge_count": 10,
+  "liquidity_fee_suppressed_actions": 0,
+  "liquidity_fee_suppressed_transfers": 0,
+  "node_count": 5,
+  "refund_suppressed_actions": 0,
+  "refund_suppressed_transfers": 0,
+  "source_protocol_count": 1,
+  "source_protocols": [
+   "THOR"
+  ],
+  "supporting_action_count": 13,
+  "swap_deduped": 0,
+  "swap_emitted": 0,
+  "swap_suppressed": 0,
+  "swap_unresolved": 0
+ },
+ "supporting_actions": [
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [],
+   "amount_raw": "6237692029",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
+   "height": 28065279,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T02:39:02.154546121Z",
+   "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "tx_id": "34AAC027A03A54AFD4B01D5B53C344775960674AB7AF78370590C6B2AA31151F",
+   "usd_spot": 50.056476170116404,
+   "validator_address": "thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
+   "validator_label": "Node thor1j2p…arptfk"
+  },
+  {
+   "action_class": "transfers",
+   "action_domain": "transfers",
+   "action_key": "midgard.send",
+   "action_label": "Send",
+   "actor_ids": [],
+   "amount_raw": "5925807427",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "height": 28065281,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T02:39:14.291543488Z",
+   "to_node": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
+   "tx_id": "3A9D4786C9169DDEE2FA4F66F475922EF1A7FF581FCBC7A0453E6DECD988C53F",
+   "usd_spot": 47.553652357196924
+  },
+  {
+   "action_class": "transfers",
+   "action_domain": "transfers",
+   "action_key": "midgard.send",
+   "action_label": "Send",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "44142196685",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "height": 28069597,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T10:01:16.999215343Z",
+   "to_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "tx_id": "4767FD9571F034580E57336584288E40401857DAE9755C1618F3A0785E826573",
+   "usd_spot": 354.2340349902667
+  },
+  {
+   "action_class": "transfers",
+   "action_domain": "transfers",
+   "action_key": "midgard.send",
+   "action_label": "Send",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "6594476429",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "height": 28069591,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T10:00:40.712059294Z",
+   "to_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "tx_id": "4B9B98937593C3E17894001EE819F0906DD40C9624E3E99B199F3BAF9410A667",
+   "usd_spot": 52.91961364683668
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [],
+   "amount_raw": "10835583536",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
+   "height": 28065273,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T02:38:26.051478905Z",
+   "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "tx_id": "533A8A37347392CBC3F2AF4F184B38573D4B6E43D84B0C7424090F901A8C8B04",
+   "usd_spot": 86.95381665805701,
+   "validator_address": "thor1vt207wgvefjgk88mtfjuurcl3vw6z4d2gu5psw",
+   "validator_label": "Node thor1vt2…gu5psw"
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "46567345135",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "height": 28069602,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T10:01:47.545127946Z",
+   "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "tx_id": "7043BC1968B373DB503F358AEDC120E991679E037C1EE3163B514B06CFFBA0FB",
+   "usd_spot": 373.69546159357424,
+   "validator_address": "thor1nyq6247h0r343ljru65ct27l90wd6eadgejnlg",
+   "validator_label": "Node thor1nyq…gejnlg"
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.bond",
+   "action_label": "Bond",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "100100000000",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "height": 28069617,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T10:03:19.249216246Z",
+   "to_node": "node:thor1x3mdxg02mcdnt9s9ms2sy32wl4380ds9y0pja7:thor:node_bond:2",
+   "tx_id": "715ACC2CDAD1CC6BC48419F6B23097E57FEC01542BB3A216E86BCEDB5C9EAD94",
+   "usd_spot": 803.2864144836498
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "6609356217",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "height": 28069581,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T09:59:39.504905501Z",
+   "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "tx_id": "76032241C09CA2722A66481696474B378D49C771BF6B1CC35D31295D94924472",
+   "usd_spot": 53.039021554437056,
+   "validator_address": "thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
+   "validator_label": "Node thor1j2p…arptfk"
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "6941554136",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "height": 28069590,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T10:00:34.000095461Z",
+   "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "tx_id": "A1C3AE4EFA535CA17AC7046FDB0C16457C49638B92CB7E2D5956CC8554D0A45A",
+   "usd_spot": 55.70485647204385,
+   "validator_address": "thor1s6xz88ell5c6erd7hspfjw8syce89mgn32z6gr",
+   "validator_label": "Node thor1s6x…32z6gr"
+  },
+  {
+   "action_class": "transfers",
+   "action_domain": "transfers",
+   "action_key": "midgard.send",
+   "action_label": "Send",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "44238977878",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "height": 28069603,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T10:01:53.484709297Z",
+   "to_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "tx_id": "AE2C6129A2C872211420436293B4A822ED7B71EAF5525EFE2804B5DF30BD6668",
+   "usd_spot": 355.01068851188927
+  },
+  {
+   "action_class": "transfers",
+   "action_domain": "transfers",
+   "action_key": "midgard.send",
+   "action_label": "Send",
+   "actor_ids": [],
+   "amount_raw": "10293804359",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "height": 28065274,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T02:38:32.08352952Z",
+   "to_node": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
+   "tx_id": "B2AF770D859B7F1AC9E89856E647ED3CFBE093A942FE3509167A0E752F7D1BCB",
+   "usd_spot": 82.6061258235492
+  },
+  {
+   "action_class": "transfers",
+   "action_domain": "transfers",
+   "action_key": "midgard.send",
+   "action_label": "Send",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "6278888406",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "height": 28069582,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T09:59:45.7128394Z",
+   "to_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "tx_id": "C539D011CDE4204437FC5FE4F40516D9D23762AB6B8E42E01648712B77DD6D14",
+   "usd_spot": 50.38707047551148
+  },
+  {
+   "action_class": "bonds",
+   "action_domain": "bonds",
+   "action_key": "midgard.rebond",
+   "action_label": "Rebond",
+   "actor_ids": [
+    1
+   ],
+   "amount_raw": "46465470195",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
+   "height": 28069596,
+   "primary_asset": "THOR.RUNE",
+   "source_protocol": "THOR",
+   "time": "2026-10-02T10:01:11.117256009Z",
+   "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
+   "tx_id": "CF6A630242BE008E942B2619B9E74E70FAD57355C5503AEB50CB474923ADA6C1",
+   "usd_spot": 372.87793157081364,
+   "validator_address": "thor1k8lchd5f88sus0fcjnujuqad8rhe8wl6yzc3aj",
+   "validator_label": "Node thor1k8l…yzc3aj"
+  }
+ ],
+ "warnings": []
+}

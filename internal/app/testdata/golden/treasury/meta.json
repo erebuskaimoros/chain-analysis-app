@@ -1,0 +1,8 @@
+{
+  "recorded_at": "2026-10-04T18:34:05Z",
+  "keys_present": [
+    "CHAIN_ANALYSIS_ETHERSCAN_API_KEY",
+    "CHAIN_ANALYSIS_NODEREAL_API_KEY"
+  ],
+  "requests": 202
+}

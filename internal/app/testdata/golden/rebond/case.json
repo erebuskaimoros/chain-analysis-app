@@ -1,0 +1,31 @@
+{
+  "description": "Case C: bond address that rebonded node ...jnlg to a new bond address (...8x2l) on 2026-10-02.",
+  "actors": [
+    {
+      "name": "Rebond sender",
+      "color": "#4b8bd9",
+      "notes": "",
+      "addresses": [
+        {
+          "address": "thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa",
+          "chain_hint": "",
+          "label": "Old bond address"
+        }
+      ]
+    }
+  ],
+  "request": {
+    "start_time": "2026-10-02T00:00:00Z",
+    "end_time": "2026-10-03T00:00:00Z",
+    "max_hops": 2,
+    "flow_types": [
+      "liquidity",
+      "swaps",
+      "bonds",
+      "transfers"
+    ],
+    "min_usd": 0,
+    "collapse_external": false,
+    "display_mode": "combined"
+  }
+}
