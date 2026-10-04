@@ -225,7 +225,6 @@ func (a *App) fetchExternalTransfersForAddress(ctx context.Context, chain, addre
 	if endTS < startTS {
 		endTS = startTS
 	}
-	allowSuperset := end.Before(time.Now().UTC().Add(-10 * time.Minute))
 
 	var (
 		lastErr            error
@@ -245,13 +244,23 @@ func (a *App) fetchExternalTransfersForAddress(ctx context.Context, chain, addre
 			skippedDegraded = append(skippedDegraded, provider)
 			continue
 		}
-		if cached, truncated, found, err := lookupExternalTransferCache(providerCtx, a.db, provider, chain, address, startTS, endTS, maxPages, allowSuperset); err == nil && found {
-			a.trackerHealth.markCache(provider, chain, true)
-			return dedupeExternalTransfers(cached), truncated, externalTrackerFallbackWarning(chain, provider, skippedDegraded, failedProviders), nil
+		source := ledgerTransferSource(provider, chain)
+		covered, err := loadLedgerCoverage(providerCtx, a.db, source, address)
+		if err != nil {
+			lastErr = err
+			failedProviders = append(failedProviders, provider)
+			continue
+		}
+		gaps := ledgerGaps(covered, startTS, endTS)
+		if len(gaps) == 0 {
+			if cached, err := queryLedgerTransfers(providerCtx, a.db, source, address, startTS, endTS); err == nil {
+				a.trackerHealth.markCache(provider, chain, true)
+				return dedupeExternalTransfers(cached), false, externalTrackerFallbackWarning(chain, provider, skippedDegraded, failedProviders), nil
+			}
 		}
 		a.trackerHealth.markCache(provider, chain, false)
 
-		transfers, truncated, warn, err := a.fetchExternalTransfersWithProvider(providerCtx, provider, chain, address, start, end, maxPages)
+		truncated, warn, err := a.fetchLedgerTransferGaps(providerCtx, provider, chain, address, source, gaps, maxPages)
 		if errors.Is(err, errExternalTrackerUnavailable) {
 			if unavailableWarning == "" {
 				unavailableWarning = externalTrackerUnavailableWarning(chain, provider)
@@ -265,16 +274,14 @@ func (a *App) fetchExternalTransfersForAddress(ctx context.Context, chain, addre
 			failedProviders = append(failedProviders, provider)
 			continue
 		}
-		transfers = dedupeExternalTransfers(transfers)
-		if err := insertExternalTransferCache(providerCtx, a.db, provider, chain, address, startTS, endTS, maxPages, truncated, transfers); err != nil {
-			logError(providerCtx, "external_transfer_cache_write_failed", err, map[string]any{
-				"provider": provider,
-				"chain":    chain,
-				"address":  address,
-			})
+		transfers, err := queryLedgerTransfers(providerCtx, a.db, source, address, startTS, endTS)
+		if err != nil {
+			lastErr = err
+			failedProviders = append(failedProviders, provider)
+			continue
 		}
 		warn = firstNonEmpty(warn, externalTrackerFallbackWarning(chain, provider, skippedDegraded, failedProviders))
-		return transfers, truncated, warn, nil
+		return dedupeExternalTransfers(transfers), truncated, warn, nil
 	}
 
 	if unavailableWarning != "" && lastErr == nil {
@@ -284,6 +291,35 @@ func (a *App) fetchExternalTransfersForAddress(ctx context.Context, chain, addre
 		return nil, false, firstNonEmpty(lastWarn, externalTrackerFallbackWarning(chain, "", skippedDegraded, failedProviders)), lastErr
 	}
 	return nil, false, "", nil
+}
+
+// fetchLedgerTransferGaps fetches each uncovered range from one provider and
+// stores the results. Ranges whose fetch was truncated are stored but not
+// marked covered, because providers differ in which end they truncate.
+func (a *App) fetchLedgerTransferGaps(ctx context.Context, provider, chain, address, source string, gaps []ledgerInterval, maxPages int) (bool, string, error) {
+	truncatedAny := false
+	var lastWarn string
+	for _, gap := range gaps {
+		fetchedAt := time.Now().UTC()
+		transfers, truncated, warn, err := a.fetchExternalTransfersWithProvider(ctx, provider, chain, address, time.Unix(gap.From, 0).UTC(), time.Unix(gap.To, 0).UTC(), maxPages)
+		if err != nil {
+			return truncatedAny, warn, err
+		}
+		lastWarn = firstNonEmpty(warn, lastWarn)
+		transfers = dedupeExternalTransfers(transfers)
+		if err := upsertLedgerTransfers(ctx, a.db, source, address, transfers); err != nil {
+			logError(ctx, "external_transfer_cache_write_failed", err, map[string]any{"provider": provider, "chain": chain, "address": address})
+			continue
+		}
+		if truncated {
+			truncatedAny = true
+			continue
+		}
+		if err := markLedgerCovered(ctx, a.db, source, address, gap.From, ledgerCoverageEnd(gap.To, fetchedAt), fetchedAt); err != nil {
+			logError(ctx, "external_transfer_cache_write_failed", err, map[string]any{"provider": provider, "chain": chain, "address": address})
+		}
+	}
+	return truncatedAny, lastWarn, nil
 }
 
 func externalTrackerUnavailableWarning(chain, provider string) string {

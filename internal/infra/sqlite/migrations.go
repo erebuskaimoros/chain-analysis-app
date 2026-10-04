@@ -18,6 +18,7 @@ var migrations = []migration{
 	{id: 2, name: "graph_runs_compat", up: migrateGraphRunsCompat},
 	{id: 3, name: "analysis_runs", up: migrateAnalysisRuns},
 	{id: 4, name: "graph_states", up: migrateGraphStates},
+	{id: 5, name: "ledger", up: migrateLedger},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -244,6 +245,70 @@ func migrateGraphStates(ctx context.Context, db *sql.Tx) error {
 		ON graph_states(kind, updated_at DESC)
 	`); err != nil {
 		return err
+	}
+	return nil
+}
+
+// migrateLedger adds row-level storage for fetched chain history and the time
+// ranges each (source, address) has been fetched for. It replaces the
+// query-window caches, which the app backfills into these tables and drops.
+func migrateLedger(ctx context.Context, db *sql.Tx) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS ledger_batches (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS ledger_actions (
+			source TEXT NOT NULL,
+			action_key TEXT NOT NULL,
+			block_time INTEGER NOT NULL,
+			height INTEGER NOT NULL,
+			action_json TEXT NOT NULL,
+			PRIMARY KEY (source, action_key)
+		)`,
+		`CREATE TABLE IF NOT EXISTS ledger_action_addresses (
+			source TEXT NOT NULL,
+			address TEXT NOT NULL,
+			action_key TEXT NOT NULL,
+			block_time INTEGER NOT NULL,
+			height INTEGER NOT NULL,
+			batch INTEGER NOT NULL,
+			position INTEGER NOT NULL,
+			PRIMARY KEY (source, address, action_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ledger_action_addresses_time
+			ON ledger_action_addresses(source, address, block_time)`,
+		`CREATE TABLE IF NOT EXISTS ledger_transfers (
+			source TEXT NOT NULL,
+			transfer_key TEXT NOT NULL,
+			block_time INTEGER NOT NULL,
+			transfer_json TEXT NOT NULL,
+			PRIMARY KEY (source, transfer_key)
+		)`,
+		`CREATE TABLE IF NOT EXISTS ledger_transfer_addresses (
+			source TEXT NOT NULL,
+			address TEXT NOT NULL,
+			transfer_key TEXT NOT NULL,
+			block_time INTEGER NOT NULL,
+			batch INTEGER NOT NULL,
+			position INTEGER NOT NULL,
+			PRIMARY KEY (source, address, transfer_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ledger_transfer_addresses_time
+			ON ledger_transfer_addresses(source, address, block_time)`,
+		`CREATE TABLE IF NOT EXISTS ledger_coverage (
+			source TEXT NOT NULL,
+			address TEXT NOT NULL,
+			from_ts INTEGER NOT NULL,
+			to_ts INTEGER NOT NULL,
+			fetched_at INTEGER NOT NULL,
+			PRIMARY KEY (source, address, from_ts)
+		)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
 	}
 	return nil
 }

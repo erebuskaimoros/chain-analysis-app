@@ -172,7 +172,9 @@ func LoadConfigFromEnv() Config {
 		cfg.MayaMidgardEndpoints = append(cfg.MayaMidgardEndpoints, strings.TrimRight(v, "/"))
 	}
 
-	legacyActionEndpoints := getEnv("CHAIN_ANALYSIS_LEGACY_ACTION_ENDPOINTS", "https://vanaheimex.com")
+	// The legacy action source is opt-in: the default Midgard serves full THOR
+	// history, and merging a second source re-downloads every THOR address.
+	legacyActionEndpoints := getEnv("CHAIN_ANALYSIS_LEGACY_ACTION_ENDPOINTS", "")
 	for _, raw := range strings.Split(legacyActionEndpoints, ",") {
 		v := strings.TrimSpace(raw)
 		if v == "" {

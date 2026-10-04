@@ -188,17 +188,18 @@ func (a *App) fetchActionHistoryForAddressFromProtocol(ctx context.Context, prot
 		}
 
 		fromTimestamp, endTimestamp := actionHistoryQueryBounds(start, end)
-		cacheKey := mergedTHORActionCacheKey(seed.Address)
-		if cached, truncated, found, err := lookupMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages); err == nil && found {
-			cached = annotateMidgardActions(canonicalizeMidgardLookupActions(cached), protocol)
-			logInfo(ctx, "thor_action_cache_hit", map[string]any{
-				"address":   seed.Address,
-				"actions":   len(cached),
-				"truncated": truncated,
-				"max_pages": maxPages,
-			})
-			return cached, truncated, nil
+		source := ledgerMergedTHORSource()
+		if covered, err := loadLedgerCoverage(ctx, a.db, source, seed.Address); err == nil && len(ledgerGaps(covered, fromTimestamp, endTimestamp)) == 0 {
+			if cached, err := queryLedgerActions(ctx, a.db, source, seed.Address, fromTimestamp, endTimestamp); err == nil {
+				cached = annotateMidgardActions(canonicalizeMidgardLookupActions(cached), protocol)
+				logInfo(ctx, "thor_action_cache_hit", map[string]any{
+					"address": seed.Address,
+					"actions": len(cached),
+				})
+				return cached, false, nil
+			}
 		}
+		fetchedAt := time.Now().UTC()
 
 		midgardActions, midgardTruncated, err := a.fetchMidgardActionsForAddressOnlyFromProtocol(ctx, protocol, seed.Address, start, end, maxPages)
 		midgardErr := err
@@ -218,8 +219,12 @@ func (a *App) fetchActionHistoryForAddressFromProtocol(ctx context.Context, prot
 		}
 		merged = annotateMidgardActions(merged, protocol)
 		if cacheable {
-			if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, truncated, merged); err != nil {
+			if err := upsertLedgerActions(ctx, a.db, source, seed.Address, merged); err != nil {
 				logError(ctx, "thor_action_cache_write_failed", err, map[string]any{"address": seed.Address})
+			} else if !truncated {
+				if err := markLedgerCovered(ctx, a.db, source, seed.Address, fromTimestamp, ledgerCoverageEnd(endTimestamp, fetchedAt), fetchedAt); err != nil {
+					logError(ctx, "thor_action_cache_write_failed", err, map[string]any{"address": seed.Address})
+				}
 			}
 		}
 		return merged, truncated, nil

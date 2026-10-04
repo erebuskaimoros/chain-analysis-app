@@ -67,11 +67,16 @@ func TestFetchMidgardActionsForAddressMergesLegacyTHORHistoryDespiteMidgardOnlyC
 	}
 	defer app.Close()
 
+	// Window ends in the past so the ledger can mark it fully covered.
 	start := time.Unix(0, 0).UTC()
-	end := time.Unix(1_800_000_000, 0).UTC()
+	end := time.Unix(1_750_000_000, 0).UTC()
 	startTS, endTS := actionHistoryQueryBounds(start, end)
-	if err := insertMidgardActionCache(context.Background(), app.db, protocolActionCacheKey(sourceProtocolTHOR, address), startTS, endTS, 1, false, []midgardAction{recent}); err != nil {
-		t.Fatalf("insert stale cache: %v", err)
+	thorSource := ledgerActionSource(sourceProtocolTHOR)
+	if err := upsertLedgerActions(context.Background(), app.db, thorSource, address, []midgardAction{recent}); err != nil {
+		t.Fatalf("seed THOR ledger: %v", err)
+	}
+	if err := markLedgerCovered(context.Background(), app.db, thorSource, address, startTS, endTS, time.Now()); err != nil {
+		t.Fatalf("seed THOR coverage: %v", err)
 	}
 
 	actions, truncated, err := app.fetchMidgardActionsForAddress(context.Background(), address, start, end, 1)

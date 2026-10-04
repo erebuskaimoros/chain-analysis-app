@@ -2402,9 +2402,10 @@ func TestFetchSolanaAddressLiveHoldingsRotatesAcrossConfiguredRPCs(t *testing.T)
 	}
 }
 
-func TestExternalTransferCacheSupersetLookup(t *testing.T) {
+func TestLedgerTransfersServeCoveredSubWindow(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
+	ctx := context.Background()
 
 	transfers := []externalTransfer{{
 		Chain:       "ETH",
@@ -2418,19 +2419,26 @@ func TestExternalTransferCacheSupersetLookup(t *testing.T) {
 		ActionKey:   "tracker.evm.token_transfer",
 		ActionLabel: "ETH Token Transfer",
 	}}
-
-	if err := insertExternalTransferCache(context.Background(), db, "etherscan", "ETH", "0xwatch", 50, 150, 2, false, transfers); err != nil {
-		t.Fatalf("insert external transfer cache: %v", err)
+	source := ledgerTransferSource("etherscan", "ETH")
+	if err := upsertLedgerTransfers(ctx, db, source, "0xwatch", transfers); err != nil {
+		t.Fatalf("upsert ledger transfers: %v", err)
+	}
+	if err := markLedgerCovered(ctx, db, source, "0xwatch", 50, 150, time.Now()); err != nil {
+		t.Fatalf("mark covered: %v", err)
 	}
 
-	got, truncated, found, err := lookupExternalTransferCache(context.Background(), db, "etherscan", "ETH", "0xwatch", 90, 110, 1, true)
+	covered, err := loadLedgerCoverage(ctx, db, source, "0xwatch")
 	if err != nil {
-		t.Fatalf("lookup external transfer cache: %v", err)
+		t.Fatalf("load coverage: %v", err)
 	}
-	if !found || truncated {
-		t.Fatalf("expected non-truncated cache hit, found=%v truncated=%v", found, truncated)
+	if gaps := ledgerGaps(covered, 90, 110); len(gaps) != 0 {
+		t.Fatalf("expected covered sub-window, got gaps %v", gaps)
+	}
+	got, err := queryLedgerTransfers(ctx, db, source, "0xwatch", 90, 110)
+	if err != nil {
+		t.Fatalf("query ledger transfers: %v", err)
 	}
 	if len(got) != 1 || got[0].TxID != "0xTX" {
-		t.Fatalf("unexpected cached transfers: %#v", got)
+		t.Fatalf("unexpected ledger transfers: %#v", got)
 	}
 }

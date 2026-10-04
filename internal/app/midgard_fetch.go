@@ -210,21 +210,99 @@ func (a *App) fetchMidgardActionsForAddressOnlyFromProtocol(ctx context.Context,
 	if endTimestamp < fromTimestamp {
 		endTimestamp = fromTimestamp
 	}
-	cacheKey := protocolActionCacheKey(protocol, address)
-
-	// Check disk cache (exact match, then superset range match).
-	if cached, truncated, found, err := lookupMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages); err == nil && found {
-		cached = annotateMidgardActions(canonicalizeMidgardLookupActions(cached), protocol)
-		logInfo(ctx, "midgard_action_cache_hit", map[string]any{
-			"protocol":  normalizeSourceProtocol(protocol),
-			"address":   address,
-			"actions":   len(cached),
-			"truncated": truncated,
-			"max_pages": maxPages,
+	source := ledgerActionSource(protocol)
+	actions, truncated, err := a.fetchLedgerActions(ctx, source, address, fromTimestamp, endTimestamp, maxPages,
+		func(from, to int64, pageBudget int) ([]midgardAction, bool, int, error) {
+			return a.fetchMidgardActionWindow(ctx, engine.MidgardClient, protocol, address, from, to, pageBudget)
 		})
-		return cached, truncated, nil
+	return annotateMidgardActions(canonicalizeMidgardLookupActions(actions), protocol), truncated, err
+}
+
+// fetchLedgerActions serves [from, to] for address from the ledger, fetching
+// only the uncovered ranges (newest first, sharing maxPages across them).
+func (a *App) fetchLedgerActions(
+	ctx context.Context,
+	source, address string,
+	fromTimestamp, endTimestamp int64,
+	maxPages int,
+	fetchWindow func(from, to int64, pageBudget int) ([]midgardAction, bool, int, error),
+) ([]midgardAction, bool, error) {
+	covered, err := loadLedgerCoverage(ctx, a.db, source, address)
+	if err != nil {
+		return nil, false, err
+	}
+	gaps := ledgerGaps(covered, fromTimestamp, endTimestamp)
+	if len(gaps) == 0 {
+		actions, err := queryLedgerActions(ctx, a.db, source, address, fromTimestamp, endTimestamp)
+		if err == nil {
+			logInfo(ctx, "midgard_action_cache_hit", map[string]any{
+				"source":  source,
+				"address": address,
+				"actions": len(actions),
+			})
+		}
+		return actions, false, err
 	}
 
+	truncated := false
+	budget := maxPages
+	var fetchErr error
+	for _, gap := range gaps {
+		if budget <= 0 {
+			truncated = true
+			break
+		}
+		fetchedAt := time.Now().UTC()
+		fetched, gapTruncated, pagesUsed, err := fetchWindow(gap.From, gap.To, budget)
+		budget -= max(pagesUsed, 1)
+		if storeErr := upsertLedgerActions(ctx, a.db, source, address, fetched); storeErr != nil {
+			logError(ctx, "midgard_action_cache_write_failed", storeErr, map[string]any{"source": source, "address": address})
+		}
+		if err != nil {
+			fetchErr = err
+			break
+		}
+		coveredFrom := gap.From
+		if gapTruncated {
+			truncated = true
+			coveredFrom = oldestMidgardActionUnix(fetched)
+			if coveredFrom == 0 {
+				continue
+			}
+		}
+		if storeErr := markLedgerCovered(ctx, a.db, source, address, coveredFrom, ledgerCoverageEnd(gap.To, fetchedAt), fetchedAt); storeErr != nil {
+			logError(ctx, "midgard_action_cache_write_failed", storeErr, map[string]any{"source": source, "address": address})
+		}
+	}
+	actions, err := queryLedgerActions(ctx, a.db, source, address, fromTimestamp, endTimestamp)
+	if err != nil {
+		return nil, false, err
+	}
+	if fetchErr != nil {
+		return actions, false, fetchErr
+	}
+	return actions, truncated, nil
+}
+
+func oldestMidgardActionUnix(actions []midgardAction) int64 {
+	var oldest int64
+	for _, action := range actions {
+		ts := parseMidgardActionTime(action.Date).Unix()
+		if ts <= 0 {
+			continue
+		}
+		if oldest == 0 || ts < oldest {
+			oldest = ts
+		}
+	}
+	return oldest
+}
+
+// fetchMidgardActionWindow pages /actions for address within [from, to],
+// newest first, up to maxPages. It reports whether the window was truncated
+// and how many pages it used.
+func (a *App) fetchMidgardActionWindow(ctx context.Context, client *ThorClient, protocol, address string, fromTimestamp, endTimestamp int64, maxPages int) ([]midgardAction, bool, int, error) {
+	pagesUsed := 0
 	actions := make([]midgardAction, 0, maxPages*midgardActionsPageLimit)
 	for page := 0; page < maxPages; page++ {
 		params := url.Values{}
@@ -237,7 +315,7 @@ func (a *App) fetchMidgardActionsForAddressOnlyFromProtocol(ctx context.Context,
 		var response midgardActionsResponse
 		path := "/actions?" + params.Encode()
 		offset := page * midgardActionsPageLimit
-		if err := engine.MidgardClient.GetJSONObserved(ctx, path, &response, func(meta RequestAttemptMeta) {
+		if err := client.GetJSONObserved(ctx, path, &response, func(meta RequestAttemptMeta) {
 			fields := map[string]any{
 				"protocol":              normalizeSourceProtocol(protocol),
 				"address":               address,
@@ -276,33 +354,19 @@ func (a *App) fetchMidgardActionsForAddressOnlyFromProtocol(ctx context.Context,
 			if isMidgardRateLimitError(err) {
 				sleepWithContext(ctx, midgard429Cooldown)
 			}
-			return actions, false, err
+			return actions, false, pagesUsed, err
 		}
 
 		actions = append(actions, response.Actions...)
+		pagesUsed = page + 1
 		if len(response.Actions) < midgardActionsPageLimit {
-			actions = annotateMidgardActions(canonicalizeMidgardLookupActions(actions), protocol)
-			if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, false, actions); err != nil {
-				logError(ctx, "midgard_action_cache_write_failed", err, map[string]any{
-					"address":  address,
-					"protocol": normalizeSourceProtocol(protocol),
-				})
-			}
-			return actions, false, nil
+			return actions, false, pagesUsed, nil
 		}
 		if page+1 < maxPages && !sleepWithContext(ctx, midgardActionPageDelay) {
-			return actions, false, ctx.Err()
+			return actions, false, pagesUsed, ctx.Err()
 		}
 	}
-
-	actions = annotateMidgardActions(canonicalizeMidgardLookupActions(actions), protocol)
-	if err := insertMidgardActionCache(ctx, a.db, cacheKey, fromTimestamp, endTimestamp, maxPages, true, actions); err != nil {
-		logError(ctx, "midgard_action_cache_write_failed", err, map[string]any{
-			"address":  address,
-			"protocol": normalizeSourceProtocol(protocol),
-		})
-	}
-	return actions, true, nil
+	return actions, true, pagesUsed, nil
 }
 
 // fetchMidgardActionsForAddressPaged is like fetchMidgardActionsForAddress but

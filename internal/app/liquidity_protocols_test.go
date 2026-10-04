@@ -58,7 +58,7 @@ func TestActionSourceProtocolsForSeedRoutesNativeAndSharedAddresses(t *testing.T
 	}
 }
 
-func TestMidgardActionCacheKeysStayProtocolScoped(t *testing.T) {
+func TestLedgerActionSourcesStayProtocolScoped(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
 
@@ -90,27 +90,27 @@ func TestMidgardActionCacheKeysStayProtocolScoped(t *testing.T) {
 		},
 	}, sourceProtocolMAYA)
 
-	if err := insertMidgardActionCache(ctx, db, protocolActionCacheKey(sourceProtocolTHOR, address), startTS, endTS, 1, false, thorAction); err != nil {
-		t.Fatalf("insert thor cache: %v", err)
+	if err := upsertLedgerActions(ctx, db, ledgerActionSource(sourceProtocolTHOR), address, thorAction); err != nil {
+		t.Fatalf("store thor actions: %v", err)
 	}
-	if err := insertMidgardActionCache(ctx, db, protocolActionCacheKey(sourceProtocolMAYA, address), startTS, endTS, 1, false, mayaAction); err != nil {
-		t.Fatalf("insert maya cache: %v", err)
-	}
-
-	gotTHOR, _, foundTHOR, err := lookupMidgardActionCache(ctx, db, protocolActionCacheKey(sourceProtocolTHOR, address), startTS, endTS, 1)
-	if err != nil {
-		t.Fatalf("lookup thor cache: %v", err)
-	}
-	if !foundTHOR || len(gotTHOR) != 1 || cleanTxID(gotTHOR[0].In[0].TxID) != "THOR-TX" {
-		t.Fatalf("expected thor-scoped cache hit, got %#v found=%v", gotTHOR, foundTHOR)
+	if err := upsertLedgerActions(ctx, db, ledgerActionSource(sourceProtocolMAYA), address, mayaAction); err != nil {
+		t.Fatalf("store maya actions: %v", err)
 	}
 
-	gotMAYA, _, foundMAYA, err := lookupMidgardActionCache(ctx, db, protocolActionCacheKey(sourceProtocolMAYA, address), startTS, endTS, 1)
+	gotTHOR, err := queryLedgerActions(ctx, db, ledgerActionSource(sourceProtocolTHOR), address, startTS, endTS)
 	if err != nil {
-		t.Fatalf("lookup maya cache: %v", err)
+		t.Fatalf("query thor actions: %v", err)
 	}
-	if !foundMAYA || len(gotMAYA) != 1 || cleanTxID(gotMAYA[0].In[0].TxID) != "MAYA-TX" {
-		t.Fatalf("expected maya-scoped cache hit, got %#v found=%v", gotMAYA, foundMAYA)
+	if len(gotTHOR) != 1 || cleanTxID(gotTHOR[0].In[0].TxID) != "THOR-TX" {
+		t.Fatalf("expected thor-scoped actions, got %#v", gotTHOR)
+	}
+
+	gotMAYA, err := queryLedgerActions(ctx, db, ledgerActionSource(sourceProtocolMAYA), address, startTS, endTS)
+	if err != nil {
+		t.Fatalf("query maya actions: %v", err)
+	}
+	if len(gotMAYA) != 1 || cleanTxID(gotMAYA[0].In[0].TxID) != "MAYA-TX" {
+		t.Fatalf("expected maya-scoped actions, got %#v", gotMAYA)
 	}
 }
 

@@ -60,6 +60,14 @@ func New(cfg Config) (*App, error) {
 	if err := initSchema(ctx, db); err != nil {
 		return nil, err
 	}
+	// One-time move of the retired query-window caches into the ledger. Large
+	// databases need more than the schema timeout.
+	backfillCtx, cancelBackfill := context.WithTimeout(context.Background(), 30*time.Minute)
+	err = backfillLedgerFromQueryCaches(backfillCtx, db)
+	cancelBackfill()
+	if err != nil {
+		return nil, fmt.Errorf("backfill ledger: %w", err)
+	}
 
 	a := &App{
 		cfg:              cfg,
