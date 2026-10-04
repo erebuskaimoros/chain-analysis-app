@@ -27578,10 +27578,10 @@
   "contract_sub_suppressed": 0,
   "coverage_satisfied": true,
   "edge_count": 353,
-  "liquidity_fee_suppressed_actions": 444,
+  "liquidity_fee_suppressed_actions": 448,
   "liquidity_fee_suppressed_transfers": 0,
   "node_count": 349,
-  "refund_suppressed_actions": 18,
+  "refund_suppressed_actions": 12,
   "refund_suppressed_transfers": 3,
   "source_protocol_count": 1,
   "source_protocols": [

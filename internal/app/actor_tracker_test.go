@@ -3541,6 +3541,41 @@ func TestShouldSkipMidgardActionForGraph(t *testing.T) {
 	}
 }
 
+func TestShouldSkipMidgardActionForGraphKeepsOnlySwapsThatDeliveredOutput(t *testing.T) {
+	actions := partialFillSwapActions()
+	refundTxIDs := collectMidgardRefundTxIDs(actions)
+	if skip, reason := shouldSkipMidgardActionForGraph(actions[0], refundTxIDs, nil, nil, nil); !skip || reason != "refund_action" {
+		t.Fatalf("expected partial-fill refund action to be skipped, got skip=%v reason=%q", skip, reason)
+	}
+	if skip, reason := shouldSkipMidgardActionForGraph(actions[1], refundTxIDs, nil, nil, nil); skip {
+		t.Fatalf("expected partially filled swap to be kept, got reason=%q", reason)
+	}
+
+	inbound := []midgardActionLeg{{
+		Address: partialFillSender,
+		TxID:    partialFillInTx,
+		Coins:   []midgardActionCoin{{Asset: "ETH.ETH", Amount: "100"}},
+	}}
+	refundOnly := map[string][]midgardActionLeg{
+		"refund to sender": {{
+			Address: partialFillSender,
+			TxID:    partialFillRefundTx,
+			Coins:   []midgardActionCoin{{Asset: "ETH.ETH", Amount: "90"}},
+		}},
+		"refund of input asset to another address": {{
+			Address: "0x1111111111111111111111111111111111111111",
+			TxID:    partialFillRefundTx,
+			Coins:   []midgardActionCoin{{Asset: "ETH.ETH", Amount: "90"}},
+		}},
+	}
+	for name, out := range refundOnly {
+		swap := midgardAction{Type: "swap", Status: "success", In: inbound, Out: out}
+		if skip, reason := shouldSkipMidgardActionForGraph(swap, refundTxIDs, nil, nil, nil); !skip || reason != "refund_associated" {
+			t.Fatalf("%s: expected refund_associated skip, got skip=%v reason=%q", name, skip, reason)
+		}
+	}
+}
+
 func TestShouldSkipExternalTransferForGraph(t *testing.T) {
 	transfer := externalTransfer{
 		TxID: "abc123",

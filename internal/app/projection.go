@@ -1154,9 +1154,16 @@ func shouldSkipMidgardActionForGraph(action midgardAction, refundTxIDs map[strin
 		return false, ""
 	}
 	isSwapAction := describeMidgardAction(action).ActionClass == "swaps"
+	// A partially filled streaming swap shares its inbound and outbound tx IDs
+	// with the refund action for the unfilled input, so tx correlation alone
+	// would drop the filled part. Keep swaps that delivered output; the refund
+	// action itself is still skipped above.
+	checkRefund := len(refundTxIDs) > 0 && !(isSwapAction && midgardSwapDeliveredOutput(action))
 	for _, txID := range midgardActionTxIDs(action) {
-		if _, ok := refundTxIDs[txID]; ok {
-			return true, "refund_associated"
+		if checkRefund {
+			if _, ok := refundTxIDs[txID]; ok {
+				return true, "refund_associated"
+			}
 		}
 		if isSwapAction {
 			if _, ok := liquidityFeeTxIDs[txID]; ok {
@@ -1170,8 +1177,10 @@ func shouldSkipMidgardActionForGraph(action midgardAction, refundTxIDs map[strin
 		}
 	}
 	if txID := midgardSwapCorrelationTxID(action, cleanTxID(midgardSyntheticTxID(action))); txID != "" {
-		if _, ok := refundTxIDs[txID]; ok {
-			return true, "refund_associated"
+		if checkRefund {
+			if _, ok := refundTxIDs[txID]; ok {
+				return true, "refund_associated"
+			}
 		}
 		if isSwapAction {
 			if _, ok := liquidityFeeTxIDs[txID]; ok {
@@ -1185,6 +1194,48 @@ func shouldSkipMidgardActionForGraph(action midgardAction, refundTxIDs map[strin
 		}
 	}
 	return false, ""
+}
+
+// midgardSwapDeliveredOutput reports whether a swap action paid out more than
+// a refund: a non-fee out leg to an address outside the inbound legs carrying
+// an asset the inbound legs did not send. A partial fill has such a leg next to
+// the refund of the unfilled input; a full refund only returns the input asset.
+func midgardSwapDeliveredOutput(action midgardAction) bool {
+	if strings.EqualFold(strings.TrimSpace(action.Status), "failed") {
+		return false
+	}
+	inAddresses := map[string]struct{}{}
+	inAssets := map[string]struct{}{}
+	for _, leg := range action.In {
+		if address := normalizeAddress(leg.Address); address != "" {
+			inAddresses[address] = struct{}{}
+		}
+		for _, coin := range leg.Coins {
+			if asset := normalizeAsset(coin.Asset); asset != "" {
+				inAssets[asset] = struct{}{}
+			}
+		}
+	}
+	outLegs, _ := selectMidgardSwapOutLegs(sourceProtocolFromAction(action), action.Out)
+	for _, leg := range outLegs {
+		address := normalizeAddress(leg.Address)
+		if address == "" || isAsgardModuleAddress(address) {
+			continue
+		}
+		if _, ok := inAddresses[address]; ok {
+			continue
+		}
+		for _, coin := range leg.Coins {
+			asset := normalizeAsset(coin.Asset)
+			if asset == "" || !hasGraphableLiquidity(coin.Amount) {
+				continue
+			}
+			if _, ok := inAssets[asset]; !ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func shouldSkipExternalTransferForGraph(transfer externalTransfer, refundTxIDs map[string]struct{}, liquidityFeeTxIDs map[string]struct{}) (bool, string) {
