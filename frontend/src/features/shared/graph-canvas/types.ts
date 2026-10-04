@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import type { GraphSelection, VisibleGraphEdge, VisibleGraphNode } from "../../../lib/graph";
 import type { SavedGraphCanvasState } from "../../../lib/graphState";
 
+export type GraphWheelMode = "auto" | "zoom" | "pan";
+
 export interface GraphCanvasFilters {
   isOpen: boolean;
   isActive: boolean;
@@ -31,10 +33,18 @@ export interface GraphCanvasProps {
   selection: GraphSelection;
   onSelectionChange: (selection: GraphSelection) => void;
   onNodePrimaryAction?: (node: VisibleGraphNode) => boolean;
+  /**
+   * Predicate for nodes whose single-tap triggers a primary action. Taps on
+   * those nodes are deferred by the double-tap window; all other nodes select
+   * immediately. When omitted and onNodePrimaryAction is set, every node is
+   * treated as having a primary action (deferred).
+   */
+  nodeHasPrimaryAction?: (node: VisibleGraphNode) => boolean;
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
   doubleActivateLabel?: string;
   graphResetKey?: number;
-  onSaveState?: (canvasState: SavedGraphCanvasState) => void;
+  onSaveState?: (canvasState: SavedGraphCanvasState, name: string) => void;
+  defaultSaveName?: string;
   savedCanvasState?: SavedGraphCanvasState | null;
   onFullscreenChange?: (isFullscreen: boolean) => void;
   filters?: GraphCanvasFilters;
@@ -47,3 +57,15 @@ export type ContextMenuState =
   | { mode: "nodes"; nodes: VisibleGraphNode[]; x: number; y: number }
   | { mode: "pane"; x: number; y: number }
   | null;
+
+export interface GraphSearchState {
+  query: string;
+  matchCount: number;
+  activeIndex: number;
+}
+
+export interface GraphHoverCardState {
+  node: VisibleGraphNode;
+  x: number;
+  y: number;
+}

@@ -1189,9 +1189,12 @@ func (a *App) ensureMidgardAddressCoverage(ctx context.Context, addresses []stri
 	usableCalls := 0
 	actionCache := map[string][]midgardAction{}
 	truncatedCache := map[string]bool{}
+	progress := buildProgressFromContext(ctx)
+	progress.set("fetching seed history", 0, len(normalized), "")
 
-	for _, seed := range normalized {
+	for index, seed := range normalized {
 		address := seed.Address
+		progress.set("fetching seed history", index, len(normalized), shortAddress(address))
 		actions, truncated, err := a.fetchMidgardActionsForAddress(ctx, address, start, end, midgardMaxPagesPerAddress)
 		if err != nil {
 			coverageSatisfied = false
@@ -1251,6 +1254,8 @@ func (a *App) prefetchMidgardBatch(
 		return
 	}
 
+	progress := buildProgressFromContext(ctx)
+
 	handleResult := func(address string, actions []midgardAction, truncated bool, err error) {
 		if err != nil {
 			builder.warnings = append(builder.warnings, fmt.Sprintf("midgard action flow fetch failed for %s", shortAddress(address)))
@@ -1276,6 +1281,7 @@ func (a *App) prefetchMidgardBatch(
 				break
 			}
 			*fetchCount++
+			progress.set(fmt.Sprintf("expanding hop %d", hop), *fetchCount, budget, shortAddress(item.Address))
 			maxPages := midgardGraphPagesForHop(item.Hop)
 			actions, truncated, err := a.fetchMidgardActionsForAddress(ctx, item.Address, start, end, maxPages)
 			handleResult(item.Address, actions, truncated, err)
@@ -1286,6 +1292,8 @@ func (a *App) prefetchMidgardBatch(
 		}
 		return
 	}
+
+	progress.set("fetching actor addresses", *fetchCount, budget, "")
 
 	type fetchResult struct {
 		address   string

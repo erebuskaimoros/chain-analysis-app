@@ -1,6 +1,10 @@
 package dto
 
-import "chain-analysis-app/internal/app"
+import (
+	"encoding/json"
+
+	"chain-analysis-app/internal/app"
+)
 
 type HealthResponse = app.HealthSnapshot
 type ActorResponse = app.Actor
@@ -73,4 +77,16 @@ type AddressAnnotationUpsertRequest struct {
 type BlocklistUpsertRequest struct {
 	Address string `json:"address"`
 	Reason  string `json:"reason"`
+}
+
+type GraphStateCreateRequest struct {
+	Kind      string          `json:"kind"`
+	Name      string          `json:"name"`
+	State     json.RawMessage `json:"state"`
+	NodeCount int             `json:"node_count"`
+	EdgeCount int             `json:"edge_count"`
+}
+
+type GraphStateListResponse struct {
+	States []app.GraphStateSummary `json:"states"`
 }

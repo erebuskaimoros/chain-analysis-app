@@ -1,6 +1,7 @@
 import type {
   ActionLookupResponse,
   Actor,
+  ActorGraphBuildProgress,
   ActorGraphExpandRequest,
   ActorGraphRequest,
   ActorGraphResponse,
@@ -12,6 +13,9 @@ import type {
   AnnotationListResponse,
   BlocklistResponse,
   FlowNode,
+  GraphStateDetail,
+  GraphStateListResponse,
+  GraphStateSummary,
   HealthSnapshot,
   LiveHoldingsRefreshNode,
   LiveHoldingsRefreshResponse,
@@ -130,6 +134,40 @@ export function deleteAddressExplorerRun(id: number) {
 
 export function lookupAction(txID: string) {
   return fetchJSON<ActionLookupResponse>(`/api/v1/actions/${encodeURIComponent(txID)}`);
+}
+
+export function getActorGraphBuildProgress(token: string) {
+  return fetchJSON<ActorGraphBuildProgress>(
+    `/api/v1/analysis/actor-graph/progress/${encodeURIComponent(token)}`
+  );
+}
+
+export async function listGraphStates(kind: string) {
+  const response = await fetchJSON<GraphStateListResponse>(
+    `/api/v1/graph-states?kind=${encodeURIComponent(kind)}`
+  );
+  return response.states ?? [];
+}
+
+export function createGraphState(payload: {
+  kind: string;
+  name: string;
+  state: unknown;
+  node_count: number;
+  edge_count: number;
+}) {
+  return fetchJSON<GraphStateSummary>("/api/v1/graph-states", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getGraphState(id: number) {
+  return fetchJSON<GraphStateDetail>(`/api/v1/graph-states/${id}`);
+}
+
+export function deleteGraphState(id: number) {
+  return fetchJSON<{ ok: boolean }>(`/api/v1/graph-states/${id}`, { method: "DELETE" });
 }
 
 function toLiveHoldingsRefreshNode(node: FlowNode): LiveHoldingsRefreshNode {

@@ -13,7 +13,10 @@ export default defineConfig({
             return "cytoscape-vendor";
           }
           if (id.indexOf("node_modules/elkjs") >= 0) {
-            return "elk-vendor";
+            // The heavy bundled engine is only a fallback for environments
+            // without Worker support; keep it out of the chunk that loads the
+            // lightweight elk-api used with the layout worker.
+            return id.indexOf("elk.bundled") >= 0 ? "elk-bundled-fallback" : "elk-vendor";
           }
           if (id.indexOf("node_modules/@tanstack/react-query") >= 0) {
             return "react-query-vendor";

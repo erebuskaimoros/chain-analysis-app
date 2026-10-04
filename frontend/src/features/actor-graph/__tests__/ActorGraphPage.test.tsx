@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeActor, makeActorGraphResponse, makeEdge, makeNode } from "../../../test-support/graphFixtures";
 import { ActorGraphPage } from "../ActorGraphPage";
 
@@ -16,6 +16,11 @@ const apiMocks = vi.hoisted(() => ({
   listBlocklist: vi.fn(),
   upsertAnnotation: vi.fn(),
   addToBlocklist: vi.fn(),
+  listGraphStates: vi.fn(),
+  createGraphState: vi.fn(),
+  getGraphState: vi.fn(),
+  deleteGraphState: vi.fn(),
+  getActorGraphBuildProgress: vi.fn(),
 }));
 
 vi.mock("../../../lib/api", () => ({
@@ -30,6 +35,11 @@ vi.mock("../../../lib/api", () => ({
   listBlocklist: apiMocks.listBlocklist,
   upsertAnnotation: apiMocks.upsertAnnotation,
   addToBlocklist: apiMocks.addToBlocklist,
+  listGraphStates: apiMocks.listGraphStates,
+  createGraphState: apiMocks.createGraphState,
+  getGraphState: apiMocks.getGraphState,
+  deleteGraphState: apiMocks.deleteGraphState,
+  getActorGraphBuildProgress: apiMocks.getActorGraphBuildProgress,
 }));
 
 vi.mock("../../shared/GraphCanvas", () => ({
@@ -58,6 +68,10 @@ function renderPage() {
 }
 
 describe("ActorGraphPage", () => {
+  beforeEach(() => {
+    apiMocks.listGraphStates.mockResolvedValue([]);
+  });
+
   afterEach(() => {
     cleanup();
     Object.values(apiMocks).forEach((mockFn) => mockFn.mockReset());
@@ -135,6 +149,88 @@ describe("ActorGraphPage", () => {
     expect((screen.getByLabelText("Max Hops") as HTMLInputElement).value).toBe("3");
     expect((screen.getByLabelText("Start") as HTMLInputElement).value).toBe("2026-02-01T00:00");
     expect((screen.getByRole("checkbox", { name: /Treasury/ }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("loads a saved graph state from the server list", async () => {
+    const actor = makeActor({ id: 7, name: "Treasury", addresses: [] });
+    const graph = makeActorGraphResponse({
+      actors: [actor],
+      nodes: [],
+      edges: [],
+      supporting_actions: [],
+      query: {
+        actor_ids: [7],
+        start_time: "2026-02-01T00:00:00Z",
+        end_time: "2026-02-03T00:00:00Z",
+        max_hops: 3,
+        min_usd: 25,
+      },
+    });
+    const summary = {
+      id: 3,
+      kind: "actor-graph",
+      name: "Treasury case",
+      node_count: 0,
+      edge_count: 0,
+      created_at: "2026-03-01T00:00:00Z",
+      updated_at: "2026-03-01T00:00:00Z",
+    };
+
+    apiMocks.listActors.mockResolvedValue([actor]);
+    apiMocks.listActorGraphRuns.mockResolvedValue([]);
+    apiMocks.listAnnotations.mockResolvedValue([]);
+    apiMocks.listBlocklist.mockResolvedValue([]);
+    apiMocks.listGraphStates.mockResolvedValue([summary]);
+    apiMocks.getGraphState.mockResolvedValue({
+      ...summary,
+      state: {
+        schema_version: 1,
+        kind: "actor-graph",
+        exported_at: "2026-03-01T00:00:00Z",
+        request: {
+          actor_ids: [7],
+          start_time: "2026-02-01T00:00:00Z",
+          end_time: "2026-02-03T00:00:00Z",
+          max_hops: 3,
+          flow_types: ["transfers", "swaps", "bonds"],
+          min_usd: 25,
+          collapse_external: false,
+          display_mode: "graph",
+        },
+        ui_state: {
+          selected_actor_ids: [7],
+          form: {
+            start_time: "2026-02-01T00:00",
+            end_time: "2026-02-03T00:00",
+            max_hops: 3,
+            min_usd: "25",
+          },
+        },
+        graph,
+      },
+    });
+    apiMocks.refreshLiveHoldings.mockResolvedValue({
+      nodes: graph.nodes,
+      warnings: [],
+      refreshed_at: "2026-03-18T12:00:00Z",
+    });
+
+    const { container } = renderPage();
+    await screen.findByText(/Treasury case/);
+
+    const select = Array.from(container.querySelectorAll("select")).find((element) =>
+      element.textContent?.includes("Treasury case")
+    );
+    expect(select).not.toBeUndefined();
+    fireEvent.change(select as HTMLSelectElement, { target: { value: "3" } });
+
+    const loadButtons = screen.getAllByRole("button", { name: "Load" });
+    fireEvent.click(loadButtons[loadButtons.length - 1]);
+
+    await waitFor(() => expect(screen.getByText('Loaded graph state from "Treasury case".')).toBeTruthy());
+    expect(apiMocks.getGraphState).toHaveBeenCalledWith(3);
+    expect(screen.getByRole("heading", { name: "Current Flow Graph" })).toBeTruthy();
+    expect((screen.getByLabelText("Min USD") as HTMLInputElement).value).toBe("25");
   });
 
   it("refreshes live holdings after loading a saved graph state", async () => {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -168,7 +169,16 @@ func (a *App) BuildActorGraph(ctx context.Context, req ActorTrackerRequest) (Act
 			})
 		}
 	}()
+	if token := strings.TrimSpace(req.ProgressToken); token != "" {
+		progress := a.buildProgress.start(token)
+		ctx = withBuildProgress(ctx, progress)
+		defer progress.finish()
+	}
 	return a.buildActorTracker(ctx, req)
+}
+
+func (a *App) ActorGraphBuildProgress(token string) (BuildProgressSnapshot, bool) {
+	return a.buildProgress.lookup(strings.TrimSpace(token))
 }
 
 func (a *App) ExpandActorGraph(ctx context.Context, req ActorTrackerExpandRequest) (ActorTrackerResponse, error) {
@@ -207,6 +217,22 @@ func (a *App) ListActorGraphRuns(ctx context.Context) ([]GraphRun, error) {
 
 func (a *App) DeleteActorGraphRun(ctx context.Context, id int64) error {
 	return deleteGraphRun(ctx, a.db, id)
+}
+
+func (a *App) SaveGraphState(ctx context.Context, kind, name string, state json.RawMessage, nodeCount, edgeCount int) (GraphStateSummary, error) {
+	return insertGraphState(ctx, a.db, kind, name, state, nodeCount, edgeCount)
+}
+
+func (a *App) ListGraphStates(ctx context.Context, kind string) ([]GraphStateSummary, error) {
+	return listGraphStates(ctx, a.db, kind)
+}
+
+func (a *App) GetGraphState(ctx context.Context, id int64) (GraphState, error) {
+	return getGraphState(ctx, a.db, id)
+}
+
+func (a *App) DeleteGraphState(ctx context.Context, id int64) error {
+	return deleteGraphState(ctx, a.db, id)
 }
 
 func (a *App) CreateAddressExplorerRun(ctx context.Context, req AddressExplorerRequest, summary string, nodeCount, edgeCount int) (int64, error) {

@@ -9,6 +9,7 @@ type Container struct {
 	ActorGraph      *ActorGraphService
 	AddressExplorer *AddressExplorerService
 	Runs            *RunService
+	GraphStates     *GraphStateService
 }
 
 func New(legacy *app.App) *Container {
@@ -19,5 +20,6 @@ func New(legacy *app.App) *Container {
 		ActorGraph:      &ActorGraphService{legacy: legacy},
 		AddressExplorer: &AddressExplorerService{legacy: legacy},
 		Runs:            &RunService{legacy: legacy},
+		GraphStates:     &GraphStateService{legacy: legacy},
 	}
 }

@@ -76,10 +76,15 @@ func (h *V1) Register(mux *http.ServeMux) {
 	handle("POST /api/v1/analysis/actor-graph/expand", h.handleActorGraphExpand)
 	handle("POST /api/v1/analysis/actor-graph/live-holdings", h.handleActorGraphLiveHoldings)
 	handle("POST /api/v1/analysis/address-explorer", h.handleAddressExplorer)
+	handle("GET /api/v1/analysis/actor-graph/progress/{token}", h.handleActorGraphProgress)
 	handle("GET /api/v1/runs/actor-graph", h.handleActorGraphRuns)
 	handle("DELETE /api/v1/runs/actor-graph/{id}", h.handleActorGraphRunDelete)
 	handle("GET /api/v1/runs/address-explorer", h.handleAddressExplorerRuns)
 	handle("DELETE /api/v1/runs/address-explorer/{id}", h.handleAddressExplorerRunDelete)
+	handle("GET /api/v1/graph-states", h.handleGraphStates)
+	handle("POST /api/v1/graph-states", h.handleGraphStates)
+	handle("GET /api/v1/graph-states/{id}", h.handleGraphStateByID)
+	handle("DELETE /api/v1/graph-states/{id}", h.handleGraphStateByID)
 }
 
 func (h *V1) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -341,6 +346,75 @@ func (h *V1) handleActorGraphRunDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *V1) handleActorGraphProgress(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(r.PathValue("token"))
+	if token == "" {
+		writeError(w, errors.New("progress token is required"))
+		return
+	}
+	snapshot, ok := h.services.ActorGraph.BuildProgress(token)
+	if !ok {
+		writeError(w, sql.ErrNoRows)
+		return
+	}
+	writeJSON(w, http.StatusOK, snapshot)
+}
+
+func (h *V1) handleGraphStates(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+		if kind == "" {
+			kind = app.GraphStateKindActorGraph
+		}
+		states, err := h.services.GraphStates.List(r.Context(), kind)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, dto.GraphStateListResponse{States: states})
+	case http.MethodPost:
+		var req dto.GraphStateCreateRequest
+		if err := decodeJSONBody(r, &req); err != nil {
+			writeError(w, err)
+			return
+		}
+		summary, err := h.services.GraphStates.Save(r.Context(), req.Kind, req.Name, req.State, req.NodeCount, req.EdgeCount)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, summary)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *V1) handleGraphStateByID(w http.ResponseWriter, r *http.Request) {
+	id, err := parsePathInt64(r.PathValue("id"), "graph state id")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		state, err := h.services.GraphStates.Get(r.Context(), id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
+	case http.MethodDelete:
+		if err := h.services.GraphStates.Delete(r.Context(), id); err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
 func (h *V1) handleAddressExplorerRuns(w http.ResponseWriter, r *http.Request) {

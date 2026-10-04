@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 
 	"chain-analysis-app/internal/app"
 )
@@ -24,6 +25,10 @@ func (s *ActorGraphService) RefreshLiveHoldings(ctx context.Context, nodes []app
 
 func (s *ActorGraphService) LookupAction(ctx context.Context, txID string) (app.ActionLookupResult, error) {
 	return s.legacy.LookupActionByTxID(ctx, txID)
+}
+
+func (s *ActorGraphService) BuildProgress(token string) (app.BuildProgressSnapshot, bool) {
+	return s.legacy.ActorGraphBuildProgress(token)
 }
 
 type AddressExplorerService struct {
@@ -60,4 +65,24 @@ func (s *RunService) ListAddressExplorerRuns(ctx context.Context) ([]app.Address
 
 func (s *RunService) DeleteAddressExplorerRun(ctx context.Context, id int64) error {
 	return s.legacy.DeleteAddressExplorerRun(ctx, id)
+}
+
+type GraphStateService struct {
+	legacy *app.App
+}
+
+func (s *GraphStateService) Save(ctx context.Context, kind, name string, state json.RawMessage, nodeCount, edgeCount int) (app.GraphStateSummary, error) {
+	return s.legacy.SaveGraphState(ctx, kind, name, state, nodeCount, edgeCount)
+}
+
+func (s *GraphStateService) List(ctx context.Context, kind string) ([]app.GraphStateSummary, error) {
+	return s.legacy.ListGraphStates(ctx, kind)
+}
+
+func (s *GraphStateService) Get(ctx context.Context, id int64) (app.GraphState, error) {
+	return s.legacy.GetGraphState(ctx, id)
+}
+
+func (s *GraphStateService) Delete(ctx context.Context, id int64) error {
+	return s.legacy.DeleteGraphState(ctx, id)
 }

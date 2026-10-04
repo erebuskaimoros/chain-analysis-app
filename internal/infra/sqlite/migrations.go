@@ -17,6 +17,7 @@ var migrations = []migration{
 	{id: 1, name: "base_schema", up: migrateBaseSchema},
 	{id: 2, name: "graph_runs_compat", up: migrateGraphRunsCompat},
 	{id: 3, name: "analysis_runs", up: migrateAnalysisRuns},
+	{id: 4, name: "graph_states", up: migrateGraphStates},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -217,6 +218,30 @@ func migrateAnalysisRuns(ctx context.Context, db *sql.Tx) error {
 			FROM analysis_runs ar
 			WHERE ar.legacy_graph_run_id = graph_runs.id
 		)
+	`); err != nil {
+		return err
+	}
+	return nil
+}
+
+func migrateGraphStates(ctx context.Context, db *sql.Tx) error {
+	if _, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS graph_states (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			kind TEXT NOT NULL,
+			name TEXT NOT NULL,
+			state_json TEXT NOT NULL,
+			node_count INTEGER NOT NULL DEFAULT 0,
+			edge_count INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_graph_states_kind_updated
+		ON graph_states(kind, updated_at DESC)
 	`); err != nil {
 		return err
 	}
