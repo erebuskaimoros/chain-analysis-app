@@ -35,7 +35,7 @@ interface UseGraphCanvasInteractionsOptions {
   setIsFullscreen: Dispatch<SetStateAction<boolean>>;
   wheelMode: GraphWheelMode;
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
-  onSaveState?: (canvasState: SavedGraphCanvasState) => void;
+  onSaveRequest?: (canvasState: SavedGraphCanvasState) => void;
   scheduleLabelRender: () => void;
 }
 
@@ -59,7 +59,7 @@ export function useGraphCanvasInteractions({
   setIsFullscreen,
   wheelMode,
   onNodeDoubleActivate,
-  onSaveState,
+  onSaveRequest,
   scheduleLabelRender,
 }: UseGraphCanvasInteractionsOptions) {
   const spaceHeldRef = useRef(false);
@@ -575,7 +575,7 @@ export function useGraphCanvasInteractions({
     if (action === "save") {
       const canvasState = captureCanvasState();
       if (canvasState) {
-        onSaveState?.(canvasState);
+        onSaveRequest?.(canvasState);
       }
       return;
     }
@@ -664,7 +664,7 @@ function isGraphOverlayTarget(target: EventTarget | null) {
     target instanceof Element &&
     Boolean(
       target.closest(
-        ".graph-search, .graph-toolbar, .graph-minimap, .graph-filter-popover, .graph-context-menu, .graph-hover-card"
+        ".graph-search, .graph-toolbar, .graph-minimap, .graph-filter-popover, .graph-save-popover, .graph-context-menu, .graph-hover-card"
       )
     )
   );

@@ -150,6 +150,7 @@ export function ActorGraphPage() {
                     }}
                     graphResetKey={controller.graphResetKey}
                     onSaveState={controller.onSaveGraphState}
+                    defaultSaveName={controller.defaultSaveStateName}
                     savedCanvasState={controller.savedCanvasState}
                     onFullscreenChange={setIsGraphFullscreen}
                     filters={{

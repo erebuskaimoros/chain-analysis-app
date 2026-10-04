@@ -43,7 +43,8 @@ export interface GraphCanvasProps {
   onNodeDoubleActivate?: (node: VisibleGraphNode) => void;
   doubleActivateLabel?: string;
   graphResetKey?: number;
-  onSaveState?: (canvasState: SavedGraphCanvasState) => void;
+  onSaveState?: (canvasState: SavedGraphCanvasState, name: string) => void;
+  defaultSaveName?: string;
   savedCanvasState?: SavedGraphCanvasState | null;
   onFullscreenChange?: (isFullscreen: boolean) => void;
   filters?: GraphCanvasFilters;

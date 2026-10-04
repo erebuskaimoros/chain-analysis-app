@@ -32,6 +32,23 @@ export function GraphTimeScrubber({ filterState, onStartTimeChange, onEndTimeCha
     }
   }, [dragging, endMs, startMs]);
 
+  useEffect(() => {
+    if (!dragging) {
+      return;
+    }
+    const stopDragging = () => setDragging(false);
+    window.addEventListener("mouseup", stopDragging);
+    window.addEventListener("touchend", stopDragging);
+    window.addEventListener("touchcancel", stopDragging);
+    window.addEventListener("blur", stopDragging);
+    return () => {
+      window.removeEventListener("mouseup", stopDragging);
+      window.removeEventListener("touchend", stopDragging);
+      window.removeEventListener("touchcancel", stopDragging);
+      window.removeEventListener("blur", stopDragging);
+    };
+  }, [dragging]);
+
   useEffect(
     () => () => {
       if (applyTimerRef.current !== null) {
@@ -96,9 +113,7 @@ export function GraphTimeScrubber({ filterState, onStartTimeChange, onEndTimeCha
           value={startStep}
           aria-label="Timeline start"
           onMouseDown={() => setDragging(true)}
-          onMouseUp={() => setDragging(false)}
           onTouchStart={() => setDragging(true)}
-          onTouchEnd={() => setDragging(false)}
           onChange={(event) => onStartInput(Number(event.target.value))}
         />
         <input
@@ -108,9 +123,7 @@ export function GraphTimeScrubber({ filterState, onStartTimeChange, onEndTimeCha
           value={endStep}
           aria-label="Timeline end"
           onMouseDown={() => setDragging(true)}
-          onMouseUp={() => setDragging(false)}
           onTouchStart={() => setDragging(true)}
-          onTouchEnd={() => setDragging(false)}
           onChange={(event) => onEndInput(Number(event.target.value))}
         />
       </div>

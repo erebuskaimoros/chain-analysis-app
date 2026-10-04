@@ -269,6 +269,7 @@ export function ExplorerPage() {
                   doubleActivateLabel="Expand one edge"
                   graphResetKey={controller.graphResetKey}
                   onSaveState={controller.onSaveGraphState}
+                  defaultSaveName={controller.currentGraph?.address || "address-explorer state"}
                   savedCanvasState={controller.savedCanvasState}
                   onFullscreenChange={setIsGraphFullscreen}
                   filters={{

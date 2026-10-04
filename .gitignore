@@ -4,9 +4,10 @@ data/*.db-wal
 data/bin/
 data/logs/*.log
 data/run/*.pid
-server
+/server
 .env
 frontend/node_modules/
 frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
+internal/app/data/

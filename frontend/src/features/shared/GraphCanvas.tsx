@@ -9,6 +9,7 @@ import { useGraphMinimap } from "./graph-canvas/useGraphMinimap";
 import { useGraphNeighborhoodHighlight } from "./graph-canvas/useGraphNeighborhoodHighlight";
 import { useGraphSearch } from "./graph-canvas/useGraphSearch";
 import type { ContextMenuState, GraphCanvasProps, GraphWheelMode } from "./graph-canvas/types";
+import type { SavedGraphCanvasState } from "../../lib/graphState";
 
 const WHEEL_MODE_STORAGE_KEY = "graph-canvas-wheel-mode";
 
@@ -37,6 +38,7 @@ export function GraphCanvas({
   doubleActivateLabel = "Expand one edge",
   graphResetKey = 0,
   onSaveState,
+  defaultSaveName,
   savedCanvasState,
   onFullscreenChange,
   filters,
@@ -57,6 +59,7 @@ export function GraphCanvas({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [menuState, setMenuState] = useState<ContextMenuState>(null);
   const [wheelMode, setWheelMode] = useState<GraphWheelMode>(readStoredWheelMode);
+  const [pendingSaveState, setPendingSaveState] = useState<SavedGraphCanvasState | null>(null);
 
   const { labelLayerRef, scheduleLabelRender, cancelScheduledLabelRender } = useGraphLabelLayer(cyRef, surfaceRef);
 
@@ -100,7 +103,7 @@ export function GraphCanvas({
     setIsFullscreen,
     wheelMode,
     onNodeDoubleActivate,
-    onSaveState,
+    onSaveRequest: (canvasState) => setPendingSaveState(canvasState),
     scheduleLabelRender,
   });
 
@@ -167,6 +170,14 @@ export function GraphCanvas({
             paneMenuActions={paneMenuActions}
             doubleActivateLabel={doubleActivateLabel}
             showSaveState={Boolean(onSaveState)}
+            savePrompt={pendingSaveState ? { defaultName: defaultSaveName ?? "graph state" } : null}
+            onSaveConfirm={(name) => {
+              if (pendingSaveState) {
+                onSaveState?.(pendingSaveState, name);
+              }
+              setPendingSaveState(null);
+            }}
+            onSaveCancel={() => setPendingSaveState(null)}
             search={search}
             searchInputRef={searchInputRef}
             wheelMode={wheelMode}

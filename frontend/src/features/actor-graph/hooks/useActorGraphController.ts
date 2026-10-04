@@ -415,6 +415,9 @@ export function useActorGraphController() {
         : null,
     [expandedActorIDs, expandedExternalChains, graph, graphFilters, metadata]
   );
+  const defaultSaveStateName = graph
+    ? `${actorNames(graph.actors) || selectedActorIDs.join("-") || "graph"} — ${formatShortDateTime(new Date().toISOString())}`
+    : "graph state";
 
   const filteredActions = useMemo(
     () => (graph ? filterSupportingActions(graph.supporting_actions, graph, graphFilters) : []),
@@ -600,22 +603,16 @@ export function useActorGraphController() {
     };
   }
 
-  async function onSaveGraphState(canvasState: SavedGraphCanvasState) {
+  async function onSaveGraphState(canvasState: SavedGraphCanvasState, name: string) {
     const payload = buildGraphStatePayload(canvasState);
     if (!payload || !graph) {
       return;
     }
-    const defaultName = `${actorNames(graph.actors) || selectedActorIDs.join("-") || "graph"} — ${formatShortDateTime(
-      new Date().toISOString()
-    )}`;
-    const name = window.prompt("Name this graph state:", defaultName);
-    if (name === null) {
-      return;
-    }
+    const finalName = name.trim() || defaultSaveStateName;
     try {
       const summary = await createGraphState({
         kind: "actor-graph",
-        name: name.trim() || defaultName,
+        name: finalName,
         state: payload,
         node_count: graph.nodes.length,
         edge_count: graph.edges.length,
@@ -755,6 +752,7 @@ export function useActorGraphController() {
     setSelection,
     graphResetKey,
     onSaveGraphState,
+    defaultSaveStateName,
     onLoadGraphState,
     savedCanvasState,
     graphFilters,

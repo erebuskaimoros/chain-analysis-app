@@ -241,17 +241,23 @@ describe("GraphCanvas multi-node context menu", () => {
     mockCytoscapeState.latestCore.pan({ x: 90, y: 120 });
 
     fireEvent.click(screen.getByTitle("Save graph state"));
+    const input = await screen.findByLabelText("Save graph state");
+    fireEvent.change(input, { target: { value: "My Layout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(onSaveState).toHaveBeenCalledWith({
-      node_positions: {
-        "node-a": { x: 333, y: 444 },
-        "node-b": { x: 555, y: 666 },
+    expect(onSaveState).toHaveBeenCalledWith(
+      {
+        node_positions: {
+          "node-a": { x: 333, y: 444 },
+          "node-b": { x: 555, y: 666 },
+        },
+        viewport: {
+          zoom: 1.75,
+          pan: { x: 90, y: 120 },
+        },
       },
-      viewport: {
-        zoom: 1.75,
-        pan: { x: 90, y: 120 },
-      },
-    });
+      "My Layout"
+    );
   });
 
   it("restores saved node positions and viewport on reset", async () => {

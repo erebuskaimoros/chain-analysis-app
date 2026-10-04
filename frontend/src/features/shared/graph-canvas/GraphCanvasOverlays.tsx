@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
 import type { VisibleGraphNode } from "../../../lib/graph";
 import type {
   ContextMenuState,
@@ -28,6 +28,9 @@ interface GraphCanvasOverlaysProps {
   paneMenuActions?: GraphCanvasPaneMenuActions;
   doubleActivateLabel: string;
   showSaveState: boolean;
+  savePrompt: { defaultName: string } | null;
+  onSaveConfirm: (name: string) => void;
+  onSaveCancel: () => void;
   search: GraphSearchControls;
   searchInputRef: RefObject<HTMLInputElement>;
   wheelMode: GraphWheelMode;
@@ -59,6 +62,9 @@ export function GraphCanvasOverlays({
   paneMenuActions,
   doubleActivateLabel,
   showSaveState,
+  savePrompt,
+  onSaveConfirm,
+  onSaveCancel,
   search,
   searchInputRef,
   wheelMode,
@@ -68,6 +74,8 @@ export function GraphCanvasOverlays({
   onToolbarAction,
   onContextMenuAction,
 }: GraphCanvasOverlaysProps) {
+  const saveNameInputRef = useRef<HTMLInputElement | null>(null);
+
   return (
     <>
       <div className="graph-search">
@@ -161,6 +169,39 @@ export function GraphCanvasOverlays({
         <div className="graph-filter-popover" ref={filterPopoverRef}>
           {filters.content}
         </div>
+      ) : null}
+
+      {savePrompt ? (
+        <form
+          className="graph-save-popover"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const value = saveNameInputRef.current?.value.trim() || savePrompt.defaultName;
+            onSaveConfirm(value);
+          }}
+        >
+          <label htmlFor="graph-save-name">Save graph state</label>
+          <input
+            id="graph-save-name"
+            ref={saveNameInputRef}
+            type="text"
+            defaultValue={savePrompt.defaultName}
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                onSaveCancel();
+              }
+            }}
+          />
+          <div className="button-row">
+            <button type="submit">Save</button>
+            <button type="button" onClick={onSaveCancel}>
+              Cancel
+            </button>
+          </div>
+        </form>
       ) : null}
 
       <canvas className="graph-minimap" ref={minimapCanvasRef} width={168} height={112} />

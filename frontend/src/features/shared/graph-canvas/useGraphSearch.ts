@@ -106,7 +106,7 @@ function centerOnElement(cy: cytoscape.Core, element: cytoscape.CollectionReturn
         center: { eles: element as cytoscape.CollectionArgument },
         zoom: targetZoom,
       },
-      { duration: 220, easing: "ease-in-out-quad" }
+      { duration: 220, easing: "ease-in-out-quad", queue: false }
     );
     return;
   }

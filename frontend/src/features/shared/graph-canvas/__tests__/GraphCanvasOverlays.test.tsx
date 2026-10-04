@@ -12,6 +12,9 @@ function baseProps() {
     menuState: null,
     doubleActivateLabel: "Expand one hop",
     showSaveState: true,
+    savePrompt: null as { defaultName: string } | null,
+    onSaveConfirm: vi.fn(),
+    onSaveCancel: vi.fn(),
     search: {
       query: "",
       setQuery: vi.fn(),
@@ -66,5 +69,21 @@ describe("GraphCanvasOverlays", () => {
     expect(props.search.next).toHaveBeenCalledTimes(1);
     expect(props.search.prev).toHaveBeenCalledTimes(1);
     expect(props.search.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("confirms or cancels the save-name popover", () => {
+    const props = baseProps();
+    props.savePrompt = { defaultName: "Case X" };
+
+    render(<GraphCanvasOverlays {...props} />);
+
+    const input = screen.getByLabelText("Save graph state");
+    expect((input as HTMLInputElement).value).toBe("Case X");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(props.onSaveConfirm).toHaveBeenCalledWith("Case X");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(props.onSaveCancel).toHaveBeenCalled();
   });
 });

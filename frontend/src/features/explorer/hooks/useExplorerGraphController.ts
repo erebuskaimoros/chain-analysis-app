@@ -338,12 +338,12 @@ export function useExplorerGraphController() {
     }
   }
 
-  function onSaveGraphState(canvasState: SavedGraphCanvasState) {
+  function onSaveGraphState(canvasState: SavedGraphCanvasState, name: string) {
     if (!graph) {
       return;
     }
     const direction = graph.query.direction === "oldest" ? "oldest" : "newest";
-    const filename = buildGraphStateFilename("address-explorer", graph.address || form.address);
+    const filename = buildGraphStateFilename("address-explorer", name.trim() || graph.address || form.address);
     downloadJSON(filename, {
       schema_version: 1,
       kind: "address-explorer",
