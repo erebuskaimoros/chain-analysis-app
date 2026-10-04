@@ -12,8 +12,7 @@
 
 ## Current Work In Progress
 
-- Refactor plan: `docs/refactor-plan.md`; Phase 0 done on `refactor/p0-baseline` (not yet merged to `main` or pushed); Phase 1 (record/replay + golden tests) is next
-- Decide where the untracked repo-root operator reports/CSVs and untracked `docs/` analyses belong (proposed `../_local/chain-analysis-app/`)
+- Refactor plan: `docs/refactor-plan.md`; Phase 0 merged to `main`; Phase 1 (record/replay + golden tests) in progress on `refactor/p1-safety-net`
 - Run `/code-review` over the merged map-improvements changes (landed after tests only, without a separate review pass)
 - Investigate Treasury BTC address `bc1qmqzgaqlqpgymj0v7z5ll7qupskk3d88vpszhgs` missing actor-colored rim; confirm whether it should be added to `TC Treasury`
 - Manual QA: wheel-mode Auto heuristic with real hardware (Logitech MX Master smooth scroll) — or rely on the new explicit Zoom/Pan wheel-mode preference

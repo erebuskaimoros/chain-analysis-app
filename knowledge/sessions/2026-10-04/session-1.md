@@ -87,7 +87,7 @@ Out of scope: operator attribution, protocol forensics, a self-hosted Midgard.
 
 ## Next Steps
 
-- [ ] Decide where the untracked repo-root files go: operator CSVs and reports, security-design docs, `system_income_(usd).csv`, and the untracked `docs/` analyses. The plan proposes `../_local/chain-analysis-app/`.
-- [ ] Merge `refactor/p0-baseline` into `main` and push. The branch is local only.
+- [x] Moved the untracked repo-root operator reports/CSVs, security-design docs, `system_income_(usd).csv`, and untracked `docs/` analyses to `../_local/chain-analysis-app/`.
+- [x] Merged `refactor/p0-baseline` into `main` and pushed.
 - [ ] Phase 1: record/replay transport and golden tests, starting with the Bitget hacker address from public reporting.
 - [ ] Optional: remove the merged `map-improvements` worktree.
