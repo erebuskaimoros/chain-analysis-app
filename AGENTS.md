@@ -14,5 +14,10 @@
 
 ## Shared Context
 
-- Read `../AGENTS.md`, `../knowledge/projects/chain-analysis-app.md`, and `../knowledge/workstreams/analytics-and-tooling.md`.
+In a linked worktree, resolve shared parent/sibling paths from the primary
+checkout shown by `git worktree list --porcelain`; use the current worktree for
+code and its local documentation. Do not assume branch-directory depth matches
+the canonical checkout. Read only context relevant to the requested change.
+
+- For substantial domain changes or cross-project work, read `../AGENTS.md`, `../knowledge/projects/chain-analysis-app.md`, and `../knowledge/workstreams/analytics-and-tooling.md`.
 - Keep detailed session notes in `knowledge/`; update the shared wiki when durable project understanding changes.

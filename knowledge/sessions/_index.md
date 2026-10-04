@@ -4,6 +4,7 @@
 
 | Date | Focus | Summary | File |
 |------|-------|---------|------|
+| 2026-08-23 #1 | Memoless Registration Incident | Reconstructed the authz fee bypass, automated registration pattern, slot occupancy, and liveness impact | `sessions/2026-08-23/session-1.md` |
 | 2026-04-17 #1 | Live Holdings Performance And Endpoint Cleanup | Cached backend metadata, slimmed live-holdings refresh, split frontend bundles, and moved THOR defaults to thorchain.network/liquify | `sessions/2026-04-17/session-1.md` |
 | 2026-03-17 #1 | Mouse + Trackpad Coexistence | Added wheelDelta heuristic, extended gesture lock, tuned threshold for graph canvas | `sessions/2026-03-17/session-1.md` |
 
