@@ -5,8 +5,8 @@
 The app reads THORChain correctly: it merges each swap's inbound and outbound legs, models LP custody, and follows bond and rebond chains. The prototype around that core has five structural gaps:
 
 1. **The cache stores query results, not chain data.** `midgard_action_cache` and `external_transfer_cache` hold JSON blobs keyed by (address, start, end). Any new or shifted time window refetches everything, and nothing can be queried across graphs.
-2. **Every USD value uses today's price.** `priceBook.usdFor` (`internal/app/actor_tracker.go:4044`) applies current pool prices to historical transfers. Unpriced tokens skip the min-USD filter (`actor_tracker.go:2761`).
-3. **Labels are a hardcoded map** (`knownAddressLabels`, `actor_tracker.go:59`) plus 44 manual annotations. There are no exchange, sanctions or scam labels, which is where most traces end.
+2. **Every USD value uses today's price.** `priceBook.usdFor` (`internal/app/pricebook.go`) applies current pool prices to historical transfers. Unpriced tokens skip the min-USD filter (`projection.go`, `rujira_trace.go`, `trackers_transfers.go`).
+3. **Labels are a hardcoded map** (`knownAddressLabels` in `actor_tracker.go`) plus 44 manual annotations. There are no exchange, sanctions or scam labels, which is where most traces end.
 4. **Long jobs run as single synchronous HTTP requests.** The browser runs the live-holdings retry loop against an endpoint that keeps no state. The default THORNode endpoint returns 403 from this host.
 5. **There is no answer-shaped output.** Expansion is by hop count, with no "follow this amount" trace, no historical monitoring of actors, and no case or export. Recent investigations were done beside the app, not in it.
 
@@ -18,7 +18,7 @@ Scope comes from your answers:
 
 **Acceptance cases used throughout:**
 - **(A) TC Treasury monitoring.** Repeat refreshes fetch only new data, and holdings form a time series.
-- **(B) Bitget hack, 2026-09-28.** From the hacker's ETH address, the app finds the 27 THORChain swaps (about 2,390 ETH in, 75.2 BTC out to a single BTC address). Every edge carries its transaction IDs.
+- **(B) Bitget hack, 2026-09-28.** From the exploiter's ETH address (ending 96c3), the app finds all 31 THORChain swaps between 03:55 and 06:23 UTC (2,790.32 ETH in, 87.82 BTC out to one BTC address ending j68f). Every edge carries its transaction IDs. Press reports said 27 swaps, 2,390 ETH and 75.2 BTC; Midgard shows the larger figures.
 
 ## Execution conventions
 
@@ -56,7 +56,7 @@ Scope comes from your answers:
    - Remove the legacy handlers in `internal/app/http.go` and their tests in `http_test.go`. Move the request-logging middleware that `internal/api/v1.go` uses (`WithRequestLoggingFunc`) into `observability.go`.
    - Remove the `CHAIN_ANALYSIS_STATIC_DIR` config and the unused `schemaSQL` const in `store.go`.
    - Point `scripts/restart-server.sh` `HEALTH_URL` and the restart note in `AGENTS.md` at `/api/v1/health`. Rewrite the README API section.
-4. **Fix the endpoint defaults** in `internal/app/config.go:135,144`.
+4. **Fix the endpoint defaults** in `internal/app/config.go`.
    - THORNode: Liquify first (`https://gateway.liquify.com/chain/thorchain_api`, then `https://thornode.thorchain.liquify.com`).
    - Midgard: the Liquify gateway (`https://gateway.liquify.com/chain/thorchain_midgard` plus whatever `/v2` suffix a curl check shows is needed).
    - Remove the `*.thorchain.network` hosts, which return 403 from this machine.
@@ -64,29 +64,41 @@ Scope comes from your answers:
 
 **Exit:** a clean `git status` on `main`, all tests green, the UI works from `/`, `/legacy` returns 404, and health is reported at `/api/v1/health`.
 
+**Status (2026-10-04): done and pushed.** All four previous THOR endpoint defaults turned out to be unreachable (expired certificates or DNS failures). The legacy-only wallet liquidity, wallet bonds and rebond continuity endpoints were removed along with the legacy API.
+
 ## Phase 1: Safety net and file split
 
 1. **Record/replay HTTP transport** (`internal/app/httpcassette.go`).
    - An `http.RoundTripper` with a record mode, which proxies and writes `testdata/cassettes/<case>/<hash>.json`, and a replay mode, which serves by method+URL and fails on a miss.
    - Redact `apikey`, `api_key` and `key` query parameters and auth headers before hashing and writing.
-   - Inject it through a new `Config.HTTPTransport`, used by `App.httpClient` (`app.go:71`) and `NewThorClient` (`thor_client.go`).
+   - Inject it through a new `Config.HTTPTransport`, used by `App.httpClient` (`app.go`) and `NewThorClient` (`thor_client.go`).
 2. **Golden tests** (`internal/app/golden_test.go`). Record live with `CHAIN_ANALYSIS_RECORD=1`; replay by default; regenerate with `-update`.
-   - (A) TC Treasury actor over a fixed 30-day window, max_hops 2. Actor fixtures are created in a temp DB.
-   - (B) Bitget hacker ETH address, explorer build over 2026-09-28 03:00–07:00 UTC. Get the address from public reporting and confirm it via Liquify Midgard.
-   - (C) One rebond case and (D) one Rujira/CALC case, using real addresses taken from existing tests.
+   - (A) TC Treasury actor over 2026-09-24 → 10-01, max_hops 2. The window is a week rather than 30 days, to keep the cassette near 1 MB. Actor fixtures are created in a temp DB.
+   - (B) The exploiter's ETH address as an actor graph over 2026-09-28 03:00–07:00 UTC. The address was identified on-chain from the reported window, batch size and single destination; press reports didn't publish it.
+   - (C) A rebond case (old bond address ending s7sa → new bond address ending 8x2l, 2026-10-02).
+   - A dedicated Rujira/CALC case was dropped: active Rujira addresses are trading bots with hundreds of actions a day. Unit tests already cover the Rujira/CALC rules, and case A covers CALC payouts to the treasury.
    - Golden output is canonical JSON in `testdata/golden/<case>.json`: nodes and edges sorted, with timestamps, `requested_at` and live metrics removed.
 3. **Split the big files without changing behaviour** (same package; golden and unit tests must stay identical):
    - `actor_tracker.go` (5.7k lines) → `midgard_fetch.go`, `live_holdings.go`, `projection.go` (projection, stitching, contract/CALC helpers), `graph_builder.go`, `pricebook.go`, `midgard_parse.go`.
    - `external_trackers.go` (3.9k lines) → `trackers_holdings.go`, `trackers_transfers.go`, `trackers_http.go`.
 
-**Exit:** golden cases A–D pass in replay mode, all existing tests pass, and the split diff only moves code.
+**Exit:** golden cases A–C pass in replay mode, all existing tests pass, and the split diff only moves code.
+
+**Status (2026-10-04): done.**
+- Replay runs offline in about 15 seconds and is stable across runs.
+- Two test seams were needed:
+  - `Config.LiveHoldingsTimeout`, because live-holdings budgets inside the build otherwise race between record and replay.
+  - Sibling-host fallback in replay, because failover endpoints rotate per request.
+- Findings to carry forward:
+  - **Bug: partial-fill swaps are dropped.** A swap that pays the destination and also returns unfilled input to the sender shares its inbound tx ID with a refund action. The refund-suppression rule then removes the whole swap. Case B shows 29 of 31 swaps (2,704.54 ETH / 85.14 BTC); the two partial fills (85.78 ETH) are missing. Fix this test-first, then update golden B deliberately.
+  - **Cost: the legacy action source (Vanaheim) is queried for every THOR address, whatever the window.** It returned about 20 MB for one busy address-day. Phase 2 should query it only for windows Midgard can't serve.
 
 ## Phase 2: Ledger instead of query-shaped caches
 
 Migration 5 `ledger`:
-- `ledger_thor_actions(action_key PK, protocol, type, status, height, block_time, raw_json)`, where `action_key` comes from `midgardActionKey` (`actor_tracker.go:4784`).
+- `ledger_thor_actions(action_key PK, protocol, type, status, height, block_time, raw_json)`, where `action_key` comes from `midgardActionKey` (`projection.go`).
 - `ledger_thor_action_addresses(address, block_time, action_key, PK(address, action_key))`.
-- `ledger_transfers(chain, transfer_key, tx_id, from_addr, to_addr, asset, amount_raw, token_address, token_decimals, height, block_time, provider, raw_json, PK(chain, transfer_key))`, where `transfer_key` comes from `externalTransferKey` (`external_trackers.go:1595`).
+- `ledger_transfers(chain, transfer_key, tx_id, from_addr, to_addr, asset, amount_raw, token_address, token_decimals, height, block_time, provider, raw_json, PK(chain, transfer_key))`, where `transfer_key` comes from `externalTransferKey` (`trackers_transfers.go`).
 - `ledger_transfer_addresses(chain, address, block_time, transfer_key)`.
 - `ledger_coverage(source, chain, address, from_ts, to_ts, fetched_at)`. `source` is `midgard:THOR`, `midgard:MAYA` or a provider name.
 
@@ -97,9 +109,9 @@ Steps:
    - When a fetch is truncated, the range from the oldest returned item to `to` still counts as covered.
    - Anything after `fetched_at - 10m` is always treated as a gap, so recent activity gets picked up.
 3. **Rewire the fetch paths to fetch gaps, then query the ledger:**
-   - `fetchMidgardActionsForAddressOnlyFromProtocol` (`actor_tracker.go:1334`), reusing the existing paged fetchers and their `fromTimestamp`/`timestamp` parameters.
-   - `fetchExternalTransfersForAddress` (`external_trackers.go:1393`).
-   - Retire `lookup*/insert*Cache` (`store.go:274-400`).
+   - `fetchMidgardActionsForAddressOnlyFromProtocol` (`midgard_fetch.go`), reusing the existing paged fetchers and their `fromTimestamp`/`timestamp` parameters.
+   - `fetchExternalTransfersForAddress` (`trackers_transfers.go`).
+   - Retire `lookup*/insert*Cache` (`store.go`).
 4. **Backfill** in Go migration code: import the existing cache rows (961 Midgard, 859 external) into the ledger plus coverage. Migration 6 drops the old cache tables once the phase is verified.
 
 **Exit:**
@@ -109,11 +121,11 @@ Steps:
 
 ## Phase 3: Provider gateway, job runner, live holdings on the server
 
-1. **Typed provider errors.** Classify at the HTTP layer (`trackers_http.go` request helpers, around `external_trackers.go:3718-3842`, and `ThorClient.GetJSON`) as `RateLimited(RetryAfter)`, `Banned` (403/challenge), `Transient` (5xx/timeout), `Permanent` (4xx/decode) or `Config` (DNS/missing key). This replaces string matching such as `isHTTPStatusError`.
+1. **Typed provider errors.** Classify at the HTTP layer (the `getJSONAbsolute*`/`postJSONAbsolute*` helpers in `trackers_http.go`, and `ThorClient.GetJSON`) as `RateLimited(RetryAfter)`, `Banned` (403/challenge), `Transient` (5xx/timeout), `Permanent` (4xx/decode) or `Config` (DNS/missing key). This replaces string matching such as `isHTTPStatusError`.
 2. **Circuit breaker** in `tracker_health.go`.
    - `allow(provider, chain) (bool, retryAt)` uses the stored `Retry-After` and failure counts. A ban opens the circuit for 15 minutes; a 429 respects `Retry-After`.
    - `ThorClient.rotatedEndpoints` skips endpoints whose circuit is open.
-3. **Cache the bond index.** `fetchProtocolBondIndexes` (`external_trackers.go:337`) goes through the `metadata_cache.go` pattern with a 60-second TTL.
+3. **Cache the bond index.** `fetchProtocolBondIndexes` (`trackers_holdings.go`) goes through the `metadata_cache.go` pattern with a 60-second TTL.
 4. **Job runner** (`jobs.go`): generalise the map branch's `build_progress.go` progress tokens into `Job{ID, Kind, Status, Progress, Partial, Warnings, Err, LogPath, cancel}`.
    - Kinds: `actor_graph_build`, `actor_graph_expand`, `explorer_build`, `live_holdings`.
    - API: `GET /api/v1/jobs/{id}` and `DELETE` (cancel). The build and expand endpoints return a `job_id`. The frontend polls and renders the partial graph.
@@ -123,7 +135,7 @@ Steps:
    - Final statuses are `available`, `zero` and `unavailable(reason)`. `pending` carries a `retry_at`.
    - Snapshots are reused for 10 minutes.
    - Delete the browser retry loop in `useActorGraphController.ts` (`refreshGraphLiveHoldings`); a manual refresh becomes a forced job.
-6. **Per-job logs.** Write `data/logs/runs/<job-id>.jsonl` instead of overwriting a single file through `saveLastRunLog` (`app.go:90`). `last-run.log` becomes a copy of the most recent build job's log only.
+6. **Per-job logs.** Write `data/logs/runs/<job-id>.jsonl` instead of overwriting a single file through `saveLastRunLog` (`app.go`). `last-run.log` becomes a copy of the most recent build job's log only.
 
 **Write these failing tests first:**
 - A persistent 403 reaches `unavailable(banned)` without retries during the circuit window.
@@ -142,7 +154,7 @@ Steps:
    4. Otherwise the transfer is marked unpriced.
 2. **Cache:** migration 8 `price_points(asset, interval, bucket_ts, usd, source, PK(asset, interval, bucket_ts))`, filled in day-sized blocks.
 3. **Model:** add `usd_at_time` and `price_source` to `FlowAssetValue`, `FlowEdgeTransaction` and `SupportingAction` (`types.go`). Edge USD becomes the sum of per-transaction `usd_at_time`. `usd_spot` stays for "worth now". Switch `usdFor` to big-decimal maths to avoid int64 overflow on large raw amounts.
-4. **Filter:** `min_usd` uses `usd_at_time`. Unpriced segments are excluded unless an endpoint belongs to an actor or the request sets `include_unpriced` (fixes `actor_tracker.go:2761`).
+4. **Filter:** `min_usd` uses `usd_at_time`. Unpriced segments are excluded unless an endpoint belongs to an actor or the request sets `include_unpriced` (fixes all three copies of the filter, in `projection.go`, `rujira_trace.go` and `trackers_transfers.go`).
 5. **Frontend:** show the at-time USD and its source; label the filter "Min USD (at time)"; add an include-unpriced toggle.
 
 **Exit:**
@@ -193,7 +205,7 @@ Steps:
    - `stop_categories` (default: exchange, sanctioned, mixer)
    - LP into a THOR pool ends as a "pool" sink.
 2. **Engine** (`trace.go`).
-   - It consumes the custody segments that existing projection produces from ledger data: `projectMidgardActionWithExternal`, and `stitchMidgardAction` at `actor_tracker.go:2687`/`3213` before the split. Swaps therefore already arrive as wallet→recipient with an asset conversion.
+   - It consumes the custody segments that existing projection produces from ledger data: `projectMidgardActionWithExternal`, and `stitchMidgardAction` in `projection.go`. Swaps therefore already arrive as wallet→recipient with an asset conversion.
    - For each address, it orders inflows and outflows by time and allocates the traced amount by policy.
    - Swaps convert the traced amount using the action's in/out ratio.
    - Gaps in coverage lower confidence and are reported.
@@ -206,8 +218,8 @@ Steps:
 5. **UI:** a Trace page with the form, a graph (reusing `GraphCanvas`), a sinks table, a flows table with transaction IDs and explorer links, and a summary of the method used.
 
 **Exit (acceptance B):**
-- A forward FIFO trace from the hacker's address finds the 27 swaps.
-- The sink is one BTC address with about 75.2 BTC traced (within 1%).
+- A forward FIFO trace from the exploiter's address finds all 31 swaps, including the two partial fills.
+- The sink is one BTC address with about 87.82 BTC traced (within 1%).
 - Every edge has transaction IDs.
 - It finishes in under 2 seconds on replay and under 60 seconds live when uncached.
 
