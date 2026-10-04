@@ -79,6 +79,12 @@ func New(cfg Config) (*App, error) {
 	if a.httpClient.Timeout < 30*time.Second {
 		a.httpClient.Timeout = 30 * time.Second
 	}
+	if cfg.HTTPTransport != nil {
+		a.httpClient.Transport = cfg.HTTPTransport
+		for _, client := range []*ThorClient{a.thor, a.mid, a.mayaNode, a.mayaMid, a.legacyActions} {
+			client.client.Transport = cfg.HTTPTransport
+		}
+	}
 	return a, nil
 }
 

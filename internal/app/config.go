@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -46,6 +47,13 @@ type Config struct {
 	RadixGatewayURL        string
 	RequestTimeout         time.Duration
 	MidgardTimeout         time.Duration
+	// LiveHoldingsTimeout, when positive, replaces both the live-holdings
+	// batch budget and the per-lookup timeouts. Golden tests raise it so
+	// record and replay issue the same lookups.
+	LiveHoldingsTimeout time.Duration
+	// HTTPTransport, when set, carries every outbound request (THORNode,
+	// Midgard, and external trackers). Tests use it to record and replay.
+	HTTPTransport http.RoundTripper `json:"-"`
 }
 
 // loadDotEnv reads a .env file and sets any variables not already in the environment.

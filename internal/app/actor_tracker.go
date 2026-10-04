@@ -2561,6 +2561,9 @@ func (a *App) liveHoldingsProviderForChain(chain string) string {
 }
 
 func (a *App) liveHoldingsLookupTimeout(provider, chain string) time.Duration {
+	if a != nil && a.cfg.LiveHoldingsTimeout > 0 {
+		return a.cfg.LiveHoldingsTimeout
+	}
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	chain = strings.ToUpper(strings.TrimSpace(chain))
 	switch {
@@ -2578,6 +2581,9 @@ func (a *App) liveHoldingsLookupTimeout(provider, chain string) time.Duration {
 }
 
 func (a *App) liveHoldingsBatchTimeout() time.Duration {
+	if a != nil && a.cfg.LiveHoldingsTimeout > 0 {
+		return a.cfg.LiveHoldingsTimeout
+	}
 	return a.clampLiveHoldingsLookupTimeout(10 * time.Second)
 }
 
