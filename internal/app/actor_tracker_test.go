@@ -2895,7 +2895,6 @@ func newActorTrackerAffiliateFeeTestApp(t *testing.T, affiliate string) *App {
 
 	app, err := New(Config{
 		DBPath:            filepath.Join(t.TempDir(), "actor-tracker-affiliate.db"),
-		StaticDir:         "internal/web/static",
 		ThornodeEndpoints: []string{server.URL},
 		MidgardEndpoints:  []string{server.URL},
 		RequestTimeout:    5 * time.Second,
@@ -3290,7 +3289,6 @@ func TestFetchMidgardActionsForAddressCanonicalizesShadowSendAcrossCache(t *test
 
 	app, err := New(Config{
 		DBPath:            filepath.Join(t.TempDir(), "chain-analysis.db"),
-		StaticDir:         "internal/web/static",
 		ThornodeEndpoints: []string{server.URL},
 		MidgardEndpoints:  []string{server.URL},
 		RequestTimeout:    5 * time.Second,

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -1768,7 +1767,7 @@ func TestLiveHoldingsLookupTimeoutHonorsSmallerRequestTimeout(t *testing.T) {
 	}
 }
 
-func TestHandleActorTrackerLiveHoldings(t *testing.T) {
+func TestRefreshLiveHoldingsPopulatesExternalAddressNode(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/pools":
@@ -1796,34 +1795,27 @@ func TestHandleActorTrackerLiveHoldings(t *testing.T) {
 		trackerHealth: newTrackerHealthStore(),
 	}
 
-	body, err := json.Marshal(ActorTrackerLiveHoldingsRequest{
-		Nodes: []FlowNode{
-			{
-				ID:      "external_address:0xwatch:external:1",
-				Kind:    "external_address",
-				Label:   "0xwatch",
-				Chain:   "ETH",
-				Stage:   "external",
-				Depth:   1,
-				Metrics: map[string]any{"address": "0xwatch"},
-			},
+	nodes := []FlowNode{
+		{
+			ID:      "external_address:0xwatch:external:1",
+			Kind:    "external_address",
+			Label:   "0xwatch",
+			Chain:   "ETH",
+			Stage:   "external",
+			Depth:   1,
+			Metrics: map[string]any{"address": "0xwatch"},
 		},
-	})
+	}
+
+	if _, err := app.RefreshLiveHoldings(context.Background(), nodes); err != nil {
+		t.Fatalf("refresh live holdings: %v", err)
+	}
+	encoded, err := json.Marshal(ActorTrackerLiveHoldingsResponse{Nodes: nodes})
 	if err != nil {
-		t.Fatalf("marshal request: %v", err)
+		t.Fatalf("encode response: %v", err)
 	}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/actor-tracker/live-holdings", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	app.handleActorTrackerLiveHoldings(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-
 	var resp ActorTrackerLiveHoldingsResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+	if err := json.Unmarshal(encoded, &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	if len(resp.Nodes) != 1 {

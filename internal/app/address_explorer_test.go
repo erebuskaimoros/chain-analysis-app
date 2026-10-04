@@ -345,7 +345,6 @@ func newAddressExplorerTestApp(t *testing.T, handler http.Handler) (*App, func()
 	server := httptest.NewServer(handler)
 	app, err := New(Config{
 		DBPath:            filepath.Join(t.TempDir(), "address-explorer-test.db"),
-		StaticDir:         "internal/web/static",
 		ThornodeEndpoints: []string{server.URL},
 		MidgardEndpoints:  []string{server.URL},
 		RequestTimeout:    5 * time.Second,

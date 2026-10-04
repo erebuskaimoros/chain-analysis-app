@@ -10,7 +10,7 @@
 
 - Restart from this directory with `make restart-server` or `./scripts/restart-server.sh restart`.
 - Do not use `pkill -f "go run ./cmd/server"` as the primary restart method.
-- After restart, run `curl -s http://localhost:8090/api/health` and verify `build.commit` and `build.build_time` reflect the expected code.
+- After restart, run `curl -s http://localhost:8090/api/v1/health` and verify `build.commit` and `build.build_time` reflect the expected code.
 
 ## Shared Context
 

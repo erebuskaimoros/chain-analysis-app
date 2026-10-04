@@ -56,7 +56,6 @@ func TestFetchMidgardActionsForAddressMergesLegacyTHORHistoryDespiteMidgardOnlyC
 
 	app, err := New(Config{
 		DBPath:                filepath.Join(t.TempDir(), "legacy-thor-history.db"),
-		StaticDir:             "internal/web/static",
 		ThornodeEndpoints:     []string{midgard.URL},
 		MidgardEndpoints:      []string{midgard.URL},
 		LegacyActionEndpoints: []string{legacySource.URL},
@@ -157,7 +156,6 @@ func TestFetchMidgardActionsForAddressReturnsPartialMergedHistoryWhenLegacyPagin
 
 	app, err := New(Config{
 		DBPath:                filepath.Join(t.TempDir(), "partial-legacy-history.db"),
-		StaticDir:             "internal/web/static",
 		ThornodeEndpoints:     []string{midgard.URL},
 		MidgardEndpoints:      []string{midgard.URL},
 		LegacyActionEndpoints: []string{legacy.URL},
@@ -239,7 +237,6 @@ func TestFetchMidgardActionsForAddressPagedReturnsPartialMergedHistoryWhenLegacy
 
 	app, err := New(Config{
 		DBPath:                filepath.Join(t.TempDir(), "partial-legacy-paged-history.db"),
-		StaticDir:             "internal/web/static",
 		ThornodeEndpoints:     []string{midgard.URL},
 		MidgardEndpoints:      []string{midgard.URL},
 		LegacyActionEndpoints: []string{legacy.URL},
@@ -330,7 +327,6 @@ func TestFetchLegacyActionsForAddressUsesOffsetPagination(t *testing.T) {
 
 	app, err := New(Config{
 		DBPath:                filepath.Join(t.TempDir(), "legacy-offset-query-shape.db"),
-		StaticDir:             "internal/web/static",
 		ThornodeEndpoints:     []string{legacy.URL},
 		MidgardEndpoints:      []string{legacy.URL},
 		LegacyActionEndpoints: []string{legacy.URL},

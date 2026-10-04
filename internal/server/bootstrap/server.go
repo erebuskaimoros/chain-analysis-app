@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"net/http"
-	"os"
 	"time"
 
 	"chain-analysis-app/internal/api"
@@ -28,9 +27,6 @@ func New(cfg app.Config) (*Runtime, error) {
 	v1 := api.NewV1(svcs)
 	mux := http.NewServeMux()
 	v1.Register(mux)
-	legacy.RegisterLegacyStaticRoutes(mux)
-	legacy.RegisterLegacyAPIRoutes(mux)
-	registerLegacyUI(mux, cfg.StaticDir)
 	mux.Handle("/", ui.NewHandler(cfg.UIBuildDir, cfg.UIBuildDirOverride))
 
 	server := &http.Server{
@@ -58,17 +54,4 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 		return nil
 	}
 	return r.Server.Shutdown(ctx)
-}
-
-func registerLegacyUI(mux *http.ServeMux, staticDir string) {
-	serveLegacy := func(w http.ResponseWriter, r *http.Request) {
-		indexPath := staticDir + "/index.html"
-		if _, err := os.Stat(indexPath); err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, indexPath)
-	}
-	mux.HandleFunc("GET /legacy", serveLegacy)
-	mux.HandleFunc("GET /legacy/", serveLegacy)
 }

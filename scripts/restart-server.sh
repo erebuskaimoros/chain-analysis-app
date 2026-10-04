@@ -13,7 +13,7 @@ fi
 PID_FILE="data/run/server.pid"
 LOG_FILE="data/logs/server-runtime.log"
 BIN_PATH="data/bin/chain-analysis-server"
-HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
+HEALTH_URL="http://127.0.0.1:${PORT}/api/v1/health"
 
 ACTION="${1:-restart}"
 

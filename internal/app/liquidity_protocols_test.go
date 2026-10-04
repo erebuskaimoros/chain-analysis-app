@@ -158,7 +158,6 @@ func TestFetchMidgardActionsForAddressMergesTHORAndMAYAHistoryForSharedSeed(t *t
 
 	app, err := New(Config{
 		DBPath:               filepath.Join(t.TempDir(), "shared-history.db"),
-		StaticDir:            "internal/web/static",
 		ThornodeEndpoints:    []string{thor.URL},
 		MidgardEndpoints:     []string{thor.URL},
 		MayaMidgardEndpoints: []string{maya.URL},

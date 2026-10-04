@@ -85,7 +85,6 @@ func newTestHandler(t *testing.T) (http.Handler, func()) {
 
 	legacy, err := app.New(app.Config{
 		DBPath:         filepath.Join(t.TempDir(), "test.db"),
-		StaticDir:      filepath.Join("..", "web", "static"),
 		UIBuildDir:     filepath.Join("..", "web", "ui", "dist"),
 		RequestTimeout: time.Second,
 		MidgardTimeout: time.Second,
@@ -199,7 +198,6 @@ func TestV1LiveHoldingsUsesSlimNodePayload(t *testing.T) {
 
 	legacy, err := app.New(app.Config{
 		DBPath:            filepath.Join(t.TempDir(), "test.db"),
-		StaticDir:         filepath.Join("..", "web", "static"),
 		UIBuildDir:        filepath.Join("..", "web", "ui", "dist"),
 		RequestTimeout:    time.Second,
 		MidgardTimeout:    time.Second,

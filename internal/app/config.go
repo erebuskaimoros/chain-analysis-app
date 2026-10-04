@@ -13,7 +13,6 @@ import (
 type Config struct {
 	BindAddr               string
 	DBPath                 string
-	StaticDir              string
 	UIBuildDir             string
 	UIBuildDirOverride     bool
 	LastRunLogPath         string
@@ -83,13 +82,11 @@ func loadDotEnv(path string) {
 func LoadConfigFromEnv() Config {
 	cwd, _ := os.Getwd()
 	defaultDB := "data/chain-analysis.db"
-	defaultStatic := "internal/web/static"
 	defaultUIBuild := "internal/web/ui/dist"
 	defaultLastRunLog := "data/logs/actor-tracker-last-run.log"
 	if strings.HasSuffix(filepath.ToSlash(cwd), "/THORChain") {
 		loadDotEnv("chain-analysis-app/.env")
 		defaultDB = "chain-analysis-app/data/chain-analysis.db"
-		defaultStatic = "chain-analysis-app/internal/web/static"
 		defaultUIBuild = "chain-analysis-app/internal/web/ui/dist"
 		defaultLastRunLog = "chain-analysis-app/data/logs/actor-tracker-last-run.log"
 	} else {
@@ -99,7 +96,6 @@ func LoadConfigFromEnv() Config {
 	cfg := Config{
 		BindAddr:               getEnv("CHAIN_ANALYSIS_ADDR", ":8090"),
 		DBPath:                 getEnv("CHAIN_ANALYSIS_DB", defaultDB),
-		StaticDir:              getEnv("CHAIN_ANALYSIS_STATIC_DIR", defaultStatic),
 		UIBuildDir:             getEnv("CHAIN_ANALYSIS_UI_BUILD_DIR", defaultUIBuild),
 		LastRunLogPath:         getEnv("CHAIN_ANALYSIS_LAST_RUN_LOG", defaultLastRunLog),
 		BuildVersion:           getEnv("CHAIN_ANALYSIS_BUILD_VERSION", "dev"),
