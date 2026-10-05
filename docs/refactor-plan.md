@@ -203,6 +203,8 @@ Steps:
 - There are at least two snapshots.
 - The diff view lists the flows between them.
 
+**Status (2026-10-05): done.** Snapshots and watch state are migration 9 (`actor_watch` and `actor_snapshots` tables rather than new `actors` columns). A refresh reuses the graph builder over the new window with max_hops 1, so the ledger fetches only the tail, then runs the holdings job. Asset deltas are computed from the per-address asset lists in the snapshots. Real-data check: TC Treasury's second refresh fetched Midgard only from the previous window end minus the 10-minute lag. Details are in session 2026-10-05 #3.
+
 ## Phase 7: "Follow this amount" trace
 
 1. **API:** `POST /api/v1/analysis/trace` starts a job. Request fields:

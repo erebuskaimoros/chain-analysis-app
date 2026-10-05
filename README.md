@@ -23,6 +23,8 @@ in the Go server.
   native and token balances on external chains).
 - Action lookup by transaction ID, address annotations, blocklist, saved graph
   runs, and server-side saved graph states.
+- Actor monitoring: each refresh records an actor's holdings and the flows since
+  the previous refresh, with a "since you last looked" view on the Actors page.
 
 ## API
 
@@ -46,6 +48,12 @@ All endpoints live under `/api/v1`:
 - `DELETE /api/v1/runs/address-explorer/{id}`
 - `GET|POST /api/v1/graph-states`
 - `GET|DELETE /api/v1/graph-states/{id}`
+- `POST /api/v1/jobs/actor-graph`, `/jobs/actor-graph/expand`,
+  `/jobs/address-explorer`, `/jobs/live-holdings`, `/jobs/actor-refresh`
+- `GET|DELETE /api/v1/jobs/{id}` (poll or cancel a job)
+- `GET /api/v1/labels?address=`, `GET /api/v1/labels/sources`
+- `GET /api/v1/actors/{id}/monitor`, `PUT /api/v1/actors/{id}/watch`,
+  `POST /api/v1/actors/{id}/viewed`
 
 ## Run
 
@@ -81,6 +89,8 @@ restarting. The UI is embedded with `go:embed`, so rebuild the server after
 - `MAYANODE_ENDPOINTS` (default `https://mayanode.mayachain.info`)
 - `MAYA_MIDGARD_ENDPOINTS` (default `https://midgard.mayachain.info/v2`)
 - `CHAIN_ANALYSIS_LEGACY_ACTION_ENDPOINTS` (default empty; set, for example, `https://vanaheimex.com` to merge a second THOR action-history source)
+- `CHAIN_ANALYSIS_ACTOR_REFRESH_INTERVAL` (default off; for example `1h`
+  refreshes watched actors on that interval)
 - `CHAIN_ANALYSIS_DEFILLAMA_URL` (default `https://coins.llama.fi`; prices EVM tokens without a THORChain pool at transaction time; set empty to disable)
 - `CHAIN_ANALYSIS_CHAIN_TRACKERS` per-chain provider overrides, for example
   `BASE=blockscout`
@@ -117,6 +127,23 @@ data/bin/chain-analysis-server labels sources
 ```
 
 User labels (annotations) always take precedence.
+
+## Actor monitoring
+
+Open an actor's **Monitor** panel on the Actors page and choose **Refresh now**.
+The first refresh records a baseline: holdings plus the last 30 days of flows.
+Each later refresh fetches only the flows since the previous one (the ledger
+fetches just the tail) and records a new holdings snapshot. The panel shows:
+
+- holdings over time
+- changes by asset and by address
+- flows by counterparty, valued at transaction time
+- counterparties seen for the first time
+
+Changes above the chosen USD threshold are highlighted. **Mark as seen** resets
+the comparison point. Tick **Refresh on schedule** and set
+`CHAIN_ANALYSIS_ACTOR_REFRESH_INTERVAL` to refresh watched actors in the
+background.
 
 ## Notes
 

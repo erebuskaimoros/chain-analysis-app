@@ -4,6 +4,7 @@
 
 | Date | Focus | Summary | File |
 |------|-------|---------|------|
+| 2026-10-05 #3 | Phase 6: Actor Monitoring | Actor snapshots and watch state; refresh job reusing the ledger tail plus the holdings job; since-last-look changes by asset, address and counterparty; scheduler; Monitor panel with holdings chart | `sessions/2026-10-05/session-3.md` |
 | 2026-10-05 #2 | Phase 5: Address Labels | Labels table with TagPack confidence; built-in TagPack; GraphSense, OFAC, eth-labels, ScamSniffer importers; node label categories; UI badges and category filter | `sessions/2026-10-05/session-2.md` |
 | 2026-10-05 #1 | Phase 4: Prices at Transaction Time | Midgard pool/RUNE history, stable peg, DefiLlama, spot fallback; usd_at_time on all flows; min_usd at time; UI shows at-time values | `sessions/2026-10-05/session-1.md` |
 | 2026-10-04 #4 | Phase 3: Jobs and Provider Health | Typed provider errors, circuit breakers, job runner, server-side live holdings with snapshots, UI on jobs, log secret redaction | `sessions/2026-10-04/session-4.md` |
