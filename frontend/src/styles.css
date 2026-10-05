@@ -1201,3 +1201,130 @@ textarea {
   opacity: 0.7;
   font-size: 0.8em;
 }
+
+/* Actor monitoring. The chart uses the validated categorical slot 1 on the
+   light surface; grid and axes stay one shade off the surface. */
+.monitor-panel {
+  grid-column: 1 / -1;
+}
+.monitor-hero {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.5rem 0 1rem;
+}
+.monitor-hero-label,
+.monitor-hero-delta {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+.monitor-hero-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.holdings-chart {
+  --series-1: #2a78d6;
+  margin: 0 0 1rem;
+}
+.holdings-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+}
+.holdings-chart-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+.holdings-chart-plot {
+  position: relative;
+}
+.holdings-chart-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.holdings-chart-plot svg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+.holdings-chart-grid {
+  stroke: var(--outline);
+  stroke-width: 1;
+}
+.holdings-chart-axis {
+  fill: var(--ink-soft);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.holdings-chart-line {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.holdings-chart-point {
+  fill: var(--series-1);
+  stroke: #fffaf2;
+  stroke-width: 2;
+}
+.holdings-chart-crosshair {
+  stroke: var(--outline-strong);
+  stroke-width: 1;
+}
+.holdings-chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  pointer-events: none;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--outline-strong);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.data-table .numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.row-highlight {
+  background: var(--warning-soft);
+}
+.new-badge {
+  margin-left: 0.35rem;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.monitor-changes-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.inline-field input {
+  max-width: 9rem;
+}
+.field-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+.field-checkbox input {
+  width: auto;
+  margin: 0;
+}
+.button.small {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+}

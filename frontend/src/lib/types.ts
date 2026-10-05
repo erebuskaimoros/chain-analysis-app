@@ -361,3 +361,85 @@ export interface JobSnapshot<T = unknown, P = unknown> {
   partial?: P;
   result?: T;
 }
+
+export interface ActorHolding {
+  chain: string;
+  address: string;
+  label: string;
+  usd: number;
+  status: string;
+  error_kind?: string;
+  assets?: Array<{ asset: string; amount_raw: string; usd_spot: number }>;
+}
+
+export interface ActorCounterparty {
+  key: string;
+  address?: string;
+  chain?: string;
+  label: string;
+  kind: string;
+  category?: string;
+  in_usd: number;
+  out_usd: number;
+  transactions: number;
+  action_classes: string[];
+  first_seen: boolean;
+}
+
+export interface ActorFlowSummary {
+  in_usd: number;
+  out_usd: number;
+  transactions: number;
+  counterparties: ActorCounterparty[] | null;
+  warnings?: string[];
+}
+
+export interface ActorSnapshot {
+  id: number;
+  actor_id: number;
+  taken_at: string;
+  window_start: string;
+  window_end: string;
+  total_usd: number;
+  baseline: boolean;
+  holdings: ActorHolding[] | null;
+  flows: ActorFlowSummary;
+}
+
+export interface ActorHoldingDelta {
+  chain: string;
+  address: string;
+  label: string;
+  before_usd: number;
+  after_usd: number;
+  delta_usd: number;
+}
+
+export interface ActorAssetDelta {
+  asset: string;
+  before_amount: number;
+  after_amount: number;
+  before_usd: number;
+  after_usd: number;
+  delta_usd: number;
+}
+
+export interface ActorChanges {
+  since: string;
+  snapshots: number;
+  total_usd_before: number;
+  total_usd_after: number;
+  holding_deltas: ActorHoldingDelta[] | null;
+  asset_deltas: ActorAssetDelta[] | null;
+  flows: ActorFlowSummary;
+  new_counterparties: ActorCounterparty[] | null;
+}
+
+export interface ActorMonitor {
+  actor_id: number;
+  watch: boolean;
+  last_viewed_at: string;
+  series: Array<{ taken_at: string; total_usd: number }>;
+  latest?: ActorSnapshot;
+  since_last_view?: ActorChanges;
+}

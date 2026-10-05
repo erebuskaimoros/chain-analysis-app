@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ActorMonitorPanel } from "./ActorMonitorPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createActor, deleteActor, listActors, listAnnotations, updateActor } from "../../lib/api";
 import { formatActorAddressLines, parseActorAddressLines } from "../../lib/actors";
@@ -33,6 +34,7 @@ export function ActorsPage() {
   const [draft, setDraft] = useState<ActorDraft>(defaultDraft);
   const [formError, setFormError] = useState("");
   const [selectedNamedAddressID, setSelectedNamedAddressID] = useState("");
+  const [monitoredActorID, setMonitoredActorID] = useState<number | null>(null);
 
   const namedAddresses = useMemo(
     () =>
@@ -130,6 +132,8 @@ export function ActorsPage() {
     setSelectedNamedAddressID("");
     setFormError("");
   }
+
+  const monitoredActor = sortedActors.find((actor) => actor.id === monitoredActorID) ?? null;
 
   return (
     <div className="page-grid two-up">
@@ -270,6 +274,14 @@ export function ActorsPage() {
                 </button>
                 <button
                   type="button"
+                  className="button secondary"
+                  aria-pressed={monitoredActorID === actor.id}
+                  onClick={() => setMonitoredActorID((current) => (current === actor.id ? null : actor.id))}
+                >
+                  Monitor
+                </button>
+                <button
+                  type="button"
                   className="button secondary danger"
                   disabled={deleteMutation.isPending}
                   onClick={() => {
@@ -283,6 +295,8 @@ export function ActorsPage() {
           ))}
         </div>
       </section>
+
+      {monitoredActor ? <ActorMonitorPanel key={monitoredActor.id} actor={monitoredActor} /> : null}
     </div>
   );
 }

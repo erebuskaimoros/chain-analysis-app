@@ -2,6 +2,8 @@ import type {
   ActionLookupResponse,
   Actor,
   ActorGraphExpandRequest,
+  ActorMonitor,
+  ActorSnapshot,
   ActorGraphRequest,
   ActorGraphResponse,
   ActorGraphRunsResponse,
@@ -230,4 +232,22 @@ function pickLiveHoldingsRefreshMetrics(metrics: FlowNode["metrics"]) {
     }
   }
   return Object.keys(out).length ? out : null;
+}
+
+export function getActorMonitor(actorID: number) {
+  return fetchJSON<ActorMonitor>(`/api/v1/actors/${actorID}/monitor`);
+}
+
+export function setActorWatch(actorID: number, watch: boolean) {
+  return fetchJSON<{ ok: boolean }>(`/api/v1/actors/${actorID}/watch`, { method: "PUT", body: JSON.stringify({ watch }) });
+}
+
+export function markActorViewed(actorID: number) {
+  return fetchJSON<{ ok: boolean }>(`/api/v1/actors/${actorID}/viewed`, { method: "POST" });
+}
+
+// refreshActor records a new monitoring snapshot (flows since the last one and
+// current holdings) as a background job.
+export function refreshActor(actorID: number, onProgress?: (job: JobSnapshot) => void) {
+  return runJob<ActorSnapshot>("/api/v1/jobs/actor-refresh", { actor_id: actorID }, { onProgress });
 }
