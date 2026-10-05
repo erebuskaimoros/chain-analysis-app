@@ -99,6 +99,25 @@ Tracker endpoint values can be multi-homed:
 
 Do not configure Nine Realms THORChain endpoints.
 
+## Address labels
+
+Labels attribute addresses to exchanges, sanctioned parties, scams, protocols, and other entities. Built-in labels ship with the app; import third-party sources from local copies (keep them under the gitignored `data/labels/`):
+
+```bash
+git clone --depth 1 https://github.com/graphsense/graphsense-tagpacks data/labels/tagpacks
+git clone --depth 1 --branch lists https://github.com/0xB10C/ofac-sanctioned-digital-currency-addresses data/labels/ofac
+curl -o data/labels/eth-labels-accounts.json https://raw.githubusercontent.com/dawsbot/eth-labels/v1/data/json/accounts.json
+curl -o data/labels/scamsniffer-address.json https://raw.githubusercontent.com/scamsniffer/scam-database/main/blacklist/address.json
+
+data/bin/chain-analysis-server labels import graphsense data/labels/tagpacks
+data/bin/chain-analysis-server labels import ofac data/labels/ofac
+data/bin/chain-analysis-server labels import eth-labels data/labels/eth-labels-accounts.json
+data/bin/chain-analysis-server labels import scamsniffer data/labels/scamsniffer-address.json
+data/bin/chain-analysis-server labels sources
+```
+
+User labels (annotations) always take precedence.
+
 ## Notes
 
 - A first query against an uncached address or window takes longer while

@@ -4,6 +4,7 @@
 
 | Date | Focus | Summary | File |
 |------|-------|---------|------|
+| 2026-10-05 #2 | Phase 5: Address Labels | Labels table with TagPack confidence; built-in TagPack; GraphSense, OFAC, eth-labels, ScamSniffer importers; node label categories; UI badges and category filter | `sessions/2026-10-05/session-2.md` |
 | 2026-10-05 #1 | Phase 4: Prices at Transaction Time | Midgard pool/RUNE history, stable peg, DefiLlama, spot fallback; usd_at_time on all flows; min_usd at time; UI shows at-time values | `sessions/2026-10-05/session-1.md` |
 | 2026-10-04 #4 | Phase 3: Jobs and Provider Health | Typed provider errors, circuit breakers, job runner, server-side live holdings with snapshots, UI on jobs, log secret redaction | `sessions/2026-10-04/session-4.md` |
 | 2026-10-04 #3 | Phase 2: Ledger and Coverage | Replaced query-window caches with a row-level ledger, coverage, and deferrals; fixed partial-fill swap and shared-action dedupe bugs; validated on real data | `sessions/2026-10-04/session-3.md` |
@@ -16,7 +17,7 @@
 
 ## Current Work In Progress
 
-- Refactor plan: `docs/refactor-plan.md`; Phases 0–4 merged to `main`; Phase 5 (labels) is next
+- Refactor plan: `docs/refactor-plan.md`; Phases 0–5 merged to `main`; Phase 6 (actor monitoring) is next
 - Run `/code-review` over the merged map-improvements changes (landed after tests only, without a separate review pass)
 - Investigate Treasury BTC address `bc1qmqzgaqlqpgymj0v7z5ll7qupskk3d88vpszhgs` missing actor-colored rim; confirm whether it should be added to `TC Treasury`
 - Manual QA: wheel-mode Auto heuristic with real hardware (Logitech MX Master smooth scroll) — or rely on the new explicit Zoom/Pan wheel-mode preference

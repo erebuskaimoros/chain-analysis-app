@@ -169,6 +169,8 @@ Steps:
 
 ## Phase 5: Labels
 
+**Status (2026-10-05): done.** User labels stay in `address_annotations` (kind=label) and are merged at lookup instead of being migrated. Imported 509k GraphSense, 106k eth-labels, 2.5k ScamSniffer and 1k OFAC labels. Details are in session 2026-10-05 #2.
+
 1. **Tables (migration 9):** `labels(chain, address, normalized_address, label, category, actor_name, source, source_ref, confidence, created_at, UNIQUE(normalized_address, source, label))` and `label_sources(source, version, license, imported_at, count)`. Categories follow the GraphSense TagPack / INTERPOL DWVA taxonomy, embedded as a file.
 2. **Importers** (`labels_import.go`), idempotent, run through a server subcommand `labels import <source> <path>`:
    - **builtin:** move `knownAddressLabels` into the embedded file `labels/builtin.yaml` (TagPack format). `knownCalcRepresentativePayouts` is a routing rule, so it stays in code.
