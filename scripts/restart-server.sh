@@ -127,7 +127,9 @@ start_server() {
 
   echo "${NEW_PID}" > "${PID_FILE}"
 
-  for _ in {1..60}; do
+  # Allow up to 150s: the first start after a schema change can run a one-time
+  # data migration (for example the ledger backfill) before listening.
+  for _ in {1..600}; do
     if curl -fsS "${HEALTH_URL}" >/dev/null 2>&1; then
       break
     fi
