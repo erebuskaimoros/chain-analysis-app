@@ -253,7 +253,7 @@ export function TracePage() {
           {runsQuery.data?.length ? (
             <div className="card-list">
               {runsQuery.data.map((run) => (
-                <article key={run.id} className="card">
+                <article key={run.id} className="entity-card">
                   <strong>{run.title}</strong>
                   <p>
                     {formatShortDateTime(run.created_at)} · {formatUSD(run.summary.seed_usd)} traced · {run.summary.sinks} sinks

@@ -9,6 +9,8 @@ const apiMocks = vi.hoisted(() => ({
   listTraceRuns: vi.fn(),
   getTraceRun: vi.fn(),
   deleteTraceRun: vi.fn(),
+  listCases: vi.fn(),
+  addCaseItem: vi.fn(),
 }));
 
 vi.mock("../../../lib/api", () => apiMocks);
@@ -160,6 +162,8 @@ describe("TracePage", () => {
   beforeEach(() => {
     apiMocks.listTraceRuns.mockResolvedValue([]);
     apiMocks.startTrace.mockResolvedValue(makeTrace());
+    apiMocks.listCases.mockResolvedValue([{ id: 4, title: "Bitget hack", notes_md: "", created_at: "", updated_at: "", item_count: 0 }]);
+    apiMocks.addCaseItem.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -187,6 +191,10 @@ describe("TracePage", () => {
     expect(screen.getByText("FIFO: each payment spends the oldest funds received first.")).toBeTruthy();
     expect(screen.getByTestId("graph-canvas-mock").textContent).toContain("2 nodes, 1 edges");
     await waitFor(() => expect(apiMocks.listTraceRuns).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Pin trace to case" }));
+    await waitFor(() => expect(apiMocks.addCaseItem).toHaveBeenCalledWith(4, "trace_run", "7"));
+    expect(await screen.findByText("Pinned.")).toBeTruthy();
   });
 
   it("refuses to start without seeds", async () => {

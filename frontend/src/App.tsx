@@ -8,7 +8,7 @@ import {
   type LazyExoticComponent,
 } from "react";
 
-type ViewKey = "overview" | "actors" | "graph" | "explorer" | "trace" | "annotations";
+type ViewKey = "overview" | "actors" | "graph" | "explorer" | "trace" | "cases" | "annotations";
 
 interface ViewDef {
   key: ViewKey;
@@ -55,6 +55,13 @@ const views: ViewDef[] = [
     description: "Follow value hop by hop from an address or transaction, through swaps across chains, to where it rests: exchanges, sanctioned addresses, pools, or wallets that still hold it.",
   },
   {
+    key: "cases",
+    label: "Cases",
+    eyebrow: "Reporting",
+    title: "Investigation Cases",
+    description: "Collect addresses, transactions, saved traces, graph states and actors with notes, and export a case as a Markdown report or a flows CSV.",
+  },
+  {
     key: "annotations",
     label: "Annotations",
     eyebrow: "Metadata",
@@ -86,6 +93,9 @@ const pageComponents: Record<ViewKey, LazyPageComponent> = {
   ),
   trace: lazyPage(() =>
     import("./features/trace/TracePage").then((module) => ({ default: module.TracePage }))
+  ),
+  cases: lazyPage(() =>
+    import("./features/cases/CasesPage").then((module) => ({ default: module.CasesPage }))
   ),
   annotations: lazyPage(() =>
     import("./features/annotations/AnnotationsPage").then((module) => ({ default: module.AnnotationsPage }))

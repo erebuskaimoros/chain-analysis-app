@@ -1373,3 +1373,11 @@ textarea {
   border: none;
   padding: 0;
 }
+
+/* Cases. */
+.entity-card.selected {
+  border-color: var(--accent);
+}
+.trace-pin {
+  align-items: end;
+}

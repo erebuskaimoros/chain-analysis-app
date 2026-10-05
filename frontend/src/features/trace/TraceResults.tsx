@@ -7,6 +7,7 @@ import type { GraphSelection } from "../../lib/graph/types";
 import type { AddressExplorerResponse, TraceAmount, TraceEndpoint, TraceResponse } from "../../lib/types";
 import { GraphCanvas } from "../shared/GraphCanvas";
 import { SelectionInspector } from "../shared/SelectionInspector";
+import { PinToCase } from "./PinToCase";
 
 const FLOW_ROW_LIMIT = 500;
 
@@ -153,8 +154,9 @@ export function TraceResults({ result }: { result: TraceResponse }) {
         <div className="panel-head">
           <div>
             <span className="eyebrow">{backward ? "Backward trace" : "Forward trace"}</span>
-            <h2>Result</h2>
+            <h2>Result{result.run_id ? ` (trace ${result.run_id})` : ""}</h2>
           </div>
+          {result.run_id ? <PinToCase runID={result.run_id} /> : null}
         </div>
         <div className="trace-tiles">
           <div className="trace-tile">

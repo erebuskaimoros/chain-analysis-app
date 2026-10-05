@@ -575,3 +575,25 @@ export interface TraceRun {
   summary: TraceSummary;
   response?: TraceResponse;
 }
+
+export type CaseItemKind = "address" | "tx" | "trace_run" | "graph_state" | "actor";
+
+export interface CaseItem {
+  id: number;
+  case_id: number;
+  kind: CaseItemKind;
+  ref: string;
+  note: string;
+  pinned_at: string;
+  title?: string;
+}
+
+export interface Case {
+  id: number;
+  title: string;
+  notes_md: string;
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+  items?: CaseItem[];
+}

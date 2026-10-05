@@ -21,6 +21,9 @@ import type {
   JobSnapshot,
   LiveHoldingsRefreshNode,
   LiveHoldingsRefreshResponse,
+  Case,
+  CaseItem,
+  CaseItemKind,
   TraceRequest,
   TraceResponse,
   TraceRun,
@@ -271,4 +274,36 @@ export function getTraceRun(id: number) {
 
 export function deleteTraceRun(id: number) {
   return fetchJSON<{ ok: boolean }>(`/api/v1/traces/${id}`, { method: "DELETE" });
+}
+
+export function listCases() {
+  return fetchJSON<Case[]>("/api/v1/cases");
+}
+
+export function getCase(id: number) {
+  return fetchJSON<Case>(`/api/v1/cases/${id}`);
+}
+
+export function createCase(title: string, notesMD = "") {
+  return fetchJSON<Case>("/api/v1/cases", { method: "POST", body: JSON.stringify({ title, notes_md: notesMD }) });
+}
+
+export function updateCase(id: number, title: string, notesMD: string) {
+  return fetchJSON<Case>(`/api/v1/cases/${id}`, { method: "PUT", body: JSON.stringify({ title, notes_md: notesMD }) });
+}
+
+export function deleteCase(id: number) {
+  return fetchJSON<{ ok: boolean }>(`/api/v1/cases/${id}`, { method: "DELETE" });
+}
+
+export function addCaseItem(caseID: number, kind: CaseItemKind, ref: string, note = "") {
+  return fetchJSON<CaseItem>(`/api/v1/cases/${caseID}/items`, { method: "POST", body: JSON.stringify({ kind, ref, note }) });
+}
+
+export function deleteCaseItem(caseID: number, itemID: number) {
+  return fetchJSON<{ ok: boolean }>(`/api/v1/cases/${caseID}/items/${itemID}`, { method: "DELETE" });
+}
+
+export function caseExportURL(caseID: number, format: "md" | "csv") {
+  return `/api/v1/cases/${caseID}/export?format=${format}`;
 }
