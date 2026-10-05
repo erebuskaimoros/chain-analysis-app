@@ -95,6 +95,8 @@ Scope comes from your answers:
 
 ## Phase 2: Ledger instead of query-shaped caches
 
+**Status (2026-10-04): done.** Old caches are backfilled and dropped at startup (instead of a separate migration 6). Truncated ranges are deferred for 24h instead of refetched every build. Vanaheim is opt-in. Real-data validation is in session 2026-10-04 #3.
+
 Migration 5 `ledger`:
 - `ledger_thor_actions(action_key PK, protocol, type, status, height, block_time, raw_json)`, where `action_key` comes from `midgardActionKey` (`projection.go`).
 - `ledger_thor_action_addresses(address, block_time, action_key, PK(address, action_key))`.
