@@ -75,7 +75,76 @@ func markLedgerCovered(ctx context.Context, db *sql.DB, source, address string, 
 	`, source, address, merged.From, merged.To, fetchedAt.Unix()); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM ledger_deferrals WHERE source = ? AND address = ? AND from_ts >= ? AND to_ts <= ?
+	`, source, address, merged.From, merged.To); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// ledgerDeferralTTL bounds how long a truncated range is served as-is before
+// a build fetches it again (getting deeper history each time).
+const ledgerDeferralTTL = 24 * time.Hour
+
+// deferLedgerRange records that [from, to] was left unfetched because a fetch
+// hit its page budget. Until the deferral expires, builds with the same or a
+// smaller budget serve what the ledger has and report truncation instead of
+// re-downloading the range.
+func deferLedgerRange(ctx context.Context, db *sql.DB, source, address string, from, to int64, maxPages int, fetchedAt time.Time) error {
+	if to < from {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO ledger_deferrals(source, address, from_ts, to_ts, max_pages, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+	`, source, address, from, to, maxPages, fetchedAt.Unix())
+	return err
+}
+
+// loadActiveLedgerDeferrals returns unexpired deferrals recorded with at
+// least maxPages, i.e. ranges a fetch with this budget would truncate again.
+func loadActiveLedgerDeferrals(ctx context.Context, db *sql.DB, source, address string, maxPages int, now time.Time) ([]ledgerInterval, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT from_ts, to_ts FROM ledger_deferrals
+		WHERE source = ? AND address = ? AND max_pages >= ? AND fetched_at > ?
+	`, source, address, maxPages, now.Add(-ledgerDeferralTTL).Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ledgerInterval
+	for rows.Next() {
+		var iv ledgerInterval
+		if err := rows.Scan(&iv.From, &iv.To); err != nil {
+			return nil, err
+		}
+		out = append(out, iv)
+	}
+	return out, rows.Err()
+}
+
+func ledgerIntervalsOverlap(intervals []ledgerInterval, from, to int64) bool {
+	for _, iv := range intervals {
+		if iv.From <= to && iv.To >= from {
+			return true
+		}
+	}
+	return false
+}
+
+// planLedgerFetch returns the ranges of [from, to] to fetch and whether the
+// window is knowingly incomplete because of active deferrals.
+func planLedgerFetch(ctx context.Context, db *sql.DB, source, address string, from, to int64, maxPages int, now time.Time) ([]ledgerInterval, bool, error) {
+	covered, err := loadLedgerCoverage(ctx, db, source, address)
+	if err != nil {
+		return nil, false, err
+	}
+	deferred, err := loadActiveLedgerDeferrals(ctx, db, source, address, maxPages, now)
+	if err != nil {
+		return nil, false, err
+	}
+	gaps := ledgerGaps(append(covered, deferred...), from, to)
+	return gaps, ledgerIntervalsOverlap(deferred, from, to), nil
 }
 
 // ledgerGaps returns the parts of [from, to] not covered, newest first so a

@@ -296,6 +296,16 @@ func migrateLedger(ctx context.Context, db *sql.Tx) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_ledger_transfer_addresses_time
 			ON ledger_transfer_addresses(source, address, block_time)`,
+		`CREATE TABLE IF NOT EXISTS ledger_deferrals (
+			source TEXT NOT NULL,
+			address TEXT NOT NULL,
+			from_ts INTEGER NOT NULL,
+			to_ts INTEGER NOT NULL,
+			max_pages INTEGER NOT NULL,
+			fetched_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ledger_deferrals_lookup
+			ON ledger_deferrals(source, address, fetched_at)`,
 		`CREATE TABLE IF NOT EXISTS ledger_coverage (
 			source TEXT NOT NULL,
 			address TEXT NOT NULL,

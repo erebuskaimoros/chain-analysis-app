@@ -250,3 +250,44 @@ func TestBackfillLedgerFromQueryCaches(t *testing.T) {
 		t.Fatalf("second backfill should be a no-op: %v", err)
 	}
 }
+
+func TestFetchMidgardActionsDefersTruncatedRemainder(t *testing.T) {
+	const address = "thor1ledgerdefer0000000000000000000000000000"
+	upstream := &midgardWindowServer{}
+	base := dayStart(1)
+	total := midgardActionsPageLimit + 10
+	for i := total - 1; i >= 0; i-- {
+		ts := base.Add(time.Duration(i) * time.Minute)
+		upstream.actions = append(upstream.actions, testTHORSendAction(
+			strconv.FormatInt(ts.UnixNano(), 10), strconv.Itoa(2000+i), "TX-"+strconv.Itoa(i),
+			address, "thor1recipient000000000000000000000000000000", "1"))
+	}
+	server := httptest.NewServer(http.HandlerFunc(upstream.handler))
+	defer server.Close()
+	app := newLedgerTestApp(t, server)
+	ctx := context.Background()
+	start, end := dayStart(1), dayStart(2)
+
+	first, truncated, err := app.fetchMidgardActionsForAddressOnlyFromProtocol(ctx, sourceProtocolTHOR, address, start, end, 1)
+	if err != nil || !truncated || len(first) != midgardActionsPageLimit {
+		t.Fatalf("expected one truncated page, got %d actions truncated=%v err=%v", len(first), truncated, err)
+	}
+	upstream.takeRequests()
+
+	again, truncated, err := app.fetchMidgardActionsForAddressOnlyFromProtocol(ctx, sourceProtocolTHOR, address, start, end, 1)
+	if err != nil || !truncated || len(again) != midgardActionsPageLimit {
+		t.Fatalf("expected deferred truncated result, got %d actions truncated=%v err=%v", len(again), truncated, err)
+	}
+	if reqs := upstream.takeRequests(); len(reqs) != 0 {
+		t.Fatalf("expected the deferred range not to be re-fetched with the same budget, got %v", reqs)
+	}
+
+	deeper, truncated, err := app.fetchMidgardActionsForAddressOnlyFromProtocol(ctx, sourceProtocolTHOR, address, start, end, 2)
+	if err != nil || truncated || len(deeper) != total {
+		t.Fatalf("expected a bigger budget to complete the window, got %d actions truncated=%v err=%v", len(deeper), truncated, err)
+	}
+	reqs := upstream.takeRequests()
+	if len(reqs) != 1 || reqs[0][0] != start.Unix() {
+		t.Fatalf("expected one request for the older remainder, got %v", reqs)
+	}
+}

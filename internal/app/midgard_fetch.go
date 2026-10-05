@@ -227,52 +227,61 @@ func (a *App) fetchLedgerActions(
 	maxPages int,
 	fetchWindow func(from, to int64, pageBudget int) ([]midgardAction, bool, int, error),
 ) ([]midgardAction, bool, error) {
-	covered, err := loadLedgerCoverage(ctx, a.db, source, address)
+	now := time.Now().UTC()
+	gaps, truncated, err := planLedgerFetch(ctx, a.db, source, address, fromTimestamp, endTimestamp, maxPages, now)
 	if err != nil {
 		return nil, false, err
 	}
-	gaps := ledgerGaps(covered, fromTimestamp, endTimestamp)
 	if len(gaps) == 0 {
 		actions, err := queryLedgerActions(ctx, a.db, source, address, fromTimestamp, endTimestamp)
 		if err == nil {
 			logInfo(ctx, "midgard_action_cache_hit", map[string]any{
-				"source":  source,
-				"address": address,
-				"actions": len(actions),
+				"source":    source,
+				"address":   address,
+				"actions":   len(actions),
+				"truncated": truncated,
 			})
 		}
-		return actions, false, err
+		return actions, truncated, err
 	}
 
-	truncated := false
+	logLedgerErr := func(err error) {
+		if err != nil {
+			logError(ctx, "midgard_action_cache_write_failed", err, map[string]any{"source": source, "address": address})
+		}
+	}
 	budget := maxPages
 	var fetchErr error
-	for _, gap := range gaps {
+	for i, gap := range gaps {
 		if budget <= 0 {
 			truncated = true
+			for _, rest := range gaps[i:] {
+				logLedgerErr(deferLedgerRange(ctx, a.db, source, address, rest.From, rest.To, maxPages, now))
+			}
 			break
 		}
 		fetchedAt := time.Now().UTC()
 		fetched, gapTruncated, pagesUsed, err := fetchWindow(gap.From, gap.To, budget)
 		budget -= max(pagesUsed, 1)
-		if storeErr := upsertLedgerActions(ctx, a.db, source, address, fetched); storeErr != nil {
-			logError(ctx, "midgard_action_cache_write_failed", storeErr, map[string]any{"source": source, "address": address})
-		}
+		logLedgerErr(upsertLedgerActions(ctx, a.db, source, address, fetched))
 		if err != nil {
 			fetchErr = err
 			break
 		}
-		coveredFrom := gap.From
-		if gapTruncated {
-			truncated = true
-			coveredFrom = oldestMidgardActionUnix(fetched)
-			if coveredFrom == 0 {
-				continue
-			}
+		if !gapTruncated {
+			logLedgerErr(markLedgerCovered(ctx, a.db, source, address, gap.From, ledgerCoverageEnd(gap.To, fetchedAt), fetchedAt))
+			continue
 		}
-		if storeErr := markLedgerCovered(ctx, a.db, source, address, coveredFrom, ledgerCoverageEnd(gap.To, fetchedAt), fetchedAt); storeErr != nil {
-			logError(ctx, "midgard_action_cache_write_failed", storeErr, map[string]any{"source": source, "address": address})
+		// Pages run newest first, so a truncated window is complete from its
+		// oldest returned action onward; defer the older remainder.
+		truncated = true
+		oldest := oldestMidgardActionUnix(fetched)
+		if oldest == 0 {
+			logLedgerErr(deferLedgerRange(ctx, a.db, source, address, gap.From, gap.To, maxPages, fetchedAt))
+			continue
 		}
+		logLedgerErr(markLedgerCovered(ctx, a.db, source, address, oldest, ledgerCoverageEnd(gap.To, fetchedAt), fetchedAt))
+		logLedgerErr(deferLedgerRange(ctx, a.db, source, address, gap.From, oldest-1, maxPages, fetchedAt))
 	}
 	actions, err := queryLedgerActions(ctx, a.db, source, address, fromTimestamp, endTimestamp)
 	if err != nil {

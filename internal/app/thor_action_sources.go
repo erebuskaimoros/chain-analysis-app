@@ -189,14 +189,15 @@ func (a *App) fetchActionHistoryForAddressFromProtocol(ctx context.Context, prot
 
 		fromTimestamp, endTimestamp := actionHistoryQueryBounds(start, end)
 		source := ledgerMergedTHORSource()
-		if covered, err := loadLedgerCoverage(ctx, a.db, source, seed.Address); err == nil && len(ledgerGaps(covered, fromTimestamp, endTimestamp)) == 0 {
+		if gaps, deferred, err := planLedgerFetch(ctx, a.db, source, seed.Address, fromTimestamp, endTimestamp, maxPages, time.Now().UTC()); err == nil && len(gaps) == 0 {
 			if cached, err := queryLedgerActions(ctx, a.db, source, seed.Address, fromTimestamp, endTimestamp); err == nil {
 				cached = annotateMidgardActions(canonicalizeMidgardLookupActions(cached), protocol)
 				logInfo(ctx, "thor_action_cache_hit", map[string]any{
-					"address": seed.Address,
-					"actions": len(cached),
+					"address":   seed.Address,
+					"actions":   len(cached),
+					"truncated": deferred,
 				})
-				return cached, false, nil
+				return cached, deferred, nil
 			}
 		}
 		fetchedAt := time.Now().UTC()
@@ -225,6 +226,8 @@ func (a *App) fetchActionHistoryForAddressFromProtocol(ctx context.Context, prot
 				if err := markLedgerCovered(ctx, a.db, source, seed.Address, fromTimestamp, ledgerCoverageEnd(endTimestamp, fetchedAt), fetchedAt); err != nil {
 					logError(ctx, "thor_action_cache_write_failed", err, map[string]any{"address": seed.Address})
 				}
+			} else if err := deferLedgerRange(ctx, a.db, source, seed.Address, fromTimestamp, endTimestamp, maxPages, fetchedAt); err != nil {
+				logError(ctx, "thor_action_cache_write_failed", err, map[string]any{"address": seed.Address})
 			}
 		}
 		return merged, truncated, nil

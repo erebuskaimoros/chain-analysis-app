@@ -245,22 +245,22 @@ func (a *App) fetchExternalTransfersForAddress(ctx context.Context, chain, addre
 			continue
 		}
 		source := ledgerTransferSource(provider, chain)
-		covered, err := loadLedgerCoverage(providerCtx, a.db, source, address)
+		gaps, deferredTruncated, err := planLedgerFetch(providerCtx, a.db, source, address, startTS, endTS, maxPages, time.Now().UTC())
 		if err != nil {
 			lastErr = err
 			failedProviders = append(failedProviders, provider)
 			continue
 		}
-		gaps := ledgerGaps(covered, startTS, endTS)
 		if len(gaps) == 0 {
 			if cached, err := queryLedgerTransfers(providerCtx, a.db, source, address, startTS, endTS); err == nil {
 				a.trackerHealth.markCache(provider, chain, true)
-				return dedupeExternalTransfers(cached), false, externalTrackerFallbackWarning(chain, provider, skippedDegraded, failedProviders), nil
+				return dedupeExternalTransfers(cached), deferredTruncated, externalTrackerFallbackWarning(chain, provider, skippedDegraded, failedProviders), nil
 			}
 		}
 		a.trackerHealth.markCache(provider, chain, false)
 
 		truncated, warn, err := a.fetchLedgerTransferGaps(providerCtx, provider, chain, address, source, gaps, maxPages)
+		truncated = truncated || deferredTruncated
 		if errors.Is(err, errExternalTrackerUnavailable) {
 			if unavailableWarning == "" {
 				unavailableWarning = externalTrackerUnavailableWarning(chain, provider)
@@ -294,8 +294,7 @@ func (a *App) fetchExternalTransfersForAddress(ctx context.Context, chain, addre
 }
 
 // fetchLedgerTransferGaps fetches each uncovered range from one provider and
-// stores the results. Ranges whose fetch was truncated are stored but not
-// marked covered, because providers differ in which end they truncate.
+// stores the results. Truncated ranges are deferred rather than covered.
 func (a *App) fetchLedgerTransferGaps(ctx context.Context, provider, chain, address, source string, gaps []ledgerInterval, maxPages int) (bool, string, error) {
 	truncatedAny := false
 	var lastWarn string
@@ -312,7 +311,12 @@ func (a *App) fetchLedgerTransferGaps(ctx context.Context, provider, chain, addr
 			continue
 		}
 		if truncated {
+			// Providers differ in which end they truncate, so defer the whole
+			// range: it is served as fetched until the deferral expires.
 			truncatedAny = true
+			if err := deferLedgerRange(ctx, a.db, source, address, gap.From, gap.To, maxPages, fetchedAt); err != nil {
+				logError(ctx, "external_transfer_cache_write_failed", err, map[string]any{"provider": provider, "chain": chain, "address": address})
+			}
 			continue
 		}
 		if err := markLedgerCovered(ctx, a.db, source, address, gap.From, ledgerCoverageEnd(gap.To, fetchedAt), fetchedAt); err != nil {

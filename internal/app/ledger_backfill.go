@@ -67,6 +67,7 @@ type legacyCacheRow struct {
 	chain     string
 	startTS   int64
 	endTS     int64
+	maxPages  int
 	truncated bool
 	payload   string
 	cachedAt  string
@@ -74,7 +75,7 @@ type legacyCacheRow struct {
 
 func backfillLedgerActions(ctx context.Context, db *sql.DB) error {
 	rows, err := db.QueryContext(ctx, `
-		SELECT address, start_ts, end_ts, truncated, actions_json, cached_at
+		SELECT address, start_ts, end_ts, max_pages, truncated, actions_json, cached_at
 		FROM midgard_action_cache ORDER BY cached_at ASC
 	`)
 	if err != nil {
@@ -83,7 +84,7 @@ func backfillLedgerActions(ctx context.Context, db *sql.DB) error {
 	var pending []legacyCacheRow
 	for rows.Next() {
 		var row legacyCacheRow
-		if err := rows.Scan(&row.key, &row.startTS, &row.endTS, &row.truncated, &row.payload, &row.cachedAt); err != nil {
+		if err := rows.Scan(&row.key, &row.startTS, &row.endTS, &row.maxPages, &row.truncated, &row.payload, &row.cachedAt); err != nil {
 			rows.Close()
 			return err
 		}
@@ -107,14 +108,17 @@ func backfillLedgerActions(ctx context.Context, db *sql.DB) error {
 		if err := upsertLedgerActions(ctx, db, source, address, actions); err != nil {
 			return err
 		}
+		cachedAt := parseLegacyCacheTime(row.cachedAt)
 		from := row.startTS
 		if row.truncated {
 			from = oldestMidgardActionUnix(actions)
 			if from == 0 {
 				continue
 			}
+			if err := deferLedgerRange(ctx, db, source, address, row.startTS, from-1, row.maxPages, cachedAt); err != nil {
+				return err
+			}
 		}
-		cachedAt := parseLegacyCacheTime(row.cachedAt)
 		if err := markLedgerCovered(ctx, db, source, address, from, ledgerCoverageEnd(row.endTS, cachedAt), cachedAt); err != nil {
 			return err
 		}
@@ -124,7 +128,7 @@ func backfillLedgerActions(ctx context.Context, db *sql.DB) error {
 
 func backfillLedgerTransfers(ctx context.Context, db *sql.DB) error {
 	rows, err := db.QueryContext(ctx, `
-		SELECT provider, chain, address, start_ts, end_ts, truncated, transfers_json, cached_at
+		SELECT provider, chain, address, start_ts, end_ts, max_pages, truncated, transfers_json, cached_at
 		FROM external_transfer_cache ORDER BY cached_at ASC
 	`)
 	if err != nil {
@@ -133,7 +137,7 @@ func backfillLedgerTransfers(ctx context.Context, db *sql.DB) error {
 	var pending []legacyCacheRow
 	for rows.Next() {
 		var row legacyCacheRow
-		if err := rows.Scan(&row.provider, &row.chain, &row.key, &row.startTS, &row.endTS, &row.truncated, &row.payload, &row.cachedAt); err != nil {
+		if err := rows.Scan(&row.provider, &row.chain, &row.key, &row.startTS, &row.endTS, &row.maxPages, &row.truncated, &row.payload, &row.cachedAt); err != nil {
 			rows.Close()
 			return err
 		}
@@ -157,10 +161,13 @@ func backfillLedgerTransfers(ctx context.Context, db *sql.DB) error {
 		if err := upsertLedgerTransfers(ctx, db, source, address, dedupeExternalTransfers(transfers)); err != nil {
 			return err
 		}
+		cachedAt := parseLegacyCacheTime(row.cachedAt)
 		if row.truncated {
+			if err := deferLedgerRange(ctx, db, source, address, row.startTS, row.endTS, row.maxPages, cachedAt); err != nil {
+				return err
+			}
 			continue
 		}
-		cachedAt := parseLegacyCacheTime(row.cachedAt)
 		if err := markLedgerCovered(ctx, db, source, address, row.startTS, ledgerCoverageEnd(row.endTS, cachedAt), cachedAt); err != nil {
 			return err
 		}
