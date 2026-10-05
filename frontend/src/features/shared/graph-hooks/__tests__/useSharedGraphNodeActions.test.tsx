@@ -12,13 +12,13 @@ import {
 
 const apiMocks = vi.hoisted(() => ({
   addToBlocklist: vi.fn(),
-  refreshLiveHoldings: vi.fn(),
+  refreshLiveHoldingsInBackground: vi.fn(),
   upsertAnnotation: vi.fn(),
 }));
 
 vi.mock("../../../../lib/api", () => ({
   addToBlocklist: apiMocks.addToBlocklist,
-  refreshLiveHoldings: apiMocks.refreshLiveHoldings,
+  refreshLiveHoldingsInBackground: apiMocks.refreshLiveHoldingsInBackground,
   upsertAnnotation: apiMocks.upsertAnnotation,
 }));
 
@@ -60,7 +60,7 @@ function renderNodeActionsHook(initialGraph: AddressExplorerResponse) {
 describe("useSharedGraphNodeActions", () => {
   beforeEach(() => {
     apiMocks.addToBlocklist.mockReset();
-    apiMocks.refreshLiveHoldings.mockReset();
+    apiMocks.refreshLiveHoldingsInBackground.mockReset();
     apiMocks.upsertAnnotation.mockReset();
     Object.defineProperty(window.navigator, "clipboard", {
       configurable: true,
@@ -116,7 +116,7 @@ describe("useSharedGraphNodeActions", () => {
       warnings: ["provider warning"],
       refreshed_at: "2026-01-01T00:00:00Z",
     };
-    apiMocks.refreshLiveHoldings.mockResolvedValue(refreshResponse);
+    apiMocks.refreshLiveHoldingsInBackground.mockResolvedValue(refreshResponse);
 
     const { result } = renderNodeActionsHook(initialGraph);
 
@@ -124,10 +124,10 @@ describe("useSharedGraphNodeActions", () => {
       await result.current.actions.onRefreshUnavailable();
     });
 
-    expect(apiMocks.refreshLiveHoldings).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "node-a" }),
-      expect.objectContaining({ id: "node-b" }),
-    ]);
+    expect(apiMocks.refreshLiveHoldingsInBackground).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: "node-a" }), expect.objectContaining({ id: "node-b" })],
+      { force: true }
+    );
     expect(result.current.statusText).toBe("Checked 2 unavailable node(s); refreshed 1.");
     expect(result.current.graph?.warnings).toEqual(["existing warning", "provider warning"]);
     expect(result.current.graph?.nodes.find((node) => node.id === "node-a")?.metrics).toEqual({
@@ -218,7 +218,7 @@ describe("useSharedGraphNodeActions", () => {
       await result.current.actions.onRefreshLiveValue(visibleNode);
     });
 
-    expect(apiMocks.refreshLiveHoldings).not.toHaveBeenCalled();
+    expect(apiMocks.refreshLiveHoldingsInBackground).not.toHaveBeenCalled();
     expect(result.current.statusText).toBe("Selected node live value is already computed inline.");
   });
 });

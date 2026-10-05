@@ -20,7 +20,7 @@ const apiMocks = vi.hoisted(() => ({
   createGraphState: vi.fn(),
   getGraphState: vi.fn(),
   deleteGraphState: vi.fn(),
-  getActorGraphBuildProgress: vi.fn(),
+  refreshLiveHoldingsInBackground: vi.fn(),
 }));
 
 vi.mock("../../../lib/api", () => ({
@@ -39,7 +39,7 @@ vi.mock("../../../lib/api", () => ({
   createGraphState: apiMocks.createGraphState,
   getGraphState: apiMocks.getGraphState,
   deleteGraphState: apiMocks.deleteGraphState,
-  getActorGraphBuildProgress: apiMocks.getActorGraphBuildProgress,
+  refreshLiveHoldingsInBackground: apiMocks.refreshLiveHoldingsInBackground,
 }));
 
 vi.mock("../../shared/GraphCanvas", () => ({
@@ -97,7 +97,7 @@ describe("ActorGraphPage", () => {
     apiMocks.listActorGraphRuns.mockResolvedValue([]);
     apiMocks.listAnnotations.mockResolvedValue([]);
     apiMocks.listBlocklist.mockResolvedValue([]);
-    apiMocks.refreshLiveHoldings.mockResolvedValue({
+    apiMocks.refreshLiveHoldingsInBackground.mockResolvedValue({
       nodes: graph.nodes,
       warnings: [],
       refreshed_at: "2026-03-18T12:00:00Z",
@@ -209,7 +209,7 @@ describe("ActorGraphPage", () => {
         graph,
       },
     });
-    apiMocks.refreshLiveHoldings.mockResolvedValue({
+    apiMocks.refreshLiveHoldingsInBackground.mockResolvedValue({
       nodes: graph.nodes,
       warnings: [],
       refreshed_at: "2026-03-18T12:00:00Z",
@@ -260,7 +260,7 @@ describe("ActorGraphPage", () => {
     apiMocks.listActorGraphRuns.mockResolvedValue([]);
     apiMocks.listAnnotations.mockResolvedValue([]);
     apiMocks.listBlocklist.mockResolvedValue([]);
-    apiMocks.refreshLiveHoldings.mockResolvedValue({
+    apiMocks.refreshLiveHoldingsInBackground.mockResolvedValue({
       nodes: graph.nodes,
       warnings: [],
       refreshed_at: "2026-03-18T12:00:00Z",
@@ -308,7 +308,7 @@ describe("ActorGraphPage", () => {
 
     await screen.findByText("Loaded graph state from actor-live-values-state.json.");
     await waitFor(() => {
-      expect(apiMocks.refreshLiveHoldings).toHaveBeenCalledWith(graph.nodes);
+      expect(apiMocks.refreshLiveHoldingsInBackground).toHaveBeenCalledWith(graph.nodes, expect.objectContaining({ force: false }));
     });
   });
 
@@ -341,7 +341,7 @@ describe("ActorGraphPage", () => {
     apiMocks.listAnnotations.mockResolvedValue([]);
     apiMocks.listBlocklist.mockResolvedValue([]);
     apiMocks.buildActorGraph.mockResolvedValue(graph);
-    apiMocks.refreshLiveHoldings.mockReturnValue(refreshPromise);
+    apiMocks.refreshLiveHoldingsInBackground.mockReturnValue(refreshPromise);
 
     renderPage();
 
@@ -354,7 +354,7 @@ describe("ActorGraphPage", () => {
       expect(screen.getByText("Loaded 1 nodes and 0 edges for Treasury.")).toBeTruthy();
       expect(screen.getByRole("button", { name: "Build Graph" })).toBeTruthy();
     });
-    expect(apiMocks.refreshLiveHoldings).toHaveBeenCalledWith(graph.nodes);
+    expect(apiMocks.refreshLiveHoldingsInBackground).toHaveBeenCalledWith(graph.nodes, expect.anything());
 
     resolveRefresh({
       nodes: graph.nodes,
@@ -363,97 +363,49 @@ describe("ActorGraphPage", () => {
     });
   });
 
-  it("retries background live holdings when a pass is budget-exhausted", async () => {
+  it("merges partial live holdings from the background job before it finishes", async () => {
     const actor = makeActor({ id: 7, name: "Treasury", addresses: [] });
-    const graph = makeActorGraphResponse({
-      actors: [actor],
-      nodes: [
-        makeNode({
-          id: "external-address",
-          kind: "external_address",
-          chain: "ETH",
-          actor_ids: [7],
-          metrics: { address: "0xwatch" },
-        }),
-      ],
-      edges: [],
-      supporting_actions: [],
+    const node = makeNode({
+      id: "external-address",
+      kind: "external_address",
+      chain: "ETH",
+      actor_ids: [7],
+      metrics: { address: "0xwatch" },
     });
+    const graph = makeActorGraphResponse({ actors: [actor], nodes: [node], edges: [], supporting_actions: [] });
 
     apiMocks.listActors.mockResolvedValue([actor]);
     apiMocks.listActorGraphRuns.mockResolvedValue([]);
     apiMocks.listAnnotations.mockResolvedValue([]);
     apiMocks.listBlocklist.mockResolvedValue([]);
     apiMocks.buildActorGraph.mockResolvedValue(graph);
-    apiMocks.refreshLiveHoldings
-      .mockResolvedValueOnce({
-        nodes: [
-          makeNode({
-            id: "external-address",
-            kind: "external_address",
-            chain: "ETH",
-            actor_ids: [7],
-            metrics: {
-              address: "0xwatch",
-              live_holdings_available: false,
-              live_holdings_status: "pending",
-            },
-          }),
-        ],
-        warnings: ["live holdings lookup budget exhausted; some live values were skipped"],
-        refreshed_at: "2026-03-19T12:00:00Z",
-      })
-      .mockResolvedValueOnce({
-        nodes: [
-          makeNode({
-            id: "external-address",
-            kind: "external_address",
-            chain: "ETH",
-            actor_ids: [7],
-            metrics: {
-              address: "0xwatch",
-              live_holdings_available: true,
-              live_holdings_status: "available",
-              live_holdings_usd_spot: 99,
-            },
-          }),
-        ],
-        warnings: [],
-        refreshed_at: "2026-03-19T12:00:01Z",
-      });
+    apiMocks.refreshLiveHoldingsInBackground.mockImplementation(
+      (_nodes: unknown, options: { onPartial?: (partial: unknown) => void }) => {
+        options.onPartial?.({
+          nodes: [{ id: "external-address", metrics: { address: "0xwatch", live_holdings_status: "available" } }],
+          warnings: ["ETH tracker partial pass warning"],
+          refreshed_at: "2026-03-19T12:00:00Z",
+        });
+        return new Promise(() => {});
+      }
+    );
 
     renderPage();
-
     await screen.findByText("Treasury");
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Build Graph" }));
 
     await screen.findByRole("heading", { name: "Current Flow Graph" });
-    await waitFor(() => {
-      expect(apiMocks.refreshLiveHoldings).toHaveBeenCalledTimes(2);
-    });
-    expect(apiMocks.refreshLiveHoldings.mock.calls[1]?.[0]).toEqual([
-      expect.objectContaining({
-        id: "external-address",
-        metrics: expect.objectContaining({
-          live_holdings_status: "pending",
-        }),
-      }),
-    ]);
+    expect((await screen.findAllByText(/ETH tracker partial pass warning/)).length).toBeGreaterThan(0);
+    expect(apiMocks.refreshLiveHoldingsInBackground).toHaveBeenCalledTimes(1);
   });
 
-  it("retries blank live-holdings nodes after a budget-exhausted background pass", async () => {
+  it("reports the background job's final warnings", async () => {
     const actor = makeActor({ id: 7, name: "Treasury", addresses: [] });
     const graph = makeActorGraphResponse({
       actors: [actor],
       nodes: [
-        makeNode({
-          id: "external-address",
-          kind: "external_address",
-          chain: "ETH",
-          actor_ids: [7],
-          metrics: { address: "0xwatch" },
-        }),
+        makeNode({ id: "external-address", kind: "external_address", chain: "ETH", actor_ids: [7], metrics: { address: "0xwatch" } }),
       ],
       edges: [],
       supporting_actions: [],
@@ -464,61 +416,27 @@ describe("ActorGraphPage", () => {
     apiMocks.listAnnotations.mockResolvedValue([]);
     apiMocks.listBlocklist.mockResolvedValue([]);
     apiMocks.buildActorGraph.mockResolvedValue(graph);
-    apiMocks.refreshLiveHoldings
-      .mockResolvedValueOnce({
-        nodes: [
-          makeNode({
-            id: "external-address",
-            kind: "external_address",
-            chain: "ETH",
-            actor_ids: [7],
-            metrics: {
-              address: "0xwatch",
-              live_holdings_available: false,
-              live_holdings_status: "",
-            },
-          }),
-        ],
-        warnings: ["live holdings lookup budget exhausted; some live values were skipped"],
-        refreshed_at: "2026-03-19T12:00:00Z",
-      })
-      .mockResolvedValueOnce({
-        nodes: [
-          makeNode({
-            id: "external-address",
-            kind: "external_address",
-            chain: "ETH",
-            actor_ids: [7],
-            metrics: {
-              address: "0xwatch",
-              live_holdings_available: true,
-              live_holdings_status: "available",
-              live_holdings_usd_spot: 99,
-            },
-          }),
-        ],
-        warnings: [],
-        refreshed_at: "2026-03-19T12:00:01Z",
-      });
+    apiMocks.refreshLiveHoldingsInBackground.mockResolvedValue({
+      nodes: [
+        {
+          id: "external-address",
+          metrics: { address: "0xwatch", live_holdings_status: "error", live_holdings_error_kind: "banned" },
+        },
+      ],
+      warnings: ["live holdings unavailable for 1 address nodes (banned 1)"],
+      refreshed_at: "2026-03-19T12:00:01Z",
+    });
 
     renderPage();
-
     await screen.findByText("Treasury");
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Build Graph" }));
 
     await screen.findByRole("heading", { name: "Current Flow Graph" });
     await waitFor(() => {
-      expect(apiMocks.refreshLiveHoldings).toHaveBeenCalledTimes(2);
+      expect(screen.getAllByText(/Background live holdings refresh finished\./).length).toBeGreaterThan(0);
     });
-    expect(apiMocks.refreshLiveHoldings.mock.calls[1]?.[0]).toEqual([
-      expect.objectContaining({
-        id: "external-address",
-        metrics: expect.objectContaining({
-          live_holdings_status: "",
-        }),
-      }),
-    ]);
+    expect(apiMocks.refreshLiveHoldingsInBackground).toHaveBeenCalledTimes(1);
   });
 
   it("hides graph-build warnings when the graph enters fullscreen mode", async () => {
@@ -563,7 +481,7 @@ describe("ActorGraphPage", () => {
     apiMocks.listActorGraphRuns.mockResolvedValue([]);
     apiMocks.listAnnotations.mockResolvedValue([]);
     apiMocks.listBlocklist.mockResolvedValue([]);
-    apiMocks.refreshLiveHoldings.mockResolvedValue({
+    apiMocks.refreshLiveHoldingsInBackground.mockResolvedValue({
       nodes: graph.nodes,
       warnings: [],
       refreshed_at: "2026-03-18T12:00:00Z",

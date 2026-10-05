@@ -1,7 +1,6 @@
 import type {
   ActionLookupResponse,
   Actor,
-  ActorGraphBuildProgress,
   ActorGraphExpandRequest,
   ActorGraphRequest,
   ActorGraphResponse,
@@ -17,6 +16,7 @@ import type {
   GraphStateListResponse,
   GraphStateSummary,
   HealthSnapshot,
+  JobSnapshot,
   LiveHoldingsRefreshNode,
   LiveHoldingsRefreshResponse,
 } from "./types";
@@ -86,18 +86,66 @@ export function removeFromBlocklist(address: string) {
   return fetchJSON<{ ok: boolean }>(`/api/v1/blocklist/${encodeURIComponent(address)}`, { method: "DELETE" });
 }
 
-export function buildActorGraph(payload: ActorGraphRequest) {
-  return fetchJSON<ActorGraphResponse>("/api/v1/analysis/actor-graph", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+const JOB_POLL_MS = 750;
+
+export interface JobWatchOptions<P> {
+  onProgress?: (job: JobSnapshot<unknown, P>) => void;
+  onPartial?: (partial: P) => void;
+  isCanceled?: () => boolean;
+  pollMs?: number;
+}
+
+export function getJob<T, P = unknown>(id: string, includePartial = false) {
+  return fetchJSON<JobSnapshot<T, P>>(`/api/v1/jobs/${encodeURIComponent(id)}${includePartial ? "?partial=1" : ""}`);
+}
+
+export function cancelJob(id: string) {
+  return fetchJSON<{ ok: boolean }>(`/api/v1/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// runJob starts a background job and polls it until it finishes, reporting
+// progress and (when requested) partial results along the way.
+export async function runJob<T, P = unknown>(path: string, payload: unknown, options: JobWatchOptions<P> = {}): Promise<T> {
+  let job = await fetchJSON<JobSnapshot<T, P>>(path, { method: "POST", body: JSON.stringify(payload) });
+  const wantPartial = Boolean(options.onPartial);
+  while (job.status === "running") {
+    if (options.isCanceled?.()) {
+      void cancelJob(job.id).catch(() => undefined);
+      throw new Error("Job canceled.");
+    }
+    options.onProgress?.(job);
+    await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? JOB_POLL_MS));
+    job = await getJob<T, P>(job.id, wantPartial);
+    if (wantPartial && job.partial != null) {
+      options.onPartial?.(job.partial);
+    }
+  }
+  if (job.status === "succeeded") {
+    return job.result as T;
+  }
+  throw new Error(job.error || `Job ${job.status}.`);
+}
+
+export function buildActorGraph(payload: ActorGraphRequest, onProgress?: (job: JobSnapshot) => void) {
+  return runJob<ActorGraphResponse>("/api/v1/jobs/actor-graph", payload, { onProgress });
 }
 
 export function expandActorGraph(payload: ActorGraphExpandRequest) {
-  return fetchJSON<ActorGraphResponse>("/api/v1/analysis/actor-graph/expand", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return runJob<ActorGraphResponse>("/api/v1/jobs/actor-graph/expand", payload);
+}
+
+// refreshLiveHoldingsInBackground runs a server-side live-holdings job. The
+// server retries transient failures and backs off from rate limits; every
+// node ends in a final state. Partial updates arrive through onPartial.
+export function refreshLiveHoldingsInBackground(
+  nodes: FlowNode[],
+  options: { force?: boolean; onPartial?: (partial: LiveHoldingsRefreshResponse) => void; isCanceled?: () => boolean } = {}
+) {
+  return runJob<LiveHoldingsRefreshResponse, LiveHoldingsRefreshResponse>(
+    "/api/v1/jobs/live-holdings",
+    { nodes: nodes.map(toLiveHoldingsRefreshNode), force: Boolean(options.force) },
+    { onPartial: options.onPartial, isCanceled: options.isCanceled }
+  );
 }
 
 export function refreshLiveHoldings(nodes: FlowNode[]) {
@@ -117,10 +165,7 @@ export function deleteActorGraphRun(id: number) {
 }
 
 export function buildAddressExplorer(payload: AddressExplorerRequest) {
-  return fetchJSON<AddressExplorerResponse>("/api/v1/analysis/address-explorer", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return runJob<AddressExplorerResponse>("/api/v1/jobs/address-explorer", payload);
 }
 
 export async function listAddressExplorerRuns() {
@@ -134,12 +179,6 @@ export function deleteAddressExplorerRun(id: number) {
 
 export function lookupAction(txID: string) {
   return fetchJSON<ActionLookupResponse>(`/api/v1/actions/${encodeURIComponent(txID)}`);
-}
-
-export function getActorGraphBuildProgress(token: string) {
-  return fetchJSON<ActorGraphBuildProgress>(
-    `/api/v1/analysis/actor-graph/progress/${encodeURIComponent(token)}`
-  );
 }
 
 export async function listGraphStates(kind: string) {

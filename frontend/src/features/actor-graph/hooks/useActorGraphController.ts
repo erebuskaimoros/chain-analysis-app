@@ -6,13 +6,12 @@ import {
   deleteActorGraphRun,
   deleteGraphState,
   expandActorGraph,
-  getActorGraphBuildProgress,
   getGraphState,
   listActorGraphRuns,
   listActors,
   listGraphStates,
   lookupAction,
-  refreshLiveHoldings,
+  refreshLiveHoldingsInBackground,
 } from "../../../lib/api";
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES, defaultActorGraphWindow } from "../../../lib/constants";
 import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
@@ -39,9 +38,10 @@ import {
 import type {
   ActionLookupResponse,
   Actor,
-  ActorGraphBuildProgress,
   ActorGraphRequest,
   ActorGraphResponse,
+  JobSnapshot,
+  LiveHoldingsRefreshResponse,
 } from "../../../lib/types";
 import { useGraphFilterState } from "../../shared/graph-hooks/useGraphFilterState";
 import { useGraphMetadata } from "../../shared/graph-hooks/useGraphMetadata";
@@ -144,59 +144,11 @@ function normalizeActorFormState(value: unknown, fallback: GraphFormState): Grap
   };
 }
 
-const BACKGROUND_LIVE_HOLDINGS_CHUNK_SIZE = 500;
-const BACKGROUND_LIVE_HOLDINGS_DELAY_MS = 350;
-const BACKGROUND_LIVE_HOLDINGS_MAX_PASSES = 40;
-
-function liveHoldingsStatus(node: Pick<ActorGraphResponse["nodes"][number], "metrics">) {
-  const status = node.metrics?.live_holdings_status;
-  return typeof status === "string" ? status.toLowerCase() : "";
-}
-
-function retryableLiveValueNodes(nodes: ActorGraphResponse["nodes"]) {
-  return refreshableLiveValueNodes(nodes).filter((node) => {
-    const status = liveHoldingsStatus(node);
-    return status === "" || status === "pending";
-  });
-}
-
-function liveHoldingsProgressSignature(node: Pick<ActorGraphResponse["nodes"][number], "metrics">) {
-  return JSON.stringify({
-    status: liveHoldingsStatus(node),
-    available: Boolean(node.metrics?.live_holdings_available),
-    usd: Number(node.metrics?.live_holdings_usd_spot || 0),
-  });
-}
-
-function liveHoldingsResponseMadeProgress(
-  requestNodes: ActorGraphResponse["nodes"],
-  responseNodes: Array<Pick<ActorGraphResponse["nodes"][number], "id" | "metrics">>
-) {
-  const beforeByID = new Map(requestNodes.map((node) => [node.id, liveHoldingsProgressSignature(node)]));
-  return responseNodes.some((node) => beforeByID.get(node.id) !== liveHoldingsProgressSignature(node));
-}
-
-function hasBudgetExhaustedWarning(warnings: string[]) {
-  return warnings.some((warning) => warning.toLowerCase().includes("budget exhausted"));
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-const BUILD_PROGRESS_POLL_MS = 700;
-
-function newProgressToken() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `build-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-}
-
-function buildProgressText(progress: ActorGraphBuildProgress) {
-  const fraction = progress.total > 0 ? ` ${Math.min(progress.done, progress.total)}/${progress.total}` : "";
-  const detail = progress.message ? ` (${progress.message})` : "";
-  return `Building graph — ${progress.stage}${fraction}${detail}…`;
+function buildProgressText(job: JobSnapshot) {
+  const fraction = job.total > 0 ? ` ${Math.min(job.done, job.total)}/${job.total}` : "";
+  const detail = job.message ? ` (${job.message})` : "";
+  const sofar = job.partial_counts?.nodes ? ` — ${job.partial_counts.nodes} nodes so far` : "";
+  return `Building graph — ${job.stage || "starting"}${fraction}${detail}${sofar}…`;
 }
 
 export function useActorGraphController() {
@@ -245,7 +197,7 @@ export function useActorGraphController() {
   const [isRefreshingLiveHoldings, setIsRefreshingLiveHoldings] = useState(false);
   const liveRefreshRunRef = useRef(0);
 
-  function mergeLiveHoldingsResponse(response: Awaited<ReturnType<typeof refreshLiveHoldings>>) {
+  function mergeLiveHoldingsResponse(response: LiveHoldingsRefreshResponse) {
     setGraph((current) => {
       if (!current) {
         return current;
@@ -259,7 +211,7 @@ export function useActorGraphController() {
   }
 
   async function refreshGraphLiveHoldings(nodes: ActorGraphResponse["nodes"], mode: "auto" | "manual") {
-    let refreshableNodes = refreshableLiveValueNodes(nodes);
+    const refreshableNodes = refreshableLiveValueNodes(nodes);
     if (!refreshableNodes.length) {
       if (mode === "manual") {
         setStatusText("All graph live values are already computed inline.");
@@ -270,67 +222,34 @@ export function useActorGraphController() {
     const runID = liveRefreshRunRef.current + 1;
     liveRefreshRunRef.current = runID;
     setIsRefreshingLiveHoldings(true);
-
-    const warnings = new Set<string>();
-    let refreshedAt = "";
-    let mergedNodes = nodes;
+    const isStale = () => liveRefreshRunRef.current !== runID;
 
     try {
-      for (let pass = 0; pass < BACKGROUND_LIVE_HOLDINGS_MAX_PASSES && refreshableNodes.length > 0; pass += 1) {
-        let passBudgetExhausted = false;
-        let passMadeProgress = false;
-
-        for (let index = 0; index < refreshableNodes.length; index += BACKGROUND_LIVE_HOLDINGS_CHUNK_SIZE) {
-          if (liveRefreshRunRef.current !== runID) {
-            return;
+      // The server retries transient failures, waits out rate limits, and
+      // returns every node in a final state; partial updates stream in.
+      const response = await refreshLiveHoldingsInBackground(refreshableNodes, {
+        force: mode === "manual",
+        isCanceled: isStale,
+        onPartial: (partial) => {
+          if (!isStale()) {
+            mergeLiveHoldingsResponse(partial);
           }
-          const chunk = refreshableNodes.slice(index, index + BACKGROUND_LIVE_HOLDINGS_CHUNK_SIZE);
-          const response = await refreshLiveHoldings(chunk);
-          if (liveRefreshRunRef.current !== runID) {
-            return;
-          }
-          passMadeProgress = passMadeProgress || liveHoldingsResponseMadeProgress(chunk, response.nodes);
-          mergeLiveHoldingsResponse(response);
-          mergedNodes = applyNodeUpdates(mergedNodes, response.nodes);
-          response.warnings.forEach((warning) => warnings.add(warning));
-          passBudgetExhausted = passBudgetExhausted || hasBudgetExhaustedWarning(response.warnings);
-          refreshedAt = response.refreshed_at;
-          if (index + BACKGROUND_LIVE_HOLDINGS_CHUNK_SIZE < refreshableNodes.length) {
-            await sleep(BACKGROUND_LIVE_HOLDINGS_DELAY_MS);
-          }
-        }
-
-        if (liveRefreshRunRef.current !== runID) {
-          return;
-        }
-        if (mode !== "auto" || !passBudgetExhausted) {
-          break;
-        }
-
-        const retryableNodes = retryableLiveValueNodes(mergedNodes);
-        const hasBlankRetryables = retryableNodes.some((node) => liveHoldingsStatus(node) === "");
-        if (!retryableNodes.length) {
-          break;
-        }
-        if (!passMadeProgress && !hasBlankRetryables) {
-          break;
-        }
-        refreshableNodes = retryableNodes;
-        await sleep(BACKGROUND_LIVE_HOLDINGS_DELAY_MS);
-      }
-      if (liveRefreshRunRef.current !== runID) {
+        },
+      });
+      if (isStale()) {
         return;
       }
-      if (warnings.size > 0) {
+      mergeLiveHoldingsResponse(response);
+      if (response.warnings.length > 0) {
         const prefix = mode === "manual" ? "Live holdings refreshed." : "Background live holdings refresh finished.";
-        setStatusText(`${prefix} ${Array.from(warnings).join(" · ")}`);
+        setStatusText(`${prefix} ${response.warnings.join(" · ")}`);
         return;
       }
-      if (mode === "manual" && refreshedAt) {
-        setStatusText(`Live holdings refreshed at ${formatShortDateTime(refreshedAt)}.`);
+      if (mode === "manual" && response.refreshed_at) {
+        setStatusText(`Live holdings refreshed at ${formatShortDateTime(response.refreshed_at)}.`);
       }
     } catch (error) {
-      if (liveRefreshRunRef.current !== runID) {
+      if (isStale()) {
         return;
       }
       setStatusText(error instanceof Error ? error.message : "Live holdings refresh failed.");
@@ -342,7 +261,8 @@ export function useActorGraphController() {
   }
 
   const buildMutation = useMutation({
-    mutationFn: buildActorGraph,
+    mutationFn: (request: ActorGraphRequest) =>
+      buildActorGraph(request, (job) => setStatusText(buildProgressText(job))),
     onSuccess: async (response, request) => {
       setGraph(response);
       setSelection(null);
@@ -450,27 +370,10 @@ export function useActorGraphController() {
     await buildWithProgress(requestFromState(form, selectedActorIDs));
   }
 
-  // Polls the server-side progress entry while the build request is in
-  // flight so long uncached scans narrate what they're doing.
+  // Builds run as server-side jobs; progress narrates long uncached scans.
   async function buildWithProgress(request: ActorGraphRequest) {
-    const token = newProgressToken();
     setStatusText("Building graph…");
-    const timer = window.setInterval(() => {
-      void getActorGraphBuildProgress(token)
-        .then((progress) => {
-          if (!progress.finished) {
-            setStatusText(buildProgressText(progress));
-          }
-        })
-        .catch(() => {
-          // Progress entry may not exist yet (or server restarted); keep quiet.
-        });
-    }, BUILD_PROGRESS_POLL_MS);
-    try {
-      await buildMutation.mutateAsync({ ...request, progress_token: token });
-    } finally {
-      window.clearInterval(timer);
-    }
+    await buildMutation.mutateAsync(request);
   }
 
   async function onLoadRun() {

@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { Dispatch, SetStateAction } from "react";
 import {
   addToBlocklist,
-  refreshLiveHoldings,
+  refreshLiveHoldingsInBackground,
   upsertAnnotation,
 } from "../../../lib/api";
 import {
@@ -93,7 +93,7 @@ export function useSharedGraphNodeActions<TGraph extends ActorGraphResponse | Ad
       return;
     }
     try {
-      const response = await refreshLiveHoldings(refreshableNodes);
+      const response = await refreshLiveHoldingsInBackground(refreshableNodes, { force: true });
       mergeRefreshResult(response);
       setStatusText(onRefreshNodeSuccess(refreshableNodes.length, response));
     } catch (error) {
@@ -111,7 +111,7 @@ export function useSharedGraphNodeActions<TGraph extends ActorGraphResponse | Ad
       return;
     }
     try {
-      const response = await refreshLiveHoldings(rawNodes);
+      const response = await refreshLiveHoldingsInBackground(rawNodes, { force: true });
       mergeRefreshResult(response);
       setStatusText(onRefreshUnavailableSuccess(rawNodes.length, response));
     } catch (error) {

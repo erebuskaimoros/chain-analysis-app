@@ -335,3 +335,18 @@ export interface ActionLookupResponse {
   tx_id: string;
   actions: ActionLookupAction[];
 }
+
+export interface JobSnapshot<T = unknown, P = unknown> {
+  id: string;
+  kind: string;
+  status: "running" | "succeeded" | "failed" | "canceled";
+  stage?: string;
+  done: number;
+  total: number;
+  message?: string;
+  error?: string;
+  log_path?: string;
+  partial_counts?: Record<string, number>;
+  partial?: P;
+  result?: T;
+}
