@@ -81,6 +81,7 @@ restarting. The UI is embedded with `go:embed`, so rebuild the server after
 - `MAYANODE_ENDPOINTS` (default `https://mayanode.mayachain.info`)
 - `MAYA_MIDGARD_ENDPOINTS` (default `https://midgard.mayachain.info/v2`)
 - `CHAIN_ANALYSIS_LEGACY_ACTION_ENDPOINTS` (default empty; set, for example, `https://vanaheimex.com` to merge a second THOR action-history source)
+- `CHAIN_ANALYSIS_DEFILLAMA_URL` (default `https://coins.llama.fi`; prices EVM tokens without a THORChain pool at transaction time; set empty to disable)
 - `CHAIN_ANALYSIS_CHAIN_TRACKERS` per-chain provider overrides, for example
   `BASE=blockscout`
 - Tracker URLs and keys: `CHAIN_ANALYSIS_ETHERSCAN_API_URL`,

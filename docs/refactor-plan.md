@@ -151,6 +151,8 @@ Steps:
 
 ## Phase 4: Prices at transaction time
 
+**Status (2026-10-05): done.** Price points are migration 7. Unpriced transfers touching an actor stay visible. The UI normalises at-time values at the API boundary. Bitget acceptance: $265,723 per 100 ETH. Details are in session 2026-10-05 #1.
+
 1. **`price_history.go`:** `PriceAt(ctx, asset, t) (usd, source, ok)`. Sources, in order:
    1. THOR/MAYA pool history from Midgard `/v2/history/depths/{pool}?interval=hour` (`assetPriceUSD`). RUNE comes from `/v2/history/rune` (check the exact field at implementation) or from stable-pool depth ratios, as `buildPriceBookFresh` does today.
    2. A $1 peg for stablecoins, using the existing `isStableAsset`.
