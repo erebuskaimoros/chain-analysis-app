@@ -32,6 +32,7 @@ type App struct {
 	protocolDirectory cachedMetadataResult[protocolDirectory]
 	priceBook         cachedMetadataResult[priceBook]
 	jobs              *jobRunner
+	stopBackground    context.CancelFunc
 	bondIndexesTHOR   cachedMetadataResult[protocolBondIndexes]
 	bondIndexesMAYA   cachedMetadataResult[protocolBondIndexes]
 	trackerEndpointRR atomic.Uint64
@@ -108,7 +109,21 @@ func New(cfg Config) (*App, error) {
 	return a, nil
 }
 
+// StartBackground starts scheduled work (watched-actor refreshes) for a
+// long-running server. Close stops it.
+func (a *App) StartBackground() {
+	if a.cfg.ActorRefreshInterval <= 0 || a.stopBackground != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.stopBackground = cancel
+	go a.runActorScheduler(ctx, a.cfg.ActorRefreshInterval)
+}
+
 func (a *App) Close() error {
+	if a.stopBackground != nil {
+		a.stopBackground()
+	}
 	if a.db != nil {
 		return a.db.Close()
 	}

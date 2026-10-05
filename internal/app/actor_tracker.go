@@ -715,7 +715,9 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 
 	nodes := builder.nodeList()
 	a.applyAddressLabels(ctx, nodes)
-	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, false)...)
+	if !buildLiveHoldingsSkipped(ctx) {
+		builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, false)...)
+	}
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	actions := builder.actionList()
@@ -1024,7 +1026,9 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 
 	nodes := builder.nodeList()
 	a.applyAddressLabels(ctx, nodes)
-	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, false)...)
+	if !buildLiveHoldingsSkipped(ctx) {
+		builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, false)...)
+	}
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	actions := builder.actionList()

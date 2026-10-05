@@ -23,6 +23,7 @@ func New(cfg app.Config) (*Runtime, error) {
 		return nil, err
 	}
 
+	legacy.StartBackground()
 	svcs := services.New(legacy)
 	v1 := api.NewV1(svcs)
 	mux := http.NewServeMux()

@@ -46,9 +46,11 @@ type Config struct {
 	XRPRPCURL              string
 	RadixGatewayURL        string
 	// DefiLlamaURL prices EVM tokens without a THORChain pool; empty disables it.
-	DefiLlamaURL   string
-	RequestTimeout time.Duration
-	MidgardTimeout time.Duration
+	DefiLlamaURL string
+	// ActorRefreshInterval refreshes watched actors on a schedule; zero disables it.
+	ActorRefreshInterval time.Duration
+	RequestTimeout       time.Duration
+	MidgardTimeout       time.Duration
 	// LiveHoldingsTimeout, when positive, replaces both the live-holdings
 	// batch budget and the per-lookup timeouts. Golden tests raise it so
 	// record and replay issue the same lookups.
@@ -134,6 +136,13 @@ func LoadConfigFromEnv() Config {
 		DefiLlamaURL:           strings.TrimRight(getEnv("CHAIN_ANALYSIS_DEFILLAMA_URL", "https://coins.llama.fi"), "/"),
 		RequestTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_TIMEOUT_SECONDS", 20)) * time.Second,
 		MidgardTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_MIDGARD_TIMEOUT_SECONDS", 10)) * time.Second,
+	}
+	if raw := strings.TrimSpace(os.Getenv("CHAIN_ANALYSIS_ACTOR_REFRESH_INTERVAL")); raw != "" {
+		if interval, err := time.ParseDuration(raw); err == nil && interval > 0 {
+			cfg.ActorRefreshInterval = interval
+		} else {
+			log.Printf("ignoring CHAIN_ANALYSIS_ACTOR_REFRESH_INTERVAL=%q: want a positive duration such as 1h", raw)
+		}
 	}
 	if raw, ok := os.LookupEnv("CHAIN_ANALYSIS_UI_BUILD_DIR"); ok && strings.TrimSpace(raw) != "" {
 		cfg.UIBuildDirOverride = true

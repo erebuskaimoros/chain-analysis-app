@@ -600,6 +600,19 @@ func withLiveHoldingsBudget(ctx context.Context, budget time.Duration) context.C
 	return context.WithValue(ctx, liveHoldingsBudgetCtxKey{}, budget)
 }
 
+type skipBuildLiveHoldingsCtxKey struct{}
+
+// withoutBuildLiveHoldings tells a graph build to leave live holdings to the
+// caller, which looks them up itself (the actor refresh's holdings job).
+func withoutBuildLiveHoldings(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipBuildLiveHoldingsCtxKey{}, true)
+}
+
+func buildLiveHoldingsSkipped(ctx context.Context) bool {
+	skip, _ := ctx.Value(skipBuildLiveHoldingsCtxKey{}).(bool)
+	return skip
+}
+
 func liveHoldingsBudgetFromContext(ctx context.Context, fallback time.Duration) time.Duration {
 	if ctx != nil {
 		if budget, ok := ctx.Value(liveHoldingsBudgetCtxKey{}).(time.Duration); ok && budget > fallback {

@@ -22,6 +22,7 @@ var migrations = []migration{
 	{id: 6, name: "holdings_snapshots", up: migrateHoldingsSnapshots},
 	{id: 7, name: "price_points", up: migratePricePoints},
 	{id: 8, name: "labels", up: migrateLabels},
+	{id: 9, name: "actor_monitoring", up: migrateActorMonitoring},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -392,6 +393,38 @@ func migrateLabels(ctx context.Context, db *sql.Tx) error {
 			imported_at TEXT NOT NULL,
 			count INTEGER NOT NULL DEFAULT 0
 		)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// migrateActorMonitoring adds per-actor watch state and refresh snapshots of
+// holdings and flows.
+func migrateActorMonitoring(ctx context.Context, db *sql.Tx) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS actor_watch (
+			actor_id INTEGER PRIMARY KEY,
+			watch INTEGER NOT NULL DEFAULT 0,
+			last_viewed_at TEXT NOT NULL DEFAULT '',
+			FOREIGN KEY(actor_id) REFERENCES actors(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS actor_snapshots (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			actor_id INTEGER NOT NULL,
+			taken_at TEXT NOT NULL,
+			window_start TEXT NOT NULL,
+			window_end TEXT NOT NULL,
+			total_usd REAL NOT NULL DEFAULT 0,
+			baseline INTEGER NOT NULL DEFAULT 0,
+			holdings_json TEXT NOT NULL,
+			flows_json TEXT NOT NULL,
+			FOREIGN KEY(actor_id) REFERENCES actors(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_actor_snapshots_actor ON actor_snapshots(actor_id, taken_at)`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {

@@ -93,6 +93,10 @@ func (h *V1) Register(mux *http.ServeMux) {
 	handle("DELETE /api/v1/jobs/{id}", h.handleCancelJob)
 	handle("GET /api/v1/labels", h.handleLabels)
 	handle("GET /api/v1/labels/sources", h.handleLabelSources)
+	handle("GET /api/v1/actors/{id}/monitor", h.handleActorMonitor)
+	handle("PUT /api/v1/actors/{id}/watch", h.handleActorWatch)
+	handle("POST /api/v1/actors/{id}/viewed", h.handleActorViewed)
+	handle("POST /api/v1/jobs/actor-refresh", h.handleStartActorRefreshJob)
 }
 
 func (h *V1) handleHealth(w http.ResponseWriter, r *http.Request) {

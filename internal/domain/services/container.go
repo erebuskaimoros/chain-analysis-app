@@ -12,6 +12,7 @@ type Container struct {
 	GraphStates     *GraphStateService
 	Jobs            *JobService
 	Labels          *LabelService
+	Monitor         *MonitorService
 }
 
 func New(legacy *app.App) *Container {
@@ -25,5 +26,6 @@ func New(legacy *app.App) *Container {
 		GraphStates:     &GraphStateService{legacy: legacy},
 		Jobs:            &JobService{legacy: legacy},
 		Labels:          &LabelService{legacy: legacy},
+		Monitor:         &MonitorService{legacy: legacy},
 	}
 }
