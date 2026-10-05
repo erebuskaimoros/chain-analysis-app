@@ -71,9 +71,13 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 			ContractType:     seg.ContractType,
 			ContractProtocol: seg.ContractProtocol,
 			Confidence:       seg.Confidence,
+			ConfidenceReason: seg.ConfidenceReason,
 			SourceProtocols:  nil,
 		}
 		b.edges[edgeKey] = edge
+	}
+	if seg.Confidence < edge.Confidence {
+		edge.Confidence, edge.ConfidenceReason = seg.Confidence, seg.ConfidenceReason
 	}
 	edge.ActorIDs = mergeInt64s(edge.ActorIDs, seg.ActorIDs)
 	if protocol := normalizeSourceProtocol(seg.SourceProtocol); protocol != "" {
@@ -119,6 +123,13 @@ func (b *graphBuilder) addProjectedSegment(seg projectedSegment) {
 		}
 	} else {
 		mergeEdgeTransactionAsset(edge, seg.TxID, seg.SourceProtocol, seg.Height, seg.Time, seg.Asset, seg.AmountRaw, seg.USDSpot, meta, "")
+	}
+	if seg.InboundTxID != "" {
+		for i := range edge.Transactions {
+			if edge.Transactions[i].TxID == seg.TxID && edge.Transactions[i].InboundTxID == "" {
+				edge.Transactions[i].InboundTxID = seg.InboundTxID
+			}
+		}
 	}
 	recomputeEdgeAggregate(edge)
 

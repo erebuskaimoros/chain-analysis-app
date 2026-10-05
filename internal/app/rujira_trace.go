@@ -356,6 +356,7 @@ func (b *graphBuilder) projectRujiraContractActionFromTrace(action midgardAction
 			Height:           height,
 			Time:             actionTime,
 			Confidence:       confidence,
+			ConfidenceReason: "Rujira contract execution trace",
 			ActorIDs:         mergeInt64s(mergeInt64s(source.ActorIDs, target.ActorIDs), actionActorIDs),
 		}
 		if actionClass == "swaps" {

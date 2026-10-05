@@ -411,26 +411,27 @@ func (b *graphBuilder) projectExternalTransfer(transfer externalTransfer, baseDe
 		return nil, nil
 	}
 	seg := projectedSegment{
-		Source:        source,
-		Target:        target,
-		ActionClass:   "transfers",
-		ActionKey:     actionKey,
-		ActionLabel:   actionLabel,
-		ActionDomain:  "native_chain",
-		Asset:         normalizeAsset(transfer.Asset),
-		AssetKind:     meta.AssetKind,
-		TokenStandard: meta.TokenStandard,
-		TokenAddress:  meta.TokenAddress,
-		TokenSymbol:   meta.TokenSymbol,
-		TokenName:     meta.TokenName,
-		TokenDecimals: meta.TokenDecimals,
-		AmountRaw:     strings.TrimSpace(transfer.AmountRaw),
-		USDSpot:       b.prices.usdFor(transfer.Asset, transfer.AmountRaw),
-		TxID:          strings.ToUpper(strings.TrimSpace(transfer.TxID)),
-		Height:        transfer.Height,
-		Time:          transfer.Time,
-		Confidence:    transfer.Confidence,
-		ActorIDs:      mergeInt64s(source.ActorIDs, target.ActorIDs),
+		Source:           source,
+		Target:           target,
+		ActionClass:      "transfers",
+		ActionKey:        actionKey,
+		ActionLabel:      actionLabel,
+		ActionDomain:     "native_chain",
+		Asset:            normalizeAsset(transfer.Asset),
+		AssetKind:        meta.AssetKind,
+		TokenStandard:    meta.TokenStandard,
+		TokenAddress:     meta.TokenAddress,
+		TokenSymbol:      meta.TokenSymbol,
+		TokenName:        meta.TokenName,
+		TokenDecimals:    meta.TokenDecimals,
+		AmountRaw:        strings.TrimSpace(transfer.AmountRaw),
+		USDSpot:          b.prices.usdFor(transfer.Asset, transfer.AmountRaw),
+		TxID:             strings.ToUpper(strings.TrimSpace(transfer.TxID)),
+		Height:           transfer.Height,
+		Time:             transfer.Time,
+		Confidence:       transfer.Confidence,
+		ConfidenceReason: externalTransferConfidenceReason(transfer),
+		ActorIDs:         mergeInt64s(source.ActorIDs, target.ActorIDs),
 	}
 	if !hasGraphableLiquidity(seg.AmountRaw) {
 		return nil, nil
@@ -2072,4 +2073,20 @@ func (a *App) fetchXRPLTransfers(ctx context.Context, address string, start, end
 		}
 	}
 	return dedupeExternalTransfers(all), truncated, "", nil
+}
+
+// externalTransferConfidenceReason explains a tracker transfer's confidence:
+// account transfers are exact, while UTXO and balance-change transfers infer
+// who paid whom.
+func externalTransferConfidenceReason(transfer externalTransfer) string {
+	switch {
+	case strings.Contains(strings.ToLower(transfer.ActionLabel), "inferred"):
+		return "inferred from balance changes in a multi-party transaction"
+	case transfer.Confidence >= 0.95:
+		return "on-chain transfer"
+	case strings.HasPrefix(transfer.ActionKey, "tracker.utxo"):
+		return "UTXO transfer; sender attributed from the transaction's inputs"
+	default:
+		return fmt.Sprintf("tracker transfer confidence %.2f", transfer.Confidence)
+	}
 }

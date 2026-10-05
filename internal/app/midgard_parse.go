@@ -706,6 +706,9 @@ func recomputeEdgeAggregate(edge *FlowEdge) {
 	for _, tx := range edge.Transactions {
 		edge.USDSpot += tx.USDSpot
 		edge.TxIDs = appendUniqueString(edge.TxIDs, tx.TxID)
+		if tx.InboundTxID != "" {
+			edge.TxIDs = appendUniqueString(edge.TxIDs, tx.InboundTxID)
+		}
 		edge.Heights = appendUniqueInt64(edge.Heights, tx.Height)
 		for _, asset := range tx.Assets {
 			mergeEdgeAsset(edge, asset.Asset, asset.AmountRaw, asset.USDSpot, assetMetadataFromFlowAssetValue(asset), asset.Direction)

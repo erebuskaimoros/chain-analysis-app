@@ -137,6 +137,7 @@ type FlowNode struct {
 
 type FlowEdgeTransaction struct {
 	TxID           string           `json:"tx_id"`
+	InboundTxID    string           `json:"inbound_tx_id,omitempty"` // a swap's deposit when TxID is its payout
 	SourceProtocol string           `json:"source_protocol,omitempty"`
 	Height         int64            `json:"height"`
 	Time           time.Time        `json:"time"`
@@ -165,6 +166,7 @@ type FlowEdge struct {
 	Heights          []int64               `json:"heights"`
 	ActorIDs         []int64               `json:"actor_ids"`
 	Confidence       float64               `json:"confidence"`
+	ConfidenceReason string                `json:"confidence_reason,omitempty"`
 	SourceProtocols  []string              `json:"source_protocols,omitempty"`
 }
 

@@ -87,7 +87,8 @@
      "usd_spot": 51.85863945857166
     }
    ],
-   "confidence": 0.9,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain bond action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
@@ -144,7 +145,8 @@
      "usd_spot": 364.5795425457112
     }
    ],
-   "confidence": 0.9,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain bond action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
@@ -201,7 +203,8 @@
      "usd_spot": 365.3788784582975
     }
    ],
-   "confidence": 0.9,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain bond action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
@@ -258,7 +261,8 @@
      "usd_spot": 54.46514628687639
     }
    ],
-   "confidence": 0.9,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain bond action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
@@ -315,7 +319,8 @@
      "usd_spot": 785.4092954546867
     }
    ],
-   "confidence": 0.9,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain bond action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
@@ -368,7 +373,8 @@
      "usd_spot": 48.942470547054995
     }
    ],
-   "confidence": 0.9,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain bond action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
@@ -423,7 +429,8 @@
      "usd_spot": 85.01866164685477
     }
    ],
-   "confidence": 0.9,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain bond action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
@@ -480,7 +487,8 @@
      "usd_spot": 794.4680964053146
     }
    ],
-   "confidence": 0.72,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
@@ -593,7 +601,8 @@
      "usd_spot": 127.26307557832959
     }
    ],
-   "confidence": 0.72,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",

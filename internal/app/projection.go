@@ -49,7 +49,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 	var segments []projectedSegment
 	var nextAddresses []frontierAddress
 
-	addSegment := func(source, target flowRef, asset, amount string, confidence float64, txID string) {
+	addSegment := func(source, target flowRef, asset, amount string, confidence segmentConfidence, txID string) {
 		if source.ID == "" || target.ID == "" {
 			return
 		}
@@ -80,11 +80,15 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			TxID:             txID,
 			Height:           height,
 			Time:             actionTime,
-			Confidence:       confidence,
+			Confidence:       confidence.value,
+			ConfidenceReason: confidence.reason,
 			ActorIDs:         mergeInt64s(mergeInt64s(source.ActorIDs, target.ActorIDs), actionActorIDs),
 		}
 		if actionClass == "swaps" {
 			seg.CanonicalKey = canonicalSwapSegmentKey(firstNonEmpty(swapTxID, seg.TxID), source.Address, target.Address, seg.Asset, actionProtocol)
+			if swapTxID != "" && swapTxID != seg.TxID {
+				seg.InboundTxID = swapTxID
+			}
 		}
 		b.priceSegment(&seg)
 		if b.belowMinUSD(seg) && !hasActorIDs(seg.ActorIDs) {
@@ -152,20 +156,20 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				txID := firstNonEmpty(strings.ToUpper(strings.TrimSpace(inLeg.TxID)), strings.ToUpper(strings.TrimSpace(receiverLeg.TxID)))
 				if len(inLeg.Coins) > 0 {
 					for _, coin := range inLeg.Coins {
-						addSegment(sourceRef, receiverRef, coin.Asset, coin.Amount, 0.86, txID)
+						addSegment(sourceRef, receiverRef, coin.Asset, coin.Amount, contractSourceConfidence(sourceRef.ID == inputSource.ID && inputSource.ID != ""), txID)
 						inputAdded = true
 					}
 					continue
 				}
 				if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, inLeg, receiverLeg); ok {
-					addSegment(sourceRef, receiverRef, inferredAsset, inferredAmount, 0.82, txID)
+					addSegment(sourceRef, receiverRef, inferredAsset, inferredAmount, confidenceInferredAmount, txID)
 					inputAdded = true
 				}
 			}
 
 			if !inputAdded && inputSource.ID != "" {
 				if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, midgardActionLeg{}, receiverLeg); ok {
-					addSegment(inputSource, receiverRef, inferredAsset, inferredAmount, 0.78, receiverLeg.TxID)
+					addSegment(inputSource, receiverRef, inferredAsset, inferredAmount, confidenceInferredAmount, receiverLeg.TxID)
 				}
 			}
 
@@ -178,7 +182,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 							if normalizeAsset(coin.Asset) != "THOR.TCY" {
 								continue
 							}
-							addSegment(receiverRef, targetRef, coin.Asset, coin.Amount, 0.84, txID)
+							addSegment(receiverRef, targetRef, coin.Asset, coin.Amount, confidenceRoutedPayout, txID)
 						}
 					}
 					continue
@@ -197,7 +201,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				}
 				txID := strings.ToUpper(strings.TrimSpace(payoutLeg.TxID))
 				for _, coin := range payoutLeg.Coins {
-					addSegment(receiverRef, targetRef, coin.Asset, coin.Amount, 0.84, txID)
+					addSegment(receiverRef, targetRef, coin.Asset, coin.Amount, confidenceActionLegs, txID)
 				}
 			}
 		}
@@ -217,7 +221,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				}
 				txID := firstNonEmpty(strings.ToUpper(strings.TrimSpace(payoutLeg.TxID)), fallbackTxID)
 				for _, coin := range payoutLeg.Coins {
-					addSegment(fallbackSource, targetRef, coin.Asset, coin.Amount, 0.76, txID)
+					addSegment(fallbackSource, targetRef, coin.Asset, coin.Amount, confidenceContractFallback, txID)
 				}
 			}
 		}
@@ -307,7 +311,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 					continue
 				}
 				before := len(segments)
-				addSegment(walletRef, targetRef, asset, amount, 0.9, txID)
+				addSegment(walletRef, targetRef, asset, amount, confidenceBondAction, txID)
 				for i := before; i < len(segments); i++ {
 					segments[i].ValidatorAddress = nodeAddress
 					segments[i].ValidatorLabel = protocolBondDisplayLabel(actionProtocol, nodeAddress, "")
@@ -319,9 +323,9 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				continue
 			}
 			if isOutboundBondFlow {
-				addSegment(nodeRef, walletRef, asset, amount, 0.88, txID)
+				addSegment(nodeRef, walletRef, asset, amount, confidenceBondAction, txID)
 			} else {
-				addSegment(walletRef, nodeRef, asset, amount, 0.9, txID)
+				addSegment(walletRef, nodeRef, asset, amount, confidenceBondAction, txID)
 			}
 		}
 		return segments, uniqueFrontierAddresses(nextAddresses), nil, consumedExternalTransfers
@@ -359,7 +363,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				if len(coins) == 0 {
 					if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, inLeg, outLeg); ok {
 						before := len(segments)
-						addSegment(source, target, inferredAsset, inferredAmount, 0.7, txID)
+						addSegment(source, target, inferredAsset, inferredAmount, confidenceInferredAmount, txID)
 						for i := before; i < len(segments); i++ {
 							segments[i].SwapInAsset = swapInAsset
 							segments[i].SwapInAmountRaw = swapInAmount
@@ -371,7 +375,7 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				}
 				for _, coin := range coins {
 					before := len(segments)
-					addSegment(source, target, coin.Asset, coin.Amount, 0.74, txID)
+					addSegment(source, target, coin.Asset, coin.Amount, confidenceSwapLegs, txID)
 					for i := before; i < len(segments); i++ {
 						segments[i].SwapInAsset = swapInAsset
 						segments[i].SwapInAmountRaw = swapInAmount
@@ -394,14 +398,14 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				txID := strings.ToUpper(strings.TrimSpace(inLeg.TxID))
 				if len(inLeg.Coins) == 0 {
 					if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, inLeg, midgardActionLeg{}); ok {
-						addSegment(source, poolRef, inferredAsset, inferredAmount, 0.72, txID)
+						addSegment(source, poolRef, inferredAsset, inferredAmount, confidenceInferredAmount, txID)
 					} else {
-						addSegment(source, poolRef, nativeAssetForProtocol(actionProtocol), "0", 0.62, txID)
+						addSegment(source, poolRef, nativeAssetForProtocol(actionProtocol), "0", confidenceMissingAmount, txID)
 					}
 					continue
 				}
 				for _, coin := range inLeg.Coins {
-					addSegment(source, poolRef, coin.Asset, coin.Amount, 0.74, txID)
+					addSegment(source, poolRef, coin.Asset, coin.Amount, confidenceLiquidityLegs, txID)
 				}
 			}
 			for _, outLeg := range legsOut {
@@ -409,14 +413,14 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 				txID := strings.ToUpper(strings.TrimSpace(outLeg.TxID))
 				if len(outLeg.Coins) == 0 {
 					if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, midgardActionLeg{}, outLeg); ok {
-						addSegment(poolRef, target, inferredAsset, inferredAmount, 0.7, txID)
+						addSegment(poolRef, target, inferredAsset, inferredAmount, confidenceInferredAmount, txID)
 					} else {
-						addSegment(poolRef, target, nativeAssetForProtocol(actionProtocol), "0", 0.6, txID)
+						addSegment(poolRef, target, nativeAssetForProtocol(actionProtocol), "0", confidenceMissingAmount, txID)
 					}
 					continue
 				}
 				for _, coin := range outLeg.Coins {
-					addSegment(poolRef, target, coin.Asset, coin.Amount, 0.74, txID)
+					addSegment(poolRef, target, coin.Asset, coin.Amount, confidenceLiquidityLegs, txID)
 				}
 			}
 			if len(segments) > 0 {
@@ -436,19 +440,46 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 			txID := firstNonEmpty(strings.ToUpper(strings.TrimSpace(outLeg.TxID)), strings.ToUpper(strings.TrimSpace(inLeg.TxID)))
 			if len(coins) == 0 {
 				if inferredAsset, inferredAmount, ok := inferContractLegAmount(action, inLeg, outLeg); ok {
-					addSegment(source, target, inferredAsset, inferredAmount, 0.68, txID)
+					addSegment(source, target, inferredAsset, inferredAmount, confidenceInferredAmount, txID)
 				} else {
-					addSegment(source, target, nativeAssetForProtocol(actionProtocol), "0", 0.62, txID)
+					addSegment(source, target, nativeAssetForProtocol(actionProtocol), "0", confidenceMissingAmount, txID)
 				}
 				continue
 			}
 			for _, coin := range coins {
-				addSegment(source, target, coin.Asset, coin.Amount, 0.72, txID)
+				addSegment(source, target, coin.Asset, coin.Amount, confidenceActionLegs, txID)
 			}
 		}
 	}
 
 	return segments, uniqueFrontierAddresses(nextAddresses), nil, consumedExternalTransfers
+}
+
+// segmentConfidence is how sure a projected movement is, and why. A leg that
+// THORChain itself records scores 1; amounts or parties that projection has to
+// infer score lower.
+type segmentConfidence struct {
+	value  float64
+	reason string
+}
+
+var (
+	confidenceActionLegs       = segmentConfidence{1, "recorded by the THORChain action"}
+	confidenceSwapLegs         = segmentConfidence{1, "THORChain swap links the deposit to the payout"}
+	confidenceLiquidityLegs    = segmentConfidence{1, "recorded by the THORChain liquidity action"}
+	confidenceBondAction       = segmentConfidence{1, "recorded by the THORChain bond action"}
+	confidenceContractCaller   = segmentConfidence{0.85, "sender read from the contract call message"}
+	confidenceRoutedPayout     = segmentConfidence{0.8, "payout attributed by a CALC routing rule"}
+	confidenceContractFallback = segmentConfidence{0.75, "contract payout attributed to the caller"}
+	confidenceInferredAmount   = segmentConfidence{0.7, "amount inferred from the action; the leg records none"}
+	confidenceMissingAmount    = segmentConfidence{0.6, "the leg records no amount"}
+)
+
+func contractSourceConfidence(fromCallMessage bool) segmentConfidence {
+	if fromCallMessage {
+		return confidenceContractCaller
+	}
+	return confidenceActionLegs
 }
 
 func selectMidgardSwapOutLegs(protocol string, legsOut []midgardActionLeg) ([]midgardActionLeg, int) {

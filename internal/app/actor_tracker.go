@@ -199,13 +199,17 @@ type projectedSegment struct {
 	USDSpot          float64
 	// USDAtTime values the segment at its transaction time; Priced is false
 	// when no price is known, and PriceSource names where the price came from.
-	USDAtTime    float64
-	Priced       bool
-	PriceSource  string
-	TxID         string
-	Height       int64
-	Time         time.Time
-	Confidence   float64
+	USDAtTime   float64
+	Priced      bool
+	PriceSource string
+	TxID        string
+	Height      int64
+	Time        time.Time
+	Confidence  float64
+	// ConfidenceReason says why Confidence is what it is.
+	ConfidenceReason string
+	// InboundTxID is a swap's inbound transaction when TxID is its payout.
+	InboundTxID  string
 	ActorIDs     []int64
 	CanonicalKey string
 }

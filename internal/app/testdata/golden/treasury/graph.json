@@ -993,6 +993,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "actor_address:0x02d9e8506ba56d3f9be6007f712720eeadac5fdc:actor_address:1",
@@ -1052,7 +1053,8 @@
      "usd_spot": 193373.23811426674
     }
    ],
-   "confidence": 0.72,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "actor_address:thor1lhufh0mwasa0lk9udppdegmvnkgqt08f0m9p5g:actor_address:1",
@@ -1125,7 +1127,8 @@
      "usd_spot": 18845.714647885346
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain liquidity action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:BASE|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:3",
@@ -1179,6 +1182,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:ETH|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:2",
@@ -1234,7 +1238,8 @@
      "usd_spot": 92143.25633768832
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain liquidity action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:ETH|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:2",
@@ -1291,6 +1296,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TA3cUt8S1UUjQ37sAAxteynRZDojtZa28p:external:2",
@@ -1344,6 +1350,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TAARgptoiMfumrgSAPrWGwkTLrQCGKDZs7:external:2",
@@ -1397,6 +1404,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TAGPGzVt6Xa2g43XUwfZAcTYtXUMMpP526:external:2",
@@ -1450,6 +1458,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TAMv5SSFcnjXfrjEd9u9N3uVx5d2L7s1qd:external:2",
@@ -1503,6 +1512,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TAooH32FGhooUyXXLHUXGdgtaLFLeFHpCf:external:2",
@@ -1556,6 +1566,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TB3xVep8oV9b6bUaSEoF9jPKTz3ajc1pPL:external:2",
@@ -1619,7 +1630,8 @@
      "usd_spot": 9331.88094190659
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "THORChain swap links the deposit to the payout",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2373,6 +2385,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2426,6 +2439,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2479,6 +2493,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2532,6 +2547,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2585,6 +2601,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2638,6 +2655,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2711,6 +2729,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2764,6 +2783,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2817,6 +2837,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2870,6 +2891,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2923,6 +2945,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -2976,6 +2999,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3029,6 +3053,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3082,6 +3107,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3135,6 +3161,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3188,6 +3215,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3241,6 +3269,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3294,6 +3323,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3347,6 +3377,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3400,6 +3431,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3453,6 +3485,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3506,6 +3539,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3559,6 +3593,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3612,6 +3647,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3665,6 +3701,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3718,6 +3755,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3811,6 +3849,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3864,6 +3903,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3937,6 +3977,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -3990,6 +4031,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4043,6 +4085,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4096,6 +4139,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4149,6 +4193,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4202,6 +4247,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4255,6 +4301,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4308,6 +4355,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4361,6 +4409,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4414,6 +4463,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4467,6 +4517,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4520,6 +4571,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4573,6 +4625,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4626,6 +4679,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4679,6 +4733,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4752,6 +4807,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4805,6 +4861,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4858,6 +4915,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4911,6 +4969,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -4964,6 +5023,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5017,6 +5077,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5070,6 +5131,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5123,6 +5185,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5176,6 +5239,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5229,6 +5293,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5282,6 +5347,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5335,6 +5401,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5388,6 +5455,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5461,6 +5529,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5514,6 +5583,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5567,6 +5637,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5620,6 +5691,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5673,6 +5745,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5746,6 +5819,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5799,6 +5873,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5852,6 +5927,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5925,6 +6001,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -5978,6 +6055,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6031,6 +6109,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6084,6 +6163,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6137,6 +6217,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6190,6 +6271,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6243,6 +6325,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6296,6 +6379,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6349,6 +6433,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6402,6 +6487,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6475,6 +6561,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6528,6 +6615,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6581,6 +6669,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6634,6 +6723,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6687,6 +6777,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6740,6 +6831,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6873,6 +6965,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6926,6 +7019,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -6979,6 +7073,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7032,6 +7127,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7085,6 +7181,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7138,6 +7235,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7191,6 +7289,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7244,6 +7343,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7297,6 +7397,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7350,6 +7451,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7403,6 +7505,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7456,6 +7559,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7509,6 +7613,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7622,6 +7727,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7675,6 +7781,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7728,6 +7835,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7781,6 +7889,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7834,6 +7943,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7887,6 +7997,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7940,6 +8051,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -7993,6 +8105,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -8046,6 +8159,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBDVyvem1tApHbhtV9tvHTDbkPsQWw3JRM:external:1",
@@ -8099,6 +8213,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBQLiCDCMM4Fnbi9xz3Aj8kmQBij54iks2:external:2",
@@ -8152,6 +8267,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBTS8QqoRmmwQM8gxcGPRymmAS5JvgZddD:external:2",
@@ -8205,6 +8321,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBfAyXPRhGjHAi1gXXNrSFXrgxqaMV2Q6N:external:2",
@@ -8258,6 +8375,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBi2z2pKmbUts457UongpKjvN25YzFt6bk:external:2",
@@ -8311,6 +8429,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TBk9avMfAvZVUa6m1gvmtrJDdMwL4THVaZ:external:2",
@@ -8364,6 +8483,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TC5QubBg55xpZAVohNcJCqWNjGTTWQ4Hnz:external:2",
@@ -8417,6 +8537,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TCHR2TVmQmhv2m96EgeGZzj8e384X4E9Mm:external:2",
@@ -8470,6 +8591,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TCaibax7cmqBM18qrkGxmFo1g6ezsNfq7r:external:2",
@@ -8523,6 +8645,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TChbGBwwNSvzv84obJL31daXEEj6KWzpij:external:2",
@@ -8576,6 +8699,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TCiYFKcoGWbDNAA4B3CwuB5tS8DfJhEc43:external:2",
@@ -8629,6 +8753,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TCqaSReSFY2RzFsS4ZSYALe8MXDLpnC3H2:external:2",
@@ -8682,6 +8807,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TCxftoJHi57ePprEii5kqBuZmrvMc9ef4k:external:2",
@@ -8735,6 +8861,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TCzy7JpDPJNLeiSCSho7YkGGK2PwHVNJ6Q:external:2",
@@ -8788,6 +8915,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TD2qkEettagyLHvw1rFuwbSSMn2nxJa48v:external:2",
@@ -8841,6 +8969,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TD5rJbujjsgw1UtVkKQb2ebVU6VVK3ysbj:external:2",
@@ -8894,6 +9023,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TD6LpS5p81yaYWeawTN8QNKbtwqnKhK6wp:external:2",
@@ -8947,6 +9077,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TD8uMhAh91GsE2XpEuqzaaVNTAZ6Y27nJb:external:2",
@@ -9000,6 +9131,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TDBKfc54SoaEzaDu6oPWCFPHpjHYYvcqsY:external:2",
@@ -9053,6 +9185,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TDN6wS9bZ2BcPZ6vno26MytVfMKQN54PXt:external:2",
@@ -9106,6 +9239,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TDSfBETfQJ4LFqL4dvgyxCesEc3dCSjcYf:external:2",
@@ -9159,6 +9293,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TDrTj19mqxH4JxFCopxAv7nmqqWAXkC6Qq:external:2",
@@ -9212,6 +9347,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TDrpKftN5o4kqXFBcLTFfpKpodPCQT96jM:external:2",
@@ -9265,6 +9401,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TE9sB1huJHHZk8GVEZzHKrud93gKHdNjJa:external:3",
@@ -9318,6 +9455,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TEJRpm81ThGCPTobFkKdqC6QefjG9oye5N:external:2",
@@ -9371,6 +9509,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TFTpY9ER6HiLfScqFv77vaxVbAbCfDWnWb:external:2",
@@ -9424,6 +9563,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TFZgZEcy77sLf4a3tCQ85TpxLRK56ReKGD:external:2",
@@ -9477,6 +9617,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TFaaZfqZgeVv4K8EmCTfZ5q9FYupa2LBtT:external:2",
@@ -9530,6 +9671,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TFeNZhvmkQvX9j32umgDUYxzBX7C6nF8EE:external:2",
@@ -9583,6 +9725,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TFeywGkkiwHYigJ6P8s48MvVa8RbVqv38h:external:2",
@@ -9636,6 +9779,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TFpZG3tJEBr6X27e463WzfnHA4CVocL96B:external:2",
@@ -9689,6 +9833,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TG7xPmDmB4VS2Ave14aXMXPcjK54GdCta6:external:2",
@@ -9742,6 +9887,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TGt8RRnFfjHwkcBwC7yLWpa4UWWb6ybvvG:external:2",
@@ -9795,6 +9941,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:THDmVLfMiQLmpTvnxBB3Q3PMhvBhfez53M:external:2",
@@ -9848,6 +9995,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:THTVuVYZwXPoJsztvkRRTLyzpB1YCaDYuf:external:2",
@@ -9921,6 +10069,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:THTZzKucu3HoqCHjhS27gEZUoKjmScZenQ:external:2",
@@ -9974,6 +10123,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:THhjJZdfMFHnA8ih8WBLgwhc8t5ocL3dkA:external:2",
@@ -10027,6 +10177,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:THiiSJ4sSrQAUMGMLXNrGXMHJBBfkfSRiB:external:2",
@@ -10080,6 +10231,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TJEFAisdk5gC6ttmLds1MfCECZPLm5SwsA:external:2",
@@ -10133,6 +10285,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TJJ8WeUP14Aiwmhw1u7jChSGag6nkcgtH1:external:2",
@@ -10186,6 +10339,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TK9V9W5Qf2eSiHyp3SxspKbU6NBjzT8Yqh:external:2",
@@ -10239,6 +10393,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TKMP7epKst8QtSJcX5X2CF36XmjPbnhowc:external:2",
@@ -10292,6 +10447,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TKRzxChQQndfu2P198BZ9aTo8C1Th1gZSc:external:2",
@@ -10345,6 +10501,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TKoBfxseDPnBxNUehjtaGYEdoZFonRiKB6:external:2",
@@ -10398,6 +10555,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TL9Sw8yXwUo1dQ3gpqdKSmasigbheEDY1G:external:2",
@@ -10451,6 +10609,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TLphJuduQfptn7edj1hBYG9V1Jptn8xfza:external:2",
@@ -10504,6 +10663,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TLuuKV5UXuvzsRxyV3RVN6ue3q6V39C3js:external:2",
@@ -10557,6 +10717,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TM94KxXBzPPqCd6vejAxGYvNWK3GKeg7Z8:external:2",
@@ -10610,6 +10771,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TMGrrAqUFNqx6pFx6VezvrqKo4r58JmLhk:external:2",
@@ -10663,6 +10825,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TMN4mfECmAhBaTLc954DaB5P1W7wNxo2YS:external:2",
@@ -10716,6 +10879,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TMQhRM76z9zey5EAoKGgpj368FZUdzuqmt:external:2",
@@ -10769,6 +10933,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TMV2sZEPWvyWEdRrD2DuhznMajHXfrzbdQ:external:2",
@@ -10822,6 +10987,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TMYvZ7Rzs4EKNcXuv6dKTiE5xN84bMP8EE:external:2",
@@ -10875,6 +11041,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TMg4JX1ymP3DNnRXMqrbaik2SmZG4NYq5w:external:2",
@@ -10928,6 +11095,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TNC24BKrtqEuYqyNip9gMyQNycnow1ZFcu:external:2",
@@ -10981,6 +11149,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TNJvEWH7o462ktNE9h2tJyEzNQH4144t5t:external:2",
@@ -11034,6 +11203,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TNKGhAA8uinapcyU9GCtbUS7SnWVx1GEYR:external:2",
@@ -11087,6 +11257,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TNgqAwhXjWd3M2EuzEBDcUEyMAJ9uychrQ:external:2",
@@ -11140,6 +11311,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TNjtrnkwwvspszYFQ5EKcnWsSFzj8uBCZZ:external:2",
@@ -11193,6 +11365,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TNswkFDkBBk7CZVUxVbEjTLpSvL6DPkh4B:external:2",
@@ -11246,6 +11419,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TNyFJnQwWyLfLo8WsmGHqvt4KvP5j3f5uR:external:2",
@@ -11299,6 +11473,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TPFmCjg7UMuHnFKZfXDWAs5W6eM3kzTgLs:external:2",
@@ -11352,6 +11527,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TPXWCjoJiPMUfQenSgdyqnmG3AVra8YZnd:external:2",
@@ -11405,6 +11581,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TPYrSgVQxs7iGx9K5AnziKEw9DvqhZYKUo:external:2",
@@ -11458,6 +11635,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TQKVC9E49gNZMgGFEnSJKs2moCVQUNEddH:external:2",
@@ -11511,6 +11689,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TQcUSuhyF98qnJdUacoRd64HKpfgjNiv1i:external:2",
@@ -11564,6 +11743,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TQuJQPHryB8KCwQfMpUF7XY1VtaupKJYs8:external:2",
@@ -11617,6 +11797,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TQwacokC2Q87DuXua3AnyWkn86Y3ENLucb:external:2",
@@ -11670,6 +11851,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TQx8fNSg1tAtukP9BuQyGfhM2PzNg3oaFX:external:2",
@@ -11723,6 +11905,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TRFFVcc1hTNCkeWaFSJhwL96uzeyKtX3TZ:external:2",
@@ -11776,6 +11959,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TRu8sHcJME1y8HRk27pUeCtSDswHGxyiLP:external:2",
@@ -11829,6 +12013,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TSGhAYWhUaGghQMCjTMo6aGey6GhYDtPSE:external:2",
@@ -11882,6 +12067,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TScM2cTXLd6V4FCDhP5m4hCD2rJ85uw4iE:external:2",
@@ -11935,6 +12121,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TSegt1AuEkVeAeXe31FmVcGoqv9R8k4fDP:external:2",
@@ -11988,6 +12175,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TSiQVSmsh6fAsbhfbsL8LyaWENZznB2KPd:external:2",
@@ -12041,6 +12229,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TSnsVAWRe3R1dRA2AEsk6ZvWdgBP63cihP:external:2",
@@ -12094,6 +12283,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TSyPMv5fsPjceC4PdUgcuMwyrdM9QoXKmY:external:2",
@@ -12147,6 +12337,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TTLoBM9LCLRVP2D4LYwqdszWh4YdGLrMo6:external:2",
@@ -12200,6 +12391,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TTMBr3msBz5WRUGVmezK565mHABRbuAaGW:external:2",
@@ -12253,6 +12445,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TTxM9j8wa5cLggByZt2Kgyc36z6B4rwqLB:external:2",
@@ -12306,6 +12499,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TUPmF9xpbntqjfTdQbHk8pNRDtaS7dmiww:external:2",
@@ -12359,6 +12553,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TUze2mhYzuSaBcBUjzMwJxEQtpDoU7yVGz:external:2",
@@ -12412,6 +12607,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TV7h7pm1w7P462fxeb8uu9WGjKBPYEXGne:external:2",
@@ -12465,6 +12661,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TVFPbnZGq6kWUfvKgYq72csTfTFLpAkcWx:external:2",
@@ -12518,6 +12715,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TVjyuWkTEMaVqg5N9gV7sxhGZpLTvB4a1Z:external:2",
@@ -12571,6 +12769,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TVnBz6bF15ZcbMqwYonc9Gc3dcBZM74wXj:external:2",
@@ -12624,6 +12823,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TWHqBYWwqoHNSqMY8r2gKPLF7Sby76mjKM:external:2",
@@ -12677,6 +12877,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TWaDpShf3Bqk6v2GjPbZnTVmHiNCATvqjk:external:2",
@@ -12730,6 +12931,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TWhCwv1zxN7A6XM8BcVSU4wDKmWtipKTfL:external:2",
@@ -12783,6 +12985,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TX5ceRX4mzbeE7w2gxacME3Anagv5uCTQ6:external:2",
@@ -12836,6 +13039,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TX9idzCv9ZEhCGU2v1SeG1oek97VLHtSVb:external:2",
@@ -12889,6 +13093,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TXAUURMR8XbjWGesrKNfB4sqH5YE1tgUZc:external:2",
@@ -12942,6 +13147,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TXDzhct5Vh2j3s1Ew4EZ7QZUyEUrzvjEnn:external:2",
@@ -12995,6 +13201,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TXV1BNJvpFfDLimCtYED9ea2q7YxbKuJnW:external:2",
@@ -13048,6 +13255,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TXVk8yjUi6HZzadG18uLKJ87vYrU4ePmW7:external:2",
@@ -13101,6 +13309,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TXaWYpF4vQv6eTsiZQxeCcJjvW8W1D1b3t:external:2",
@@ -13154,6 +13363,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TXoEAj27BG255y54ezKi7qRTiK86nWaV5w:external:2",
@@ -13207,6 +13417,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TYM8s2wkmcsY7JFKpDm3phcV8rYVDx1maV:external:2",
@@ -13260,6 +13471,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TYq1uRsJ7aMm1JNbQ8FekGyDxpUKevmtH5:external:2",
@@ -13313,6 +13525,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TZ2NSnprbjswQy7AsUNPj4LnX16SM6LuyJ:external:2",
@@ -13386,6 +13599,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TZ3TrEGb2xbhHBziJ1JNzuFzpAwmkz19Ha:external:2",
@@ -13439,6 +13653,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TZ55uvJcYekBNNNYECQf55DutCKfvkrqk5:external:2",
@@ -13492,6 +13707,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TZBhvbHEbq7eYvtzFAKjgeSnjuLF1f1iDw:external:2",
@@ -13545,6 +13761,7 @@
     }
    ],
    "confidence": 0.97,
+   "confidence_reason": "on-chain transfer",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:TZD5hYZQtJk5mG6XJ2LHAufTY3MB9BcQQJ:external:2",
@@ -13608,7 +13825,8 @@
      "usd_spot": 545195.6547024865
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "THORChain swap links the deposit to the payout",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:ltc1q4r2cn7f5ztntkm3w07z3xmre6yay2zrve52c58:external:1",
@@ -16612,6 +16830,7 @@
     }
    ],
    "confidence": 0.9,
+   "confidence_reason": "UTXO transfer; sender attributed from the transaction's inputs",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:ltc1qffnjaqwymhdfqftq4fvzxqj6xgdhzdv7v7he6g:external:2",
@@ -16824,6 +17043,7 @@
     }
    ],
    "confidence": 0.9,
+   "confidence_reason": "UTXO transfer; sender attributed from the transaction's inputs",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:ltc1qwwjv02f0s9ep7jaqksukl8pyppjzmlqy6t60uu:external:2",
@@ -16993,6 +17213,7 @@
     }
    ],
    "confidence": 0.9,
+   "confidence_reason": "UTXO transfer; sender attributed from the transaction's inputs",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:ltc1qyusurhgkrh2wyy8vj0gcftmymz25fdjwy8352x:external:2",
@@ -17074,7 +17295,8 @@
      "usd_spot": 117.6937006175854
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "THORChain swap links the deposit to the payout",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1gkvvzfnkyqv8dfhk0593tfhgr03a3ndgjqdalf:external:2",
@@ -17109,6 +17331,7 @@
       }
      ],
      "height": 28024503,
+     "inbound_tx_id": "E9BF23598CB165E11D831ED72D28859DD539311BAFF56A6730BB84F7ABCA91B6",
      "source_protocol": "THOR",
      "time": "2026-09-29T03:51:34.780279294Z",
      "tx_id": "A4633A48E8B95B4D0C8901B3A3043AA2FE44184571B433196D70E7EED40118A1",
@@ -17117,7 +17340,8 @@
     }
    ],
    "tx_ids": [
-    "A4633A48E8B95B4D0C8901B3A3043AA2FE44184571B433196D70E7EED40118A1"
+    "A4633A48E8B95B4D0C8901B3A3043AA2FE44184571B433196D70E7EED40118A1",
+    "E9BF23598CB165E11D831ED72D28859DD539311BAFF56A6730BB84F7ABCA91B6"
    ],
    "usd_at_time": 113.08763601175198,
    "usd_spot": 233.9186219331118
@@ -17146,7 +17370,8 @@
      "usd_spot": 313.8498683135611
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "THORChain swap links the deposit to the payout",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1gkvvzfnkyqv8dfhk0593tfhgr03a3ndgjqdalf:external:2",
@@ -17181,6 +17406,7 @@
       }
      ],
      "height": 28019363,
+     "inbound_tx_id": "379E7DACC68439C483663EDE168D69A8D8F86853FB23085BD7AB2B4A8A0BB242",
      "source_protocol": "THOR",
      "time": "2026-09-28T18:55:22.166287443Z",
      "tx_id": "87FCC48B3E65C6FD1F2EED1267F414DE547E3DD29DEE07C1E75F549AA3F2D0E5",
@@ -17189,6 +17415,7 @@
     }
    ],
    "tx_ids": [
+    "379E7DACC68439C483663EDE168D69A8D8F86853FB23085BD7AB2B4A8A0BB242",
     "87FCC48B3E65C6FD1F2EED1267F414DE547E3DD29DEE07C1E75F549AA3F2D0E5"
    ],
    "usd_at_time": 310.49275396564326,
@@ -17218,7 +17445,8 @@
      "usd_spot": 6811.455128261751
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "THORChain swap links the deposit to the payout",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1gkvvzfnkyqv8dfhk0593tfhgr03a3ndgjqdalf:external:2",
@@ -17253,6 +17481,7 @@
       }
      ],
      "height": 28034547,
+     "inbound_tx_id": "757BE4A5F0E8BD9EC46EDB937E50D2B8AAB030BF250ECEC59636966A84B290AE",
      "source_protocol": "THOR",
      "time": "2026-09-29T21:20:03.571287544Z",
      "tx_id": "D7413ACB38E95A00EA16552C6F1A181EA7214A81F749CC2680D983B657C97447",
@@ -17261,6 +17490,7 @@
     }
    ],
    "tx_ids": [
+    "757BE4A5F0E8BD9EC46EDB937E50D2B8AAB030BF250ECEC59636966A84B290AE",
     "D7413ACB38E95A00EA16552C6F1A181EA7214A81F749CC2680D983B657C97447"
    ],
    "usd_at_time": 6785.258160705119,
@@ -17281,7 +17511,8 @@
      "usd_spot": 18879.324921036656
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain liquidity action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1gkvvzfnkyqv8dfhk0593tfhgr03a3ndgjqdalf:external:2",
@@ -17334,7 +17565,8 @@
      "usd_spot": 28264.530626475884
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain liquidity action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1gkvvzfnkyqv8dfhk0593tfhgr03a3ndgjqdalf:external:2",
@@ -17407,7 +17639,8 @@
      "usd_spot": 47996.462959816396
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain liquidity action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1gkvvzfnkyqv8dfhk0593tfhgr03a3ndgjqdalf:external:2",
@@ -17460,7 +17693,8 @@
      "usd_spot": 89981.54187016874
     }
    ],
-   "confidence": 0.74,
+   "confidence": 1,
+   "confidence_reason": "recorded by the THORChain liquidity action",
    "contract_protocol": "",
    "contract_type": "",
    "from": "external_address:thor1gkvvzfnkyqv8dfhk0593tfhgr03a3ndgjqdalf:external:2",

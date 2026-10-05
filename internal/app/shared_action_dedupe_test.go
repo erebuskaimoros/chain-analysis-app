@@ -285,7 +285,9 @@ func TestBuildActorTrackerCountsActionBetweenTracedAddressesOnce(t *testing.T) {
 			if !strings.Contains(edge.From, normalizeAddress(tc.from)) || !strings.Contains(edge.To, normalizeAddress(tc.to)) {
 				t.Fatalf("expected edge %s -> %s, got %s -> %s", tc.from, tc.to, edge.From, edge.To)
 			}
-			if len(edge.Transactions) != 1 || len(edge.TxIDs) != 1 || edge.TxIDs[0] != tc.txID {
+			// A swap edge also lists its inbound hash after the payout's.
+			if len(edge.Transactions) != 1 || len(edge.TxIDs) == 0 || edge.TxIDs[0] != tc.txID ||
+				len(edge.TxIDs) > 2 || (len(edge.TxIDs) == 2 && edge.TxIDs[1] != edge.Transactions[0].InboundTxID) {
 				t.Fatalf("expected one edge transaction %s, got tx ids %v and %d transactions", tc.txID, edge.TxIDs, len(edge.Transactions))
 			}
 			tx := edge.Transactions[0]
