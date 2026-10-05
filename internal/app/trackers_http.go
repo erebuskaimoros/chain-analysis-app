@@ -85,7 +85,7 @@ func (a *App) getJSONAbsoluteSingle(ctx context.Context, rawURL string, headers 
 	if meta, ok := trackerRequestMetaFromContext(ctx); ok && a.trackerThrottle != nil {
 		release, err := a.trackerThrottle.acquire(ctx, meta.Provider, meta.Chain)
 		if err != nil {
-			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
+			a.recordTrackerTransportFailure(ctx, meta, err)
 			return err
 		}
 		defer release()
@@ -106,7 +106,7 @@ func (a *App) getJSONAbsoluteSingle(ctx context.Context, rawURL string, headers 
 	if err != nil {
 		err = newTransportProviderError(err)
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
-			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
+			a.recordTrackerTransportFailure(ctx, meta, err)
 		}
 		return err
 	}
@@ -170,7 +170,7 @@ func (a *App) getTextAbsoluteSingle(ctx context.Context, rawURL string, headers 
 	if meta, ok := trackerRequestMetaFromContext(ctx); ok && a.trackerThrottle != nil {
 		release, err := a.trackerThrottle.acquire(ctx, meta.Provider, meta.Chain)
 		if err != nil {
-			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
+			a.recordTrackerTransportFailure(ctx, meta, err)
 			return "", err
 		}
 		defer release()
@@ -191,7 +191,7 @@ func (a *App) getTextAbsoluteSingle(ctx context.Context, rawURL string, headers 
 	if err != nil {
 		err = newTransportProviderError(err)
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
-			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
+			a.recordTrackerTransportFailure(ctx, meta, err)
 		}
 		return "", err
 	}
@@ -246,7 +246,7 @@ func (a *App) postJSONAbsoluteSingle(ctx context.Context, rawURL string, headers
 	if meta, ok := trackerRequestMetaFromContext(ctx); ok && a.trackerThrottle != nil {
 		release, err := a.trackerThrottle.acquire(ctx, meta.Provider, meta.Chain)
 		if err != nil {
-			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
+			a.recordTrackerTransportFailure(ctx, meta, err)
 			return err
 		}
 		defer release()
@@ -272,7 +272,7 @@ func (a *App) postJSONAbsoluteSingle(ctx context.Context, rawURL string, headers
 	if err != nil {
 		err = newTransportProviderError(err)
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
-			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
+			a.recordTrackerTransportFailure(ctx, meta, err)
 		}
 		return err
 	}
@@ -344,4 +344,14 @@ func (a *App) trackerCircuitError(ctx context.Context, rawURL string) error {
 		RetryAfter: time.Until(until),
 		Err:        fmt.Errorf("%s skipped: %s/%s backing off (%s) until %s", rawURL, meta.Provider, meta.Chain, reason, until.Format(time.RFC3339)),
 	}
+}
+
+// recordTrackerTransportFailure records a request that got no response. When
+// our own context ended (a lookup budget expired while queued or in flight),
+// the provider did nothing wrong, so it does not count toward its circuit.
+func (a *App) recordTrackerTransportFailure(ctx context.Context, meta trackerRequestMeta, err error) {
+	if ctx.Err() != nil {
+		return
+	}
+	a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
 }

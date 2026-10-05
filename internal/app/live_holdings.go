@@ -211,7 +211,8 @@ func (a *App) enrichNodesWithLiveHoldings(
 	// batch budget and per-upstream timeouts so slow public trackers do not block
 	// the graph response for minutes.
 	baseLookupCtx := context.WithoutCancel(ctx)
-	lookupCtx, lookupCancel := context.WithTimeout(baseLookupCtx, a.liveHoldingsBatchTimeout())
+	batchTimeout := liveHoldingsBudgetFromContext(ctx, a.liveHoldingsBatchTimeout())
+	lookupCtx, lookupCancel := context.WithTimeout(baseLookupCtx, batchTimeout)
 	defer lookupCancel()
 
 	warnings := []string{}
@@ -365,13 +366,14 @@ func (a *App) enrichNodesWithLiveHoldings(
 		} else {
 			nodes[idx].Metrics["live_holdings_available"] = false
 			nodes[idx].Metrics["live_holdings_status"] = "error"
+			nodes[idx].Metrics["live_holdings_error_kind"] = "no_bond"
 		}
 	}
 
 	if len(addressLookupTasks) == 0 {
 		if errors.Is(lookupCtx.Err(), context.DeadlineExceeded) {
 			logInfo(baseLookupCtx, "actor_tracker_live_holdings_budget_exhausted", map[string]any{
-				"timeout_ms": a.liveHoldingsBatchTimeout().Milliseconds(),
+				"timeout_ms": batchTimeout.Milliseconds(),
 				"nodes":      len(nodes),
 				"lookups":    0,
 			})
@@ -547,7 +549,7 @@ func (a *App) enrichNodesWithLiveHoldings(
 	if errors.Is(lookupCtx.Err(), context.DeadlineExceeded) {
 		markUnresolvedAddressLookupTasksPending(nodes, addressLookupTasks)
 		logInfo(baseLookupCtx, "actor_tracker_live_holdings_budget_exhausted", map[string]any{
-			"timeout_ms": a.liveHoldingsBatchTimeout().Milliseconds(),
+			"timeout_ms": batchTimeout.Milliseconds(),
 			"nodes":      len(nodes),
 			"lookups":    len(addressLookupTasks),
 		})
@@ -588,6 +590,23 @@ func (a *App) liveHoldingsLookupTimeout(provider, chain string) time.Duration {
 	default:
 		return a.clampLiveHoldingsLookupTimeout(10 * time.Second)
 	}
+}
+
+type liveHoldingsBudgetCtxKey struct{}
+
+// withLiveHoldingsBudget lets a caller that is not bound to an HTTP request
+// (a background job) give the lookup batch a longer budget.
+func withLiveHoldingsBudget(ctx context.Context, budget time.Duration) context.Context {
+	return context.WithValue(ctx, liveHoldingsBudgetCtxKey{}, budget)
+}
+
+func liveHoldingsBudgetFromContext(ctx context.Context, fallback time.Duration) time.Duration {
+	if ctx != nil {
+		if budget, ok := ctx.Value(liveHoldingsBudgetCtxKey{}).(time.Duration); ok && budget > fallback {
+			return budget
+		}
+	}
+	return fallback
 }
 
 func (a *App) liveHoldingsBatchTimeout() time.Duration {

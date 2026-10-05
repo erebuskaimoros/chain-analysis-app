@@ -43,6 +43,10 @@ func New(cfg Config) (*App, error) {
 		return nil, err
 	}
 
+	registerLogSecrets(cfg.EtherscanAPIKey, cfg.EthplorerAPIKey, cfg.AvaCloudAPIKey, cfg.NodeRealAPIKey, cfg.TronGridAPIKey)
+	for _, key := range cfg.BlockscoutAPIKeys {
+		registerLogSecrets(key)
+	}
 	db, err := sql.Open("sqlite", cfg.DBPath)
 	if err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -189,8 +190,38 @@ func logStructured(ctx context.Context, level string, event string, fields map[s
 		)
 		return
 	}
+	line := redactLogSecrets(string(raw))
 	if capture := runLogCaptureFromContext(ctx); capture != nil {
-		capture.append(string(raw))
+		capture.append(line)
 	}
-	log.Print(string(raw))
+	log.Print(line)
+}
+
+var (
+	logSecretsMu sync.RWMutex
+	logSecrets   []string
+)
+
+// registerLogSecrets adds credential values that must never appear in logs.
+// Error messages often embed request URLs, and some providers take API keys
+// in the query string or path.
+func registerLogSecrets(values ...string) {
+	logSecretsMu.Lock()
+	defer logSecretsMu.Unlock()
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if len(value) < 6 || slices.Contains(logSecrets, value) {
+			continue
+		}
+		logSecrets = append(logSecrets, value)
+	}
+}
+
+func redactLogSecrets(line string) string {
+	logSecretsMu.RLock()
+	defer logSecretsMu.RUnlock()
+	for _, secret := range logSecrets {
+		line = strings.ReplaceAll(line, secret, "REDACTED")
+	}
+	return line
 }

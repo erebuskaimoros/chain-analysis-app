@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -223,4 +224,34 @@ func TestJobRunnerReportsFailureAndCancellation(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("jobs did not finish")
+}
+
+func TestOwnDeadlinesDoNotOpenProviderCircuit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	app := &App{httpClient: server.Client(), trackerHealth: newTrackerHealthStore()}
+	for i := 0; i < trackerTransientFailures+1; i++ {
+		ctx, cancel := context.WithTimeout(withTrackerRequestMeta(context.Background(), "etherscan", "ETH"), 10*time.Millisecond)
+		var out map[string]any
+		if err := app.getJSONAbsoluteSingle(ctx, server.URL, nil, &out); err == nil {
+			t.Fatal("expected the lookup budget to expire")
+		}
+		cancel()
+	}
+	if until, _ := app.trackerHealth.circuitOpenUntil("etherscan", "ETH"); !until.IsZero() {
+		t.Fatalf("our own expired deadlines opened the provider circuit until %s", until)
+	}
+}
+
+func TestLogsRedactRegisteredSecrets(t *testing.T) {
+	registerLogSecrets("log-secret-key-123")
+	ctx, capture := withRunLogCapture(context.Background())
+	logError(ctx, "lookup_failed", errors.New("GET https://api.example/x?apikey=log-secret-key-123 failed: status=500"), nil)
+	lines := capture.snapshot()
+	if len(lines) != 1 || strings.Contains(lines[0], "log-secret-key-123") || !strings.Contains(lines[0], "REDACTED") {
+		t.Fatalf("expected the secret to be redacted, got %v", lines)
+	}
 }

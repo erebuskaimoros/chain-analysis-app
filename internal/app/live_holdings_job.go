@@ -12,8 +12,9 @@ import (
 
 const (
 	liveHoldingsSnapshotFresh = 10 * time.Minute
-	liveHoldingsJobPasses     = 6
-	liveHoldingsJobBudget     = 4 * time.Minute
+	liveHoldingsJobPasses     = 4
+	liveHoldingsJobPassBudget = 90 * time.Second
+	liveHoldingsJobBudget     = 6 * time.Minute
 	liveHoldingsMaxWait       = 30 * time.Second
 )
 
@@ -116,6 +117,13 @@ func (a *App) runLiveHoldingsJob(ctx context.Context, nodes []FlowNode, force bo
 		if !force {
 			if chain, address, ok := liveHoldingsAddressKey(node); ok {
 				if metrics, found := latestHoldingsSnapshot(ctx, a.db, chain, address, started.Add(-liveHoldingsSnapshotFresh)); found {
+					// Replace, not merge: stale keys (an old error kind) must not
+					// survive next to the snapshot's values.
+					for key := range node.Metrics {
+						if strings.HasPrefix(key, "live_holdings") {
+							delete(node.Metrics, key)
+						}
+					}
 					for key, value := range metrics {
 						node.Metrics[key] = value
 					}
@@ -130,7 +138,7 @@ func (a *App) runLiveHoldingsJob(ctx context.Context, nodes []FlowNode, force bo
 
 	for pass := 0; pass < liveHoldingsJobPasses && len(pending) > 0 && ctx.Err() == nil; pass++ {
 		progress.set("live holdings", len(latest), len(nodes), fmt.Sprintf("pass %d: %d lookups", pass+1, len(pending)))
-		passCtx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout*2)
+		passCtx, cancel := context.WithTimeout(withLiveHoldingsBudget(ctx, liveHoldingsJobPassBudget), liveHoldingsJobPassBudget+30*time.Second)
 		passWarnings, err := a.refreshActorTrackerLiveHoldings(passCtx, pending)
 		cancel()
 		if err != nil {
