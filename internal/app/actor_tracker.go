@@ -406,7 +406,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 		queued[frontierKey(norm.Chain, norm.Address)] = 0
 	}
 
-	seenMidgardActions := map[string]struct{}{}
+	actionLedger := newMidgardActionLedger()
 	seenExternalTransfers := map[string]struct{}{}
 	midgardActionCache := map[string][]midgardAction{}
 	midgardActionTruncated := map[string]bool{}
@@ -550,45 +550,61 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 				if key == "" {
 					continue
 				}
-				if _, exists := seenMidgardActions[key]; exists {
+				if actionLedger.isSuppressed(key) {
 					_, consumed := builder.stitchMidgardAction(action, externalTransfers)
 					mergeStringSet(consumedExternalTransfers, consumed)
 					continue
 				}
-				if skip, reason := shouldSkipMidgardActionForGraph(action, refundTxIDs, liquidityFeeTxIDs, calcStrategyTxIDs, calcStrategyProcessTxIDs); skip {
-					switch reason {
-					case "liquidity_fee_action", "liquidity_fee_associated":
-						builder.feeActionDrop++
-					case "contract_sub_execution":
-						builder.contractSubDrop++
-					default:
-						builder.refundActionDrop++
+				var segments []projectedSegment
+				var warnings []string
+				stitched, projected := actionLedger.projectedAction(key)
+				if projected {
+					// Another traced address already emitted its part of this
+					// action. Re-project the same stitched form for this
+					// frontier; the ledger drops segments already in the graph.
+					_, consumed := builder.stitchMidgardAction(action, externalTransfers)
+					mergeStringSet(consumedExternalTransfers, consumed)
+					if shouldSkipMidgardActionForFeeOnlyFrontier(stitched, item.Address) {
+						continue
 					}
-					seenMidgardActions[key] = struct{}{}
-					continue
+					segments, warnings = builder.reprojectMidgardAction(stitched, item.Depth)
+				} else {
+					if skip, reason := shouldSkipMidgardActionForGraph(action, refundTxIDs, liquidityFeeTxIDs, calcStrategyTxIDs, calcStrategyProcessTxIDs); skip {
+						switch reason {
+						case "liquidity_fee_action", "liquidity_fee_associated":
+							builder.feeActionDrop++
+						case "contract_sub_execution":
+							builder.contractSubDrop++
+						default:
+							builder.refundActionDrop++
+						}
+						actionLedger.suppress(key)
+						continue
+					}
+					if builder.shouldSkipActionBecauseRujiraTrace(action) {
+						builder.contractSubDrop++
+						actionLedger.suppress(key)
+						continue
+					}
+					if shouldSkipMidgardActionForFeeOnlyFrontier(action, item.Address) {
+						builder.swapSuppressed++
+						continue
+					}
+					var consumed map[string]struct{}
+					stitched, consumed = builder.stitchMidgardAction(action, externalTransfers)
+					mergeStringSet(consumedExternalTransfers, consumed)
+					segments, _, warnings = builder.projectMidgardAction(stitched, item.Depth)
 				}
-				if builder.shouldSkipActionBecauseRujiraTrace(action) {
-					builder.contractSubDrop++
-					seenMidgardActions[key] = struct{}{}
-					continue
-				}
-				if shouldSkipMidgardActionForFeeOnlyFrontier(action, item.Address) {
-					builder.swapSuppressed++
-					continue
-				}
-
-				segments, _, warnings, consumed := builder.projectMidgardActionWithExternal(action, item.Depth, externalTransfers)
 				segments, _ = filterProjectedSegmentsToMaxDepth(segments, maxNodeDepth)
 				segments, nextAddresses := filterProjectedSegmentsToFrontierStep(segments, frontierAddress{
 					Address: item.Address,
 					Chain:   item.Chain,
 				}, item.Depth+1, maxNodeDepth)
 				builder.warnings = append(builder.warnings, warnings...)
-				mergeStringSet(consumedExternalTransfers, consumed)
+				segments = actionLedger.claim(key, stitched, segments)
 				if len(segments) == 0 {
 					continue
 				}
-				seenMidgardActions[key] = struct{}{}
 				for _, segment := range segments {
 					builder.addProjectedSegment(segment)
 				}
@@ -835,7 +851,7 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 		builder.warnings = append(builder.warnings, "spot USD normalization unavailable; falling back to asset-native values")
 	}
 
-	seenMidgardActions := map[string]struct{}{}
+	actionLedger := newMidgardActionLedger()
 	seenExternalTransfers := map[string]struct{}{}
 	midgardSwapTxIDs := map[string]struct{}{}
 	refundTxIDs := map[string]struct{}{}
@@ -902,45 +918,60 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 			if key == "" {
 				continue
 			}
-			if _, exists := seenMidgardActions[key]; exists {
+			if actionLedger.isSuppressed(key) {
 				_, consumed := builder.stitchMidgardAction(action, externalTransfers)
 				mergeStringSet(consumedExternalTransfers, consumed)
 				continue
 			}
-			if skip, reason := shouldSkipMidgardActionForGraph(action, refundTxIDs, liquidityFeeTxIDs, calcStrategyTxIDs, calcStrategyProcessTxIDs); skip {
-				switch reason {
-				case "liquidity_fee_action", "liquidity_fee_associated":
-					builder.feeActionDrop++
-				case "contract_sub_execution", "calc_strategy_sub_swap":
-					builder.contractSubDrop++
-				default:
-					builder.refundActionDrop++
+			var segments []projectedSegment
+			var segmentWarnings []string
+			stitched, projected := actionLedger.projectedAction(key)
+			if projected {
+				// Another expanded address already emitted its part of this
+				// action; re-project the same stitched form for this address.
+				_, consumed := builder.stitchMidgardAction(action, externalTransfers)
+				mergeStringSet(consumedExternalTransfers, consumed)
+				if shouldSkipMidgardActionForFeeOnlyFrontier(stitched, address) {
+					continue
 				}
-				seenMidgardActions[key] = struct{}{}
-				continue
+				segments, segmentWarnings = builder.reprojectMidgardAction(stitched, 1)
+			} else {
+				if skip, reason := shouldSkipMidgardActionForGraph(action, refundTxIDs, liquidityFeeTxIDs, calcStrategyTxIDs, calcStrategyProcessTxIDs); skip {
+					switch reason {
+					case "liquidity_fee_action", "liquidity_fee_associated":
+						builder.feeActionDrop++
+					case "contract_sub_execution", "calc_strategy_sub_swap":
+						builder.contractSubDrop++
+					default:
+						builder.refundActionDrop++
+					}
+					actionLedger.suppress(key)
+					continue
+				}
+				if builder.shouldSkipActionBecauseRujiraTrace(action) {
+					builder.contractSubDrop++
+					actionLedger.suppress(key)
+					continue
+				}
+				if shouldSkipMidgardActionForFeeOnlyFrontier(action, address) {
+					builder.swapSuppressed++
+					continue
+				}
+				var consumed map[string]struct{}
+				stitched, consumed = builder.stitchMidgardAction(action, externalTransfers)
+				mergeStringSet(consumedExternalTransfers, consumed)
+				segments, _, segmentWarnings = builder.projectMidgardAction(stitched, 1)
 			}
-			if builder.shouldSkipActionBecauseRujiraTrace(action) {
-				builder.contractSubDrop++
-				seenMidgardActions[key] = struct{}{}
-				continue
-			}
-			if shouldSkipMidgardActionForFeeOnlyFrontier(action, address) {
-				builder.swapSuppressed++
-				continue
-			}
-
-			segments, _, segmentWarnings, consumed := builder.projectMidgardActionWithExternal(action, 1, externalTransfers)
 			segments, _ = filterProjectedSegmentsToMaxDepth(segments, maxGraphNodeDepth(query.MaxHops))
 			segments, _ = filterProjectedSegmentsToFrontierStep(segments, frontierAddress{
 				Address: address,
 				Chain:   seed.Chain,
 			}, 2, maxGraphNodeDepth(query.MaxHops))
 			builder.warnings = append(builder.warnings, segmentWarnings...)
-			mergeStringSet(consumedExternalTransfers, consumed)
+			segments = actionLedger.claim(key, stitched, segments)
 			if len(segments) == 0 {
 				continue
 			}
-			seenMidgardActions[key] = struct{}{}
 			for _, segment := range segments {
 				builder.addProjectedSegment(segment)
 			}

@@ -1018,6 +1018,54 @@
    "usd_spot": 197775.08100105275
   },
   {
+   "action_class": "liquidity",
+   "action_domain": "liquidity",
+   "action_key": "midgard.addliquidity",
+   "action_label": "Addliquidity",
+   "actor_ids": [],
+   "assets": [
+    {
+     "amount_raw": "696260000",
+     "asset": "BASE.ETH",
+     "asset_kind": "native",
+     "usd_spot": 18822.31002101087
+    }
+   ],
+   "confidence": 0.74,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "external_address:BASE|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:3",
+   "heights": [
+    28021984
+   ],
+   "id": "external_address:BASE|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:3|pool:BASE.ETH:thor:pool:3|midgard.addliquidity",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "pool:BASE.ETH:thor:pool:3",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "696260000",
+       "asset": "BASE.ETH",
+       "asset_kind": "native",
+       "usd_spot": 18822.31002101087
+      }
+     ],
+     "height": 28021984,
+     "source_protocol": "THOR",
+     "time": "2026-09-28T23:29:32.754958062Z",
+     "tx_id": "B10EEED618695F53EC01864715FBBDE87AEFCB0165A24F6170522836861FBC12",
+     "usd_spot": 18822.31002101087
+    }
+   ],
+   "tx_ids": [
+    "B10EEED618695F53EC01864715FBBDE87AEFCB0165A24F6170522836861FBC12"
+   ],
+   "usd_spot": 18822.31002101087
+  },
+  {
    "action_class": "transfers",
    "action_domain": "native_chain",
    "action_key": "tracker.evm.native_transfer",
@@ -1064,6 +1112,60 @@
     "0XE0CD103D2CEDCBDD7D374C146742E8F5FC14EE3AF078BCB262232E2E05735837"
    ],
    "usd_spot": 271.6688842188244
+  },
+  {
+   "action_class": "liquidity",
+   "action_domain": "liquidity",
+   "action_key": "midgard.addliquidity",
+   "action_label": "Addliquidity",
+   "actor_ids": [],
+   "assets": [
+    {
+     "amount_raw": "245026900000000",
+     "asset": "ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044",
+     "asset_kind": "fungible_token",
+     "token_address": "0xa5f2211b9b8170f694421f2046281775e8468044",
+     "token_standard": "erc20",
+     "token_symbol": "THOR",
+     "usd_spot": 94391.8750239435
+    }
+   ],
+   "confidence": 0.74,
+   "contract_protocol": "",
+   "contract_type": "",
+   "from": "external_address:ETH|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:2",
+   "heights": [
+    28048165
+   ],
+   "id": "external_address:ETH|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:2|pool:ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044:thor:pool:3|midgard.addliquidity",
+   "source_protocols": [
+    "THOR"
+   ],
+   "to": "pool:ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044:thor:pool:3",
+   "transactions": [
+    {
+     "assets": [
+      {
+       "amount_raw": "245026900000000",
+       "asset": "ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044",
+       "asset_kind": "fungible_token",
+       "token_address": "0xa5f2211b9b8170f694421f2046281775e8468044",
+       "token_standard": "erc20",
+       "token_symbol": "THOR",
+       "usd_spot": 94391.8750239435
+      }
+     ],
+     "height": 28048165,
+     "source_protocol": "THOR",
+     "time": "2026-09-30T20:57:32.764085102Z",
+     "tx_id": "535107A49F9885D66E552F56A88817F4E4EAE93C058C143B7E65B8D81EA0D1BA",
+     "usd_spot": 94391.8750239435
+    }
+   ],
+   "tx_ids": [
+    "535107A49F9885D66E552F56A88817F4E4EAE93C058C143B7E65B8D81EA0D1BA"
+   ],
+   "usd_spot": 94391.8750239435
   },
   {
    "action_class": "transfers",
@@ -21240,13 +21342,14 @@
    "actor_ids": [],
    "chain": "BASE",
    "collapsed": true,
-   "depth": 3,
+   "depth": 2,
    "id": "external_address:BASE|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:3",
    "kind": "external_address",
    "label": "0xC14E90…6BB641",
    "metrics": {
     "address": "0xC14E90d2290B108Cf2EEfDf2574393F46b6BB641",
     "in_edges": 1,
+    "out_edges": 1,
     "source_protocol": "THOR",
     "source_protocols": [
      "THOR"
@@ -21285,7 +21388,7 @@
    "metrics": {
     "address": "0xc14e90d2290b108cf2eefdf2574393f46b6bb641",
     "in_edges": 3,
-    "out_edges": 2,
+    "out_edges": 3,
     "source_protocol": "THOR",
     "source_protocols": [
      "THOR"
@@ -27465,7 +27568,7 @@
    "kind": "pool",
    "label": "Pool BASE.ETH (THOR)",
    "metrics": {
-    "in_edges": 1,
+    "in_edges": 2,
     "pool": "BASE.ETH",
     "source_protocol": "THOR",
     "source_protocols": [
@@ -27522,7 +27625,7 @@
    "kind": "pool",
    "label": "Pool ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044 (THOR)",
    "metrics": {
-    "in_edges": 1,
+    "in_edges": 2,
     "pool": "ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044",
     "source_protocol": "THOR",
     "source_protocols": [
@@ -27577,7 +27680,7 @@
   "actor_count": 1,
   "contract_sub_suppressed": 0,
   "coverage_satisfied": true,
-  "edge_count": 353,
+  "edge_count": 355,
   "liquidity_fee_suppressed_actions": 448,
   "liquidity_fee_suppressed_transfers": 0,
   "node_count": 349,
@@ -27587,7 +27690,7 @@
   "source_protocols": [
    "THOR"
   ],
-  "supporting_action_count": 498,
+  "supporting_action_count": 500,
   "swap_deduped": 0,
   "swap_emitted": 126,
   "swap_suppressed": 0,
@@ -30630,6 +30733,28 @@
    "to_node": "external_address:TUvWu2NWpzdXx4xbBV2rZN8yXEEvSQFQ5K:external:3",
    "tx_id": "52EBBCC9C6FE9449E599ED6ABA6A4403C1127249C47A7D349DFFC325A19AB249",
    "usd_spot": 5.026991399907875
+  },
+  {
+   "action_class": "liquidity",
+   "action_domain": "liquidity",
+   "action_key": "midgard.addliquidity",
+   "action_label": "Addliquidity",
+   "actor_ids": [],
+   "amount_raw": "245026900000000",
+   "asset_kind": "fungible_token",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:ETH|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:2",
+   "height": 28048165,
+   "primary_asset": "ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044",
+   "source_protocol": "THOR",
+   "time": "2026-09-30T20:57:32.764085102Z",
+   "to_node": "pool:ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044:thor:pool:3",
+   "token_address": "0xa5f2211b9b8170f694421f2046281775e8468044",
+   "token_standard": "erc20",
+   "token_symbol": "THOR",
+   "tx_id": "535107A49F9885D66E552F56A88817F4E4EAE93C058C143B7E65B8D81EA0D1BA",
+   "usd_spot": 94391.8750239435
   },
   {
    "action_class": "transfers",
@@ -34392,6 +34517,25 @@
    "to_node": "external_address:TNjUktpCMuUnPEFM1VwHmcqaczCbCgbjKM:external:3",
    "tx_id": "B0EF52875B0A6C39EF9510AB30B775CB3B07FA1995EC529FC450EDC81A9DBEE2",
    "usd_spot": 6.421585787903796
+  },
+  {
+   "action_class": "liquidity",
+   "action_domain": "liquidity",
+   "action_key": "midgard.addliquidity",
+   "action_label": "Addliquidity",
+   "actor_ids": [],
+   "amount_raw": "696260000",
+   "asset_kind": "native",
+   "contract_protocol": "",
+   "contract_type": "",
+   "from_node": "external_address:BASE|0xc14e90d2290b108cf2eefdf2574393f46b6bb641:external:3",
+   "height": 28021984,
+   "primary_asset": "BASE.ETH",
+   "source_protocol": "THOR",
+   "time": "2026-09-28T23:29:32.754958062Z",
+   "to_node": "pool:BASE.ETH:thor:pool:3",
+   "tx_id": "B10EEED618695F53EC01864715FBBDE87AEFCB0165A24F6170522836861FBC12",
+   "usd_spot": 18822.31002101087
   },
   {
    "action_class": "swaps",
