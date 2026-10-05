@@ -28,6 +28,8 @@ in the Go server.
 - Follow-the-funds tracing: from an address or a THORChain transaction, follow
   value hop by hop (through swaps across chains) to exchanges, sanctioned
   addresses, pools, bonds, or wallets that still hold it.
+- Investigation cases with Markdown and CSV export, a `cactl` command-line
+  client, and an MCP server (`cactl-mcp`) for Claude Code and other MCP clients.
 
 ## API
 
@@ -59,6 +61,11 @@ All endpoints live under `/api/v1`:
   `POST /api/v1/actors/{id}/viewed`
 - `POST /api/v1/jobs/trace` (alias `POST /api/v1/analysis/trace`),
   `GET /api/v1/traces`, `GET|DELETE /api/v1/traces/{id}`
+- `GET|POST /api/v1/cases`, `GET|PUT|DELETE /api/v1/cases/{id}`,
+  `POST /api/v1/cases/{id}/items`, `DELETE /api/v1/cases/{id}/items/{item_id}`,
+  `GET /api/v1/cases/{id}/export?format=md|csv`
+- `POST /api/v1/jobs/address-profile`, `POST /api/v1/jobs/labels-import`,
+  `GET /api/v1/ledger/coverage?address=&start=&end=`
 
 ## Run
 
@@ -176,6 +183,58 @@ the value at transaction time, and a confidence with its reason. Results list:
 - **coverage gaps:** history the providers truncated or could not return.
 
 Every finished trace is saved and can be reopened.
+
+## Cases and export
+
+A case collects what an investigation found: addresses, transactions, saved
+traces, saved graph states and actors, each with a note, plus Markdown notes
+for the case. Pin a trace from its result on the Trace page, or pin anything
+on the Cases page.
+
+**Export Markdown** writes a report with these sections:
+
+- summary
+- pinned items
+- each trace's seeds, method, sinks, frontier and flows, linked to the chain
+  explorers
+- coverage gaps
+- the label sources behind the labels
+
+**Export flows CSV** writes one row per traced transaction.
+
+## Command line (`cactl`)
+
+`cactl` drives a running server over `/api/v1` and prints JSON (case exports
+print the report itself). Build it with `make build-cli` (into `data/bin/`) or
+run it with `go run ./cmd/cactl`. Set `--url` or `CHAIN_ANALYSIS_URL` for a
+server other than `http://localhost:8090`.
+
+```bash
+cactl trace --seed 'ETH|0xf7bc92103f23ef312658cd9b81dc2713f7b396c3' \
+  --start 2026-09-28T03:00:00Z --end 2026-09-28T07:00:00Z --max-depth 3 --holdings
+cactl trace --tx <deposit hash> --direction backward
+cactl actor refresh "TC Treasury"; cactl actor summary "TC Treasury"
+cactl labels import ofac data/labels/ofac; cactl labels lookup <address>
+cactl case create "Bitget hack"; cactl case add 1 trace_run 1 --note "FIFO, 3 hops"
+cactl case export 1 --out case.md; cactl case export 1 --format csv
+cactl ledger gaps <address> --start 2026-09-01T00:00:00Z
+cactl profile <address> --days 30; cactl tx <hash>
+```
+
+## MCP server (`cactl-mcp`)
+
+`cactl-mcp` serves these tools over MCP on stdio:
+
+- `trace_funds`
+- `address_profile`
+- `actor_summary`
+- `tx_lookup`
+- `case_list`
+- `case_export`
+
+Each tool returns a compact digest. The repository's `.mcp.json` registers it
+for Claude Code as `chain-analysis` (it runs `go run ./cmd/cactl-mcp` against
+`http://localhost:8090`), so start the server first.
 
 ## Notes
 

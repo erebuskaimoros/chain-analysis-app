@@ -4,6 +4,7 @@
 
 | Date | Focus | Summary | File |
 |------|-------|---------|------|
+| 2026-10-05 #5 | Phase 8: Cases, Export, CLI, MCP | Cases with Markdown/CSV export; address profile, labels import and ledger coverage APIs; shared client; cactl CLI; cactl-mcp server (Go SDK v1.2.0) in .mcp.json; Cases page and pin-to-case | `sessions/2026-10-05/session-5.md` |
 | 2026-10-05 #4 | Phase 7: Follow-the-Funds Trace | Fixed rotated-vault/0x stitching double counts; explained confidence; forward/backward trace engine with fifo/haircut/largest_out; trace runs, API and Trace page; Bitget acceptance (31 swaps, 87.823 BTC) | `sessions/2026-10-05/session-4.md` |
 | 2026-10-05 #3 | Phase 6: Actor Monitoring | Actor snapshots and watch state; refresh job reusing the ledger tail plus the holdings job; since-last-look changes by asset, address and counterparty; scheduler; Monitor panel with holdings chart | `sessions/2026-10-05/session-3.md` |
 | 2026-10-05 #2 | Phase 5: Address Labels | Labels table with TagPack confidence; built-in TagPack; GraphSense, OFAC, eth-labels, ScamSniffer importers; node label categories; UI badges and category filter | `sessions/2026-10-05/session-2.md` |

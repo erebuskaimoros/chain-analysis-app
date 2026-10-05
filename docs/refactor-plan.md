@@ -263,6 +263,17 @@ Details are in session 2026-10-05 #4.
 
 ---
 
+**Status (2026-10-05): done.**
+- **Cases:** migration 11. Address items are stored as `CHAIN|address`, and transaction items in THORChain's hash form.
+- **New API routes:** for the CLI there are endpoints for address profiles, label imports and ledger coverage.
+- **MCP:** the server uses the official Go SDK, pinned at v1.2.0, the newest release that supports the module's Go 1.23. It adds a `case_list` tool beside the planned five.
+- **Checks:**
+  - `cactl trace` reproduced the case B sinks live in 31 s.
+  - The exported report's explorer links resolve to the real deposit and payout.
+  - All tools answered over stdio.
+
+Details are in session 2026-10-05 #5.
+
 ## Out of scope
 
 Validator operator attribution and clustering, protocol-level incident forensics, a self-hosted Midgard or full node, external alerts (Telegram and the like), multiple users, and moving code into separate Go packages beyond `app`.
