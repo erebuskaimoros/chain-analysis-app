@@ -123,6 +123,8 @@ Steps:
 
 ## Phase 3: Provider gateway, job runner, live holdings on the server
 
+**Status (2026-10-05): done.** The holdings snapshot table is migration 6, since the old caches were dropped in app code. The browser check was skipped because the extension was disconnected. Partial graphs are exposed by the API (`?partial=1`); the UI shows partial counts rather than re-rendering the canvas mid-build, to avoid relayout churn. Details are in session 2026-10-04 #4.
+
 1. **Typed provider errors.** Classify at the HTTP layer (the `getJSONAbsolute*`/`postJSONAbsolute*` helpers in `trackers_http.go`, and `ThorClient.GetJSON`) as `RateLimited(RetryAfter)`, `Banned` (403/challenge), `Transient` (5xx/timeout), `Permanent` (4xx/decode) or `Config` (DNS/missing key). This replaces string matching such as `isHTTPStatusError`.
 2. **Circuit breaker** in `tracker_health.go`.
    - `allow(provider, chain) (bool, retryAt)` uses the stored `Retry-After` and failure counts. A ban opens the circuit for 15 minutes; a 429 respects `Retry-After`.
