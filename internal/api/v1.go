@@ -459,11 +459,21 @@ func decodeJSONBody(r *http.Request, out any) error {
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
 	if value == nil {
+		w.WriteHeader(status)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(value)
+	// Encode before writing the status so an unencodable value (for example
+	// a NaN) becomes a visible 500 instead of an empty 200.
+	raw, err := json.Marshal(value)
+	if err != nil {
+		app.LogError(context.Background(), "api_response_encode_failed", err, nil)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"ok":false,"error":"response encoding failed"}` + "\n"))
+		return
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(append(raw, '\n'))
 }
 
 func writeError(w http.ResponseWriter, err error) {

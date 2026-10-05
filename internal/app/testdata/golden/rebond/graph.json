@@ -31,6 +31,7 @@
      "amount_raw": "0",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
+     "usd_at_time": 0,
      "usd_spot": 0
     }
    ],
@@ -53,16 +54,20 @@
        "amount_raw": "0",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
+       "price_source": "spot_fallback",
+       "usd_at_time": 0,
        "usd_spot": 0
       }
      ],
      "height": 0,
      "source_protocol": "THOR",
      "tx_id": "",
+     "usd_at_time": 0,
      "usd_spot": 0
     }
    ],
    "tx_ids": null,
+   "usd_at_time": 0,
    "usd_spot": 0
   },
   {
@@ -78,7 +83,8 @@
      "amount_raw": "6609356217",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 53.039021554437056
+     "usd_at_time": 52.69956666473194,
+     "usd_spot": 51.85863945857166
     }
    ],
    "confidence": 0.9,
@@ -100,20 +106,24 @@
        "amount_raw": "6609356217",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 53.039021554437056
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 52.69956666473194,
+       "usd_spot": 51.85863945857166
       }
      ],
      "height": 28069581,
      "source_protocol": "THOR",
      "time": "2026-10-02T09:59:39.504905501Z",
      "tx_id": "76032241C09CA2722A66481696474B378D49C771BF6B1CC35D31295D94924472",
-     "usd_spot": 53.039021554437056
+     "usd_at_time": 52.69956666473194,
+     "usd_spot": 51.85863945857166
     }
    ],
    "tx_ids": [
     "76032241C09CA2722A66481696474B378D49C771BF6B1CC35D31295D94924472"
    ],
-   "usd_spot": 53.039021554437056,
+   "usd_at_time": 52.69956666473194,
+   "usd_spot": 51.85863945857166,
    "validator_address": "thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
    "validator_label": "Node thor1j2p…arptfk"
   },
@@ -130,7 +140,8 @@
      "amount_raw": "46465470195",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 372.87793157081364
+     "usd_at_time": 369.88977803270694,
+     "usd_spot": 364.5795425457112
     }
    ],
    "confidence": 0.9,
@@ -152,20 +163,24 @@
        "amount_raw": "46465470195",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 372.87793157081364
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 369.88977803270694,
+       "usd_spot": 364.5795425457112
       }
      ],
      "height": 28069596,
      "source_protocol": "THOR",
      "time": "2026-10-02T10:01:11.117256009Z",
      "tx_id": "CF6A630242BE008E942B2619B9E74E70FAD57355C5503AEB50CB474923ADA6C1",
-     "usd_spot": 372.87793157081364
+     "usd_at_time": 369.88977803270694,
+     "usd_spot": 364.5795425457112
     }
    ],
    "tx_ids": [
     "CF6A630242BE008E942B2619B9E74E70FAD57355C5503AEB50CB474923ADA6C1"
    ],
-   "usd_spot": 372.87793157081364,
+   "usd_at_time": 369.88977803270694,
+   "usd_spot": 364.5795425457112,
    "validator_address": "thor1k8lchd5f88sus0fcjnujuqad8rhe8wl6yzc3aj",
    "validator_label": "Node thor1k8l…yzc3aj"
   },
@@ -182,7 +197,8 @@
      "amount_raw": "46567345135",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 373.69546159357424
+     "usd_at_time": 370.70075656763953,
+     "usd_spot": 365.3788784582975
     }
    ],
    "confidence": 0.9,
@@ -204,20 +220,24 @@
        "amount_raw": "46567345135",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 373.69546159357424
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 370.70075656763953,
+       "usd_spot": 365.3788784582975
       }
      ],
      "height": 28069602,
      "source_protocol": "THOR",
      "time": "2026-10-02T10:01:47.545127946Z",
      "tx_id": "7043BC1968B373DB503F358AEDC120E991679E037C1EE3163B514B06CFFBA0FB",
-     "usd_spot": 373.69546159357424
+     "usd_at_time": 370.70075656763953,
+     "usd_spot": 365.3788784582975
     }
    ],
    "tx_ids": [
     "7043BC1968B373DB503F358AEDC120E991679E037C1EE3163B514B06CFFBA0FB"
    ],
-   "usd_spot": 373.69546159357424,
+   "usd_at_time": 370.70075656763953,
+   "usd_spot": 365.3788784582975,
    "validator_address": "thor1nyq6247h0r343ljru65ct27l90wd6eadgejnlg",
    "validator_label": "Node thor1nyq…gejnlg"
   },
@@ -234,7 +254,8 @@
      "amount_raw": "6941554136",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 55.70485647204385
+     "usd_at_time": 55.25845122822735,
+     "usd_spot": 54.46514628687639
     }
    ],
    "confidence": 0.9,
@@ -256,20 +277,24 @@
        "amount_raw": "6941554136",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 55.70485647204385
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 55.25845122822735,
+       "usd_spot": 54.46514628687639
       }
      ],
      "height": 28069590,
      "source_protocol": "THOR",
      "time": "2026-10-02T10:00:34.000095461Z",
      "tx_id": "A1C3AE4EFA535CA17AC7046FDB0C16457C49638B92CB7E2D5956CC8554D0A45A",
-     "usd_spot": 55.70485647204385
+     "usd_at_time": 55.25845122822735,
+     "usd_spot": 54.46514628687639
     }
    ],
    "tx_ids": [
     "A1C3AE4EFA535CA17AC7046FDB0C16457C49638B92CB7E2D5956CC8554D0A45A"
    ],
-   "usd_spot": 55.70485647204385,
+   "usd_at_time": 55.25845122822735,
+   "usd_spot": 54.46514628687639,
    "validator_address": "thor1s6xz88ell5c6erd7hspfjw8syce89mgn32z6gr",
    "validator_label": "Node thor1s6x…32z6gr"
   },
@@ -286,7 +311,8 @@
      "amount_raw": "100100000000",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 803.2864144836498
+     "usd_at_time": 796.8490714865985,
+     "usd_spot": 785.4092954546867
     }
    ],
    "confidence": 0.9,
@@ -308,20 +334,24 @@
        "amount_raw": "100100000000",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 803.2864144836498
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 796.8490714865985,
+       "usd_spot": 785.4092954546867
       }
      ],
      "height": 28069617,
      "source_protocol": "THOR",
      "time": "2026-10-02T10:03:19.249216246Z",
      "tx_id": "715ACC2CDAD1CC6BC48419F6B23097E57FEC01542BB3A216E86BCEDB5C9EAD94",
-     "usd_spot": 803.2864144836498
+     "usd_at_time": 796.8490714865985,
+     "usd_spot": 785.4092954546867
     }
    ],
    "tx_ids": [
     "715ACC2CDAD1CC6BC48419F6B23097E57FEC01542BB3A216E86BCEDB5C9EAD94"
    ],
-   "usd_spot": 803.2864144836498
+   "usd_at_time": 796.8490714865985,
+   "usd_spot": 785.4092954546867
   },
   {
    "action_class": "bonds",
@@ -334,7 +364,8 @@
      "amount_raw": "6237692029",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 50.056476170116404
+     "usd_at_time": 49.28290070310216,
+     "usd_spot": 48.942470547054995
     }
    ],
    "confidence": 0.9,
@@ -356,20 +387,24 @@
        "amount_raw": "6237692029",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 50.056476170116404
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 49.28290070310216,
+       "usd_spot": 48.942470547054995
       }
      ],
      "height": 28065279,
      "source_protocol": "THOR",
      "time": "2026-10-02T02:39:02.154546121Z",
      "tx_id": "34AAC027A03A54AFD4B01D5B53C344775960674AB7AF78370590C6B2AA31151F",
-     "usd_spot": 50.056476170116404
+     "usd_at_time": 49.28290070310216,
+     "usd_spot": 48.942470547054995
     }
    ],
    "tx_ids": [
     "34AAC027A03A54AFD4B01D5B53C344775960674AB7AF78370590C6B2AA31151F"
    ],
-   "usd_spot": 50.056476170116404,
+   "usd_at_time": 49.28290070310216,
+   "usd_spot": 48.942470547054995,
    "validator_address": "thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
    "validator_label": "Node thor1j2p…arptfk"
   },
@@ -384,7 +419,8 @@
      "amount_raw": "10835583536",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 86.95381665805701
+     "usd_at_time": 85.61002771252022,
+     "usd_spot": 85.01866164685477
     }
    ],
    "confidence": 0.9,
@@ -406,20 +442,24 @@
        "amount_raw": "10835583536",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 86.95381665805701
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 85.61002771252022,
+       "usd_spot": 85.01866164685477
       }
      ],
      "height": 28065273,
      "source_protocol": "THOR",
      "time": "2026-10-02T02:38:26.051478905Z",
      "tx_id": "533A8A37347392CBC3F2AF4F184B38573D4B6E43D84B0C7424090F901A8C8B04",
-     "usd_spot": 86.95381665805701
+     "usd_at_time": 85.61002771252022,
+     "usd_spot": 85.01866164685477
     }
    ],
    "tx_ids": [
     "533A8A37347392CBC3F2AF4F184B38573D4B6E43D84B0C7424090F901A8C8B04"
    ],
-   "usd_spot": 86.95381665805701,
+   "usd_at_time": 85.61002771252022,
+   "usd_spot": 85.01866164685477,
    "validator_address": "thor1vt207wgvefjgk88mtfjuurcl3vw6z4d2gu5psw",
    "validator_label": "Node thor1vt2…gu5psw"
   },
@@ -436,7 +476,8 @@
      "amount_raw": "101254539398",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 812.551407624504
+     "usd_at_time": 806.1211248618721,
+     "usd_spot": 794.4680964053146
     }
    ],
    "confidence": 0.72,
@@ -461,14 +502,17 @@
        "amount_raw": "6278888406",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 50.38707047551148
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 50.06458833029932,
+       "usd_spot": 49.26570748446614
       }
      ],
      "height": 28069582,
      "source_protocol": "THOR",
      "time": "2026-10-02T09:59:45.7128394Z",
      "tx_id": "C539D011CDE4204437FC5FE4F40516D9D23762AB6B8E42E01648712B77DD6D14",
-     "usd_spot": 50.38707047551148
+     "usd_at_time": 50.06458833029932,
+     "usd_spot": 49.26570748446614
     },
     {
      "assets": [
@@ -476,14 +520,17 @@
        "amount_raw": "6594476429",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 52.91961364683668
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 52.49552866522387,
+       "usd_spot": 51.74188897096331
       }
      ],
      "height": 28069591,
      "source_protocol": "THOR",
      "time": "2026-10-02T10:00:40.712059294Z",
      "tx_id": "4B9B98937593C3E17894001EE819F0906DD40C9624E3E99B199F3BAF9410A667",
-     "usd_spot": 52.91961364683668
+     "usd_at_time": 52.49552866522387,
+     "usd_spot": 51.74188897096331
     },
     {
      "assets": [
@@ -491,14 +538,17 @@
        "amount_raw": "44142196685",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 354.2340349902667
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 351.39528912908145,
+       "usd_spot": 346.35056541646406
       }
      ],
      "height": 28069597,
      "source_protocol": "THOR",
      "time": "2026-10-02T10:01:16.999215343Z",
      "tx_id": "4767FD9571F034580E57336584288E40401857DAE9755C1618F3A0785E826573",
-     "usd_spot": 354.2340349902667
+     "usd_at_time": 351.39528912908145,
+     "usd_spot": 346.35056541646406
     },
     {
      "assets": [
@@ -506,14 +556,17 @@
        "amount_raw": "44238977878",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 355.01068851188927
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 352.1657187372674,
+       "usd_spot": 347.10993453342104
       }
      ],
      "height": 28069603,
      "source_protocol": "THOR",
      "time": "2026-10-02T10:01:53.484709297Z",
      "tx_id": "AE2C6129A2C872211420436293B4A822ED7B71EAF5525EFE2804B5DF30BD6668",
-     "usd_spot": 355.01068851188927
+     "usd_at_time": 352.1657187372674,
+     "usd_spot": 347.10993453342104
     }
    ],
    "tx_ids": [
@@ -522,7 +575,8 @@
     "AE2C6129A2C872211420436293B4A822ED7B71EAF5525EFE2804B5DF30BD6668",
     "C539D011CDE4204437FC5FE4F40516D9D23762AB6B8E42E01648712B77DD6D14"
    ],
-   "usd_spot": 812.551407624504
+   "usd_at_time": 806.1211248618721,
+   "usd_spot": 794.4680964053146
   },
   {
    "action_class": "transfers",
@@ -535,7 +589,8 @@
      "amount_raw": "16219611786",
      "asset": "THOR.RUNE",
      "asset_kind": "native",
-     "usd_spot": 130.15977818074612
+     "usd_at_time": 128.14828198891564,
+     "usd_spot": 127.26307557832959
     }
    ],
    "confidence": 0.72,
@@ -558,14 +613,17 @@
        "amount_raw": "10293804359",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 82.6061258235492
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 81.32952632531405,
+       "usd_spot": 80.76772856294278
       }
      ],
      "height": 28065274,
      "source_protocol": "THOR",
      "time": "2026-10-02T02:38:32.08352952Z",
      "tx_id": "B2AF770D859B7F1AC9E89856E647ED3CFBE093A942FE3509167A0E752F7D1BCB",
-     "usd_spot": 82.6061258235492
+     "usd_at_time": 81.32952632531405,
+     "usd_spot": 80.76772856294278
     },
     {
      "assets": [
@@ -573,21 +631,25 @@
        "amount_raw": "5925807427",
        "asset": "THOR.RUNE",
        "asset_kind": "native",
-       "usd_spot": 47.553652357196924
+       "price_source": "midgard_rune_history",
+       "usd_at_time": 46.81875566360159,
+       "usd_spot": 46.49534701538681
       }
      ],
      "height": 28065281,
      "source_protocol": "THOR",
      "time": "2026-10-02T02:39:14.291543488Z",
      "tx_id": "3A9D4786C9169DDEE2FA4F66F475922EF1A7FF581FCBC7A0453E6DECD988C53F",
-     "usd_spot": 47.553652357196924
+     "usd_at_time": 46.81875566360159,
+     "usd_spot": 46.49534701538681
     }
    ],
    "tx_ids": [
     "3A9D4786C9169DDEE2FA4F66F475922EF1A7FF581FCBC7A0453E6DECD988C53F",
     "B2AF770D859B7F1AC9E89856E647ED3CFBE093A942FE3509167A0E752F7D1BCB"
    ],
-   "usd_spot": 130.15977818074612
+   "usd_at_time": 128.14828198891564,
+   "usd_spot": 127.26307557832959
   }
  ],
  "nodes": [
@@ -749,12 +811,14 @@
    "contract_type": "",
    "from_node": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
    "height": 28065279,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T02:39:02.154546121Z",
    "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "tx_id": "34AAC027A03A54AFD4B01D5B53C344775960674AB7AF78370590C6B2AA31151F",
-   "usd_spot": 50.056476170116404,
+   "usd_at_time": 49.28290070310216,
+   "usd_spot": 48.942470547054995,
    "validator_address": "thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
    "validator_label": "Node thor1j2p…arptfk"
   },
@@ -770,12 +834,14 @@
    "contract_type": "",
    "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "height": 28065281,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T02:39:14.291543488Z",
    "to_node": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
    "tx_id": "3A9D4786C9169DDEE2FA4F66F475922EF1A7FF581FCBC7A0453E6DECD988C53F",
-   "usd_spot": 47.553652357196924
+   "usd_at_time": 46.81875566360159,
+   "usd_spot": 46.49534701538681
   },
   {
    "action_class": "transfers",
@@ -791,12 +857,14 @@
    "contract_type": "",
    "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "height": 28069597,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T10:01:16.999215343Z",
    "to_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "tx_id": "4767FD9571F034580E57336584288E40401857DAE9755C1618F3A0785E826573",
-   "usd_spot": 354.2340349902667
+   "usd_at_time": 351.39528912908145,
+   "usd_spot": 346.35056541646406
   },
   {
    "action_class": "transfers",
@@ -812,12 +880,14 @@
    "contract_type": "",
    "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "height": 28069591,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T10:00:40.712059294Z",
    "to_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "tx_id": "4B9B98937593C3E17894001EE819F0906DD40C9624E3E99B199F3BAF9410A667",
-   "usd_spot": 52.91961364683668
+   "usd_at_time": 52.49552866522387,
+   "usd_spot": 51.74188897096331
   },
   {
    "action_class": "bonds",
@@ -831,12 +901,14 @@
    "contract_type": "",
    "from_node": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
    "height": 28065273,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T02:38:26.051478905Z",
    "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "tx_id": "533A8A37347392CBC3F2AF4F184B38573D4B6E43D84B0C7424090F901A8C8B04",
-   "usd_spot": 86.95381665805701,
+   "usd_at_time": 85.61002771252022,
+   "usd_spot": 85.01866164685477,
    "validator_address": "thor1vt207wgvefjgk88mtfjuurcl3vw6z4d2gu5psw",
    "validator_label": "Node thor1vt2…gu5psw"
   },
@@ -854,12 +926,14 @@
    "contract_type": "",
    "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "height": 28069602,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T10:01:47.545127946Z",
    "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "tx_id": "7043BC1968B373DB503F358AEDC120E991679E037C1EE3163B514B06CFFBA0FB",
-   "usd_spot": 373.69546159357424,
+   "usd_at_time": 370.70075656763953,
+   "usd_spot": 365.3788784582975,
    "validator_address": "thor1nyq6247h0r343ljru65ct27l90wd6eadgejnlg",
    "validator_label": "Node thor1nyq…gejnlg"
   },
@@ -877,12 +951,14 @@
    "contract_type": "",
    "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "height": 28069617,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T10:03:19.249216246Z",
    "to_node": "node:thor1x3mdxg02mcdnt9s9ms2sy32wl4380ds9y0pja7:thor:node_bond:2",
    "tx_id": "715ACC2CDAD1CC6BC48419F6B23097E57FEC01542BB3A216E86BCEDB5C9EAD94",
-   "usd_spot": 803.2864144836498
+   "usd_at_time": 796.8490714865985,
+   "usd_spot": 785.4092954546867
   },
   {
    "action_class": "bonds",
@@ -898,12 +974,14 @@
    "contract_type": "",
    "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "height": 28069581,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T09:59:39.504905501Z",
    "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "tx_id": "76032241C09CA2722A66481696474B378D49C771BF6B1CC35D31295D94924472",
-   "usd_spot": 53.039021554437056,
+   "usd_at_time": 52.69956666473194,
+   "usd_spot": 51.85863945857166,
    "validator_address": "thor1j2pfreqmckmgydqmpfdq3tvhy9acvcdearptfk",
    "validator_label": "Node thor1j2p…arptfk"
   },
@@ -921,12 +999,14 @@
    "contract_type": "",
    "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "height": 28069590,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T10:00:34.000095461Z",
    "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "tx_id": "A1C3AE4EFA535CA17AC7046FDB0C16457C49638B92CB7E2D5956CC8554D0A45A",
-   "usd_spot": 55.70485647204385,
+   "usd_at_time": 55.25845122822735,
+   "usd_spot": 54.46514628687639,
    "validator_address": "thor1s6xz88ell5c6erd7hspfjw8syce89mgn32z6gr",
    "validator_label": "Node thor1s6x…32z6gr"
   },
@@ -944,12 +1024,14 @@
    "contract_type": "",
    "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "height": 28069603,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T10:01:53.484709297Z",
    "to_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "tx_id": "AE2C6129A2C872211420436293B4A822ED7B71EAF5525EFE2804B5DF30BD6668",
-   "usd_spot": 355.01068851188927
+   "usd_at_time": 352.1657187372674,
+   "usd_spot": 347.10993453342104
   },
   {
    "action_class": "transfers",
@@ -963,12 +1045,14 @@
    "contract_type": "",
    "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "height": 28065274,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T02:38:32.08352952Z",
    "to_node": "external_address:thor19yufynkuf8n9385xh4pjge6faxc0dtlacj8fnu:external:3",
    "tx_id": "B2AF770D859B7F1AC9E89856E647ED3CFBE093A942FE3509167A0E752F7D1BCB",
-   "usd_spot": 82.6061258235492
+   "usd_at_time": 81.32952632531405,
+   "usd_spot": 80.76772856294278
   },
   {
    "action_class": "transfers",
@@ -984,12 +1068,14 @@
    "contract_type": "",
    "from_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "height": 28069582,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T09:59:45.7128394Z",
    "to_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "tx_id": "C539D011CDE4204437FC5FE4F40516D9D23762AB6B8E42E01648712B77DD6D14",
-   "usd_spot": 50.38707047551148
+   "usd_at_time": 50.06458833029932,
+   "usd_spot": 49.26570748446614
   },
   {
    "action_class": "bonds",
@@ -1005,12 +1091,14 @@
    "contract_type": "",
    "from_node": "actor_address:thor17xn4e53auf4xla7g84ln2f4vjv2ks30fz6s7sa:actor_address:1",
    "height": 28069596,
+   "price_source": "midgard_rune_history",
    "primary_asset": "THOR.RUNE",
    "source_protocol": "THOR",
    "time": "2026-10-02T10:01:11.117256009Z",
    "to_node": "external_address:thor1dk9y6ys5eqrcnut9z3ygjsa4al6flvcgxl8x2l:external:1",
    "tx_id": "CF6A630242BE008E942B2619B9E74E70FAD57355C5503AEB50CB474923ADA6C1",
-   "usd_spot": 372.87793157081364,
+   "usd_at_time": 369.88977803270694,
+   "usd_spot": 364.5795425457112,
    "validator_address": "thor1k8lchd5f88sus0fcjnujuqad8rhe8wl6yzc3aj",
    "validator_label": "Node thor1k8l…yzc3aj"
   }

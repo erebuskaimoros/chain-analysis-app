@@ -61,7 +61,7 @@ var goldenEnvOverrides = []string{
 	"CHAIN_ANALYSIS_ETHPLORER_API_URL", "CHAIN_ANALYSIS_ETHPLORER_API_KEY",
 	"CHAIN_ANALYSIS_AVACLOUD_BASE_URL", "CHAIN_ANALYSIS_NODEREAL_BSC_URL",
 	"CHAIN_ANALYSIS_SOLANA_RPC_URL", "CHAIN_ANALYSIS_TRONGRID_URL",
-	"CHAIN_ANALYSIS_XRP_RPC_URL", "CHAIN_ANALYSIS_RADIX_GATEWAY_URL",
+	"CHAIN_ANALYSIS_XRP_RPC_URL", "CHAIN_ANALYSIS_RADIX_GATEWAY_URL", "CHAIN_ANALYSIS_DEFILLAMA_URL",
 	"CHAIN_ANALYSIS_TIMEOUT_SECONDS", "CHAIN_ANALYSIS_MIDGARD_TIMEOUT_SECONDS",
 	"CHAIN_ANALYSIS_ETHERSCAN_API_KEY", "CHAIN_ANALYSIS_NODEREAL_API_KEY",
 	"CHAIN_ANALYSIS_AVACLOUD_API_KEY", "CHAIN_ANALYSIS_TRONGRID_API_KEY",
@@ -257,13 +257,15 @@ func canonicalGoldenGraph(t *testing.T, resp ActorTrackerResponse) []byte {
 		}
 	}
 	// Actor→address ownership edges are stamped with the build's wall-clock
-	// time rather than a chain time.
+	// time rather than a chain time. Assets are ordered by today's spot value,
+	// which moves between recordings, so order them by identity instead.
 	for _, edge := range asGoldenList(doc["edges"]) {
-		if edge["action_class"] != "ownership" {
-			continue
-		}
+		sortGoldenList(edge, "assets", "asset", "direction")
 		for _, tx := range asGoldenList(edge["transactions"]) {
-			delete(tx, "time")
+			if edge["action_class"] == "ownership" {
+				delete(tx, "time")
+			}
+			sortGoldenList(tx, "assets", "asset", "direction")
 		}
 	}
 	if warnings, ok := doc["warnings"].([]any); ok {

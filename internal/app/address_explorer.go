@@ -134,6 +134,7 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 		recordedActionKeys:   map[string]struct{}{},
 		allowedFlowTypes:     flowTypeSet(prepared.query.FlowTypes),
 		minUSD:               prepared.query.MinUSD,
+		history:              newPriceHistory(),
 		nodes:                map[string]*FlowNode{},
 		edges:                map[string]*FlowEdge{},
 		actions:              map[string]*SupportingAction{},
@@ -185,6 +186,7 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 	a.prefetchThorTxTransfers(ctx, actions, builder)
 	builder.recordCalcRepresentativePayouts(actions)
 
+	a.preloadPriceHistory(ctx, builder.history, prices, priceNeedsForFlows(actions, combinedExternalTransfers))
 	consumedExternalTransfers := map[string]struct{}{}
 	seenMidgardActions := map[string]struct{}{}
 	seenExternalTransfers := map[string]struct{}{}
@@ -250,6 +252,7 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	supportingActions := builder.actionList()
+	builder.applyAtTimeValues(edges, supportingActions)
 
 	response.Nodes = nodes
 	response.Edges = edges

@@ -689,3 +689,61 @@ func (b *graphBuilder) sourceProtocolList() []string {
 	sort.Strings(out)
 	return out
 }
+
+// priceSegment values a segment at its transaction time.
+func (b *graphBuilder) priceSegment(seg *projectedSegment) {
+	seg.USDAtTime, seg.PriceSource, seg.Priced = usdAtTime(b.history, b.prices, seg.Asset, seg.AmountRaw, seg.Time)
+}
+
+// belowMinUSD reports whether the min-USD filter drops a segment: priced
+// flows worth less than the minimum at their transaction time, and unpriced
+// flows unless the request includes them.
+func (b *graphBuilder) belowMinUSD(seg projectedSegment) bool {
+	if b.minUSD <= 0 {
+		return false
+	}
+	if !seg.Priced {
+		return !b.includeUnpriced
+	}
+	return seg.USDAtTime < b.minUSD
+}
+
+// applyAtTimeValues fills usd_at_time on edges, their transactions and
+// assets, and supporting actions. A transaction is valued by its inbound
+// assets when it has any (a swap's input), otherwise by all its assets, so a
+// swap is not counted on both sides.
+func (b *graphBuilder) applyAtTimeValues(edges []FlowEdge, actions []SupportingAction) {
+	for i := range edges {
+		edge := &edges[i]
+		edge.USDAtTime = 0
+		byAsset := map[string]float64{}
+		for j := range edge.Transactions {
+			tx := &edge.Transactions[j]
+			var inbound, all float64
+			hasInbound := false
+			for k := range tx.Assets {
+				asset := &tx.Assets[k]
+				usd, source, _ := usdAtTime(b.history, b.prices, asset.Asset, asset.AmountRaw, tx.Time)
+				asset.USDAtTime, asset.PriceSource = usd, source
+				all += usd
+				if asset.Direction == "in" {
+					inbound += usd
+					hasInbound = true
+				}
+				byAsset[asset.Asset+"|"+asset.Direction] += usd
+			}
+			tx.USDAtTime = all
+			if hasInbound {
+				tx.USDAtTime = inbound
+			}
+			edge.USDAtTime += tx.USDAtTime
+		}
+		for k := range edge.Assets {
+			edge.Assets[k].USDAtTime = byAsset[edge.Assets[k].Asset+"|"+edge.Assets[k].Direction]
+		}
+	}
+	for i := range actions {
+		usd, source, _ := usdAtTime(b.history, b.prices, actions[i].PrimaryAsset, actions[i].AmountRaw, actions[i].Time)
+		actions[i].USDAtTime, actions[i].PriceSource = usd, source
+	}
+}

@@ -134,6 +134,8 @@ type graphBuilder struct {
 	recordedActionKeys   map[string]struct{}
 	allowedFlowTypes     map[string]bool
 	minUSD               float64
+	includeUnpriced      bool
+	history              *priceHistory
 	nodes                map[string]*FlowNode
 	edges                map[string]*FlowEdge
 	actions              map[string]*SupportingAction
@@ -211,12 +213,17 @@ type projectedSegment struct {
 	TokenDecimals    int
 	AmountRaw        string
 	USDSpot          float64
-	TxID             string
-	Height           int64
-	Time             time.Time
-	Confidence       float64
-	ActorIDs         []int64
-	CanonicalKey     string
+	// USDAtTime values the segment at its transaction time; Priced is false
+	// when no price is known, and PriceSource names where the price came from.
+	USDAtTime    float64
+	Priced       bool
+	PriceSource  string
+	TxID         string
+	Height       int64
+	Time         time.Time
+	Confidence   float64
+	ActorIDs     []int64
+	CanonicalKey string
 }
 
 type midgardActionsResponse struct {
@@ -349,6 +356,8 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 		recordedActionKeys:   map[string]struct{}{},
 		allowedFlowTypes:     flowTypeSet(query.FlowTypes),
 		minUSD:               query.MinUSD,
+		includeUnpriced:      query.IncludeUnpriced,
+		history:              newPriceHistory(),
 		nodes:                map[string]*FlowNode{},
 		edges:                map[string]*FlowEdge{},
 		actions:              map[string]*SupportingAction{},
@@ -548,6 +557,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 				})
 				externalTransfers = nil
 			}
+			a.preloadPriceHistory(ctx, builder.history, prices, priceNeedsForFlows(actions, externalTransfers))
 			consumedExternalTransfers := map[string]struct{}{}
 			// Midgard action-level movements provide address-to-address liquidity paths.
 			for _, action := range actions {
@@ -724,6 +734,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	actions := builder.actionList()
+	builder.applyAtTimeValues(edges, actions)
 
 	stats := map[string]any{
 		"actor_count":                        len(actors),
@@ -783,6 +794,7 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 		MaxHops:          1,
 		FlowTypes:        req.FlowTypes,
 		MinUSD:           req.MinUSD,
+		IncludeUnpriced:  req.IncludeUnpriced,
 		CollapseExternal: req.CollapseExternal,
 		DisplayMode:      req.DisplayMode,
 	})
@@ -845,6 +857,8 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 		calcPayoutByContract: map[string]string{},
 		allowedFlowTypes:     flowTypeSet(query.FlowTypes),
 		minUSD:               query.MinUSD,
+		includeUnpriced:      query.IncludeUnpriced,
+		history:              newPriceHistory(),
 		nodes:                map[string]*FlowNode{},
 		edges:                map[string]*FlowEdge{},
 		actions:              map[string]*SupportingAction{},
@@ -917,6 +931,7 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 			})
 			continue
 		}
+		a.preloadPriceHistory(ctx, builder.history, prices, priceNeedsForFlows(actions, externalTransfers))
 		consumedExternalTransfers := map[string]struct{}{}
 		for _, action := range actions {
 			key := midgardActionKey(action)
@@ -1027,6 +1042,7 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
 	actions := builder.actionList()
+	builder.applyAtTimeValues(edges, actions)
 	stats := map[string]any{
 		"actor_count":                        len(actors),
 		"node_count":                         len(nodes),
@@ -1125,6 +1141,7 @@ func normalizeActorTrackerRequest(req ActorTrackerRequest) (ActorTrackerQuery, e
 		MaxHops:          maxHops,
 		FlowTypes:        flowTypes,
 		MinUSD:           math.Max(0, req.MinUSD),
+		IncludeUnpriced:  req.IncludeUnpriced,
 		CollapseExternal: req.CollapseExternal,
 		DisplayMode:      displayMode,
 		RequestedAt:      now,

@@ -435,7 +435,10 @@ func (b *graphBuilder) projectExternalTransfer(transfer externalTransfer, baseDe
 	if !hasGraphableLiquidity(seg.AmountRaw) {
 		return nil, nil
 	}
-	if b.minUSD > 0 && seg.USDSpot > 0 && seg.USDSpot < b.minUSD {
+	b.priceSegment(&seg)
+	// Unpriced transfers touching an actor stay visible; priced transfers
+	// below the minimum are dropped as before.
+	if b.belowMinUSD(seg) && (seg.Priced || !hasActorIDs(seg.ActorIDs)) {
 		return nil, nil
 	}
 	var next []frontierAddress

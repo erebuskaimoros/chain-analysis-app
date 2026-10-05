@@ -62,6 +62,7 @@ type ActorTrackerQuery struct {
 	MaxHops           int       `json:"max_hops"`
 	FlowTypes         []string  `json:"flow_types"`
 	MinUSD            float64   `json:"min_usd"`
+	IncludeUnpriced   bool      `json:"include_unpriced,omitempty"`
 	CollapseExternal  bool      `json:"collapse_external"`
 	DisplayMode       string    `json:"display_mode"`
 	RequestedAt       time.Time `json:"requested_at"`
@@ -76,6 +77,7 @@ type ActorTrackerRequest struct {
 	MaxHops          int      `json:"max_hops"`
 	FlowTypes        []string `json:"flow_types"`
 	MinUSD           float64  `json:"min_usd"`
+	IncludeUnpriced  bool     `json:"include_unpriced,omitempty"`
 	CollapseExternal bool     `json:"collapse_external"`
 	DisplayMode      string   `json:"display_mode"`
 	// ProgressToken, when set by the client, keys an in-memory progress entry
@@ -90,6 +92,7 @@ type ActorTrackerExpandRequest struct {
 	EndTime          string   `json:"end_time"`
 	FlowTypes        []string `json:"flow_types"`
 	MinUSD           float64  `json:"min_usd"`
+	IncludeUnpriced  bool     `json:"include_unpriced,omitempty"`
 	CollapseExternal bool     `json:"collapse_external"`
 	DisplayMode      string   `json:"display_mode"`
 }
@@ -108,6 +111,8 @@ type FlowAssetValue struct {
 	Asset         string  `json:"asset"`
 	AmountRaw     string  `json:"amount_raw"`
 	USDSpot       float64 `json:"usd_spot"`
+	USDAtTime     float64 `json:"usd_at_time"`
+	PriceSource   string  `json:"price_source,omitempty"`
 	Direction     string  `json:"direction,omitempty"`
 	AssetKind     string  `json:"asset_kind,omitempty"`
 	TokenStandard string  `json:"token_standard,omitempty"`
@@ -136,6 +141,7 @@ type FlowEdgeTransaction struct {
 	Height         int64            `json:"height"`
 	Time           time.Time        `json:"time"`
 	USDSpot        float64          `json:"usd_spot"`
+	USDAtTime      float64          `json:"usd_at_time"`
 	Assets         []FlowAssetValue `json:"assets"`
 }
 
@@ -154,6 +160,7 @@ type FlowEdge struct {
 	Assets           []FlowAssetValue      `json:"assets"`
 	Transactions     []FlowEdgeTransaction `json:"transactions"`
 	USDSpot          float64               `json:"usd_spot"`
+	USDAtTime        float64               `json:"usd_at_time"`
 	TxIDs            []string              `json:"tx_ids"`
 	Heights          []int64               `json:"heights"`
 	ActorIDs         []int64               `json:"actor_ids"`
@@ -180,6 +187,8 @@ type SupportingAction struct {
 	TokenDecimals    int       `json:"token_decimals,omitempty"`
 	AmountRaw        string    `json:"amount_raw"`
 	USDSpot          float64   `json:"usd_spot"`
+	USDAtTime        float64   `json:"usd_at_time"`
+	PriceSource      string    `json:"price_source,omitempty"`
 	Height           int64     `json:"height"`
 	Time             time.Time `json:"time"`
 	FromNode         string    `json:"from_node"`

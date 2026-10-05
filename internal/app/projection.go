@@ -85,7 +85,8 @@ func (b *graphBuilder) projectMidgardActionWithExternal(action midgardAction, ba
 		if actionClass == "swaps" {
 			seg.CanonicalKey = canonicalSwapSegmentKey(firstNonEmpty(swapTxID, seg.TxID), source.Address, target.Address, seg.Asset, actionProtocol)
 		}
-		if b.minUSD > 0 && seg.USDSpot > 0 && seg.USDSpot < b.minUSD && !hasActorIDs(seg.ActorIDs) {
+		b.priceSegment(&seg)
+		if b.belowMinUSD(seg) && !hasActorIDs(seg.ActorIDs) {
 			return
 		}
 		segments = append(segments, seg)

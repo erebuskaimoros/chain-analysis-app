@@ -3074,13 +3074,17 @@ func TestProjectExternalUnsupportedTokenTransferRetainedWithoutPoolBook(t *testi
 	}
 }
 
-func TestProjectExternalTokenTransferNotFilteredWhenUnpriced(t *testing.T) {
-	builder := &graphBuilder{
-		minUSD:           1000,
-		allowedFlowTypes: flowTypeSet([]string{"transfers"}),
-		nodes:            map[string]*FlowNode{},
-		edges:            map[string]*FlowEdge{},
-		actions:          map[string]*SupportingAction{},
+func TestProjectExternalTokenTransferUnpricedPolicy(t *testing.T) {
+	newBuilder := func(includeUnpriced bool, owner map[string][]int64) *graphBuilder {
+		return &graphBuilder{
+			minUSD:           1000,
+			includeUnpriced:  includeUnpriced,
+			ownerMap:         owner,
+			allowedFlowTypes: flowTypeSet([]string{"transfers"}),
+			nodes:            map[string]*FlowNode{},
+			edges:            map[string]*FlowEdge{},
+			actions:          map[string]*SupportingAction{},
+		}
 	}
 	transfer := externalTransfer{
 		Chain:         "ETH",
@@ -3096,9 +3100,15 @@ func TestProjectExternalTokenTransferNotFilteredWhenUnpriced(t *testing.T) {
 		Time:          time.Unix(100, 0).UTC(),
 	}
 
-	segments, _ := builder.projectExternalTransfer(transfer, 1)
-	if len(segments) != 1 {
-		t.Fatalf("expected unpriced token transfer to remain visible, got %d segments", len(segments))
+	if segments, _ := newBuilder(false, nil).projectExternalTransfer(transfer, 1); len(segments) != 0 {
+		t.Fatalf("expected an unpriced transfer between unknown addresses to be filtered by min_usd, got %d segments", len(segments))
+	}
+	if segments, _ := newBuilder(true, nil).projectExternalTransfer(transfer, 1); len(segments) != 1 {
+		t.Fatalf("expected include_unpriced to keep the transfer, got %d segments", len(segments))
+	}
+	owned := newBuilder(false, map[string][]int64{normalizeAddress("0xto"): {7}})
+	if segments, _ := owned.projectExternalTransfer(transfer, 1); len(segments) != 1 {
+		t.Fatalf("expected an unpriced transfer into an actor address to stay visible, got %d segments", len(segments))
 	}
 }
 

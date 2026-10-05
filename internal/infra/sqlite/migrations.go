@@ -20,6 +20,7 @@ var migrations = []migration{
 	{id: 4, name: "graph_states", up: migrateGraphStates},
 	{id: 5, name: "ledger", up: migrateLedger},
 	{id: 6, name: "holdings_snapshots", up: migrateHoldingsSnapshots},
+	{id: 7, name: "price_points", up: migratePricePoints},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -347,6 +348,21 @@ func migrateHoldingsSnapshots(ctx context.Context, db *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+// migratePricePoints caches historical asset prices by hour or day bucket.
+func migratePricePoints(ctx context.Context, db *sql.Tx) error {
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS price_points (
+			asset TEXT NOT NULL,
+			interval TEXT NOT NULL,
+			bucket_ts INTEGER NOT NULL,
+			usd REAL NOT NULL,
+			source TEXT NOT NULL,
+			PRIMARY KEY (asset, interval, bucket_ts)
+		)
+	`)
+	return err
 }
 
 func tableColumnSet(ctx context.Context, db execQuerier, table string) (map[string]struct{}, error) {

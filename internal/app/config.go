@@ -45,8 +45,10 @@ type Config struct {
 	TronGridAPIKey         string
 	XRPRPCURL              string
 	RadixGatewayURL        string
-	RequestTimeout         time.Duration
-	MidgardTimeout         time.Duration
+	// DefiLlamaURL prices EVM tokens without a THORChain pool; empty disables it.
+	DefiLlamaURL   string
+	RequestTimeout time.Duration
+	MidgardTimeout time.Duration
 	// LiveHoldingsTimeout, when positive, replaces both the live-holdings
 	// batch budget and the per-lookup timeouts. Golden tests raise it so
 	// record and replay issue the same lookups.
@@ -129,6 +131,7 @@ func LoadConfigFromEnv() Config {
 		TronGridAPIKey:         strings.TrimSpace(os.Getenv("CHAIN_ANALYSIS_TRONGRID_API_KEY")),
 		XRPRPCURL:              strings.TrimRight(getEnv("CHAIN_ANALYSIS_XRP_RPC_URL", "https://s1.ripple.com:51234|https://s2.ripple.com:51234|https://xrplcluster.com"), "/"),
 		RadixGatewayURL:        strings.TrimRight(getEnv("CHAIN_ANALYSIS_RADIX_GATEWAY_URL", "https://mainnet.radixdlt.com"), "/"),
+		DefiLlamaURL:           strings.TrimRight(getEnv("CHAIN_ANALYSIS_DEFILLAMA_URL", "https://coins.llama.fi"), "/"),
 		RequestTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_TIMEOUT_SECONDS", 20)) * time.Second,
 		MidgardTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_MIDGARD_TIMEOUT_SECONDS", 10)) * time.Second,
 	}
