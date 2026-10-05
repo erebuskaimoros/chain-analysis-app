@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -30,6 +31,9 @@ type App struct {
 	trackerBlockNums  *trackerBlockNumberStore
 	protocolDirectory cachedMetadataResult[protocolDirectory]
 	priceBook         cachedMetadataResult[priceBook]
+	jobs              *jobRunner
+	bondIndexesTHOR   cachedMetadataResult[protocolBondIndexes]
+	bondIndexesMAYA   cachedMetadataResult[protocolBondIndexes]
 	trackerEndpointRR atomic.Uint64
 	buildProgress     *progressRegistry
 }
@@ -83,6 +87,7 @@ func New(cfg Config) (*App, error) {
 		trackerFeatures:  newTrackerFeatureStore(),
 		trackerBlockNums: newTrackerBlockNumberStore(),
 		buildProgress:    newProgressRegistry(),
+		jobs:             newJobRunner(jobLogDir(cfg.LastRunLogPath)),
 	}
 	if a.httpClient.Timeout < 30*time.Second {
 		a.httpClient.Timeout = 30 * time.Second
@@ -202,4 +207,12 @@ func filepathDir(path string) string {
 		return "/"
 	}
 	return path[:idx]
+}
+
+// jobLogDir keeps per-job logs next to the last-run log, under runs/.
+func jobLogDir(lastRunLogPath string) string {
+	if strings.TrimSpace(lastRunLogPath) == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(lastRunLogPath), "runs")
 }

@@ -85,6 +85,12 @@ func (h *V1) Register(mux *http.ServeMux) {
 	handle("POST /api/v1/graph-states", h.handleGraphStates)
 	handle("GET /api/v1/graph-states/{id}", h.handleGraphStateByID)
 	handle("DELETE /api/v1/graph-states/{id}", h.handleGraphStateByID)
+	handle("POST /api/v1/jobs/actor-graph", h.handleStartActorGraphJob)
+	handle("POST /api/v1/jobs/actor-graph/expand", h.handleStartActorGraphExpandJob)
+	handle("POST /api/v1/jobs/address-explorer", h.handleStartAddressExplorerJob)
+	handle("POST /api/v1/jobs/live-holdings", h.handleStartLiveHoldingsJob)
+	handle("GET /api/v1/jobs/{id}", h.handleJob)
+	handle("DELETE /api/v1/jobs/{id}", h.handleCancelJob)
 }
 
 func (h *V1) handleHealth(w http.ResponseWriter, r *http.Request) {

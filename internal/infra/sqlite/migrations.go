@@ -19,6 +19,7 @@ var migrations = []migration{
 	{id: 3, name: "analysis_runs", up: migrateAnalysisRuns},
 	{id: 4, name: "graph_states", up: migrateGraphStates},
 	{id: 5, name: "ledger", up: migrateLedger},
+	{id: 6, name: "holdings_snapshots", up: migrateHoldingsSnapshots},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -314,6 +315,31 @@ func migrateLedger(ctx context.Context, db *sql.Tx) error {
 			fetched_at INTEGER NOT NULL,
 			PRIMARY KEY (source, address, from_ts)
 		)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// migrateHoldingsSnapshots stores each live-holdings lookup result so recent
+// values are reused and actor holdings form a time series.
+func migrateHoldingsSnapshots(ctx context.Context, db *sql.Tx) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS holdings_snapshots (
+			chain TEXT NOT NULL,
+			address TEXT NOT NULL,
+			taken_at INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			usd_total REAL NOT NULL DEFAULT 0,
+			error_kind TEXT NOT NULL DEFAULT '',
+			metrics_json TEXT NOT NULL,
+			PRIMARY KEY (chain, address, taken_at)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_holdings_snapshots_latest
+			ON holdings_snapshots(chain, address, taken_at DESC)`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {

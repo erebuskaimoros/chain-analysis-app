@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -17,6 +18,55 @@ type ThorClient struct {
 	endpoints []string
 	client    *http.Client
 	rrCounter atomic.Uint64
+
+	backoffMu    sync.Mutex
+	backoffUntil map[string]time.Time
+}
+
+// noteEndpointFailure moves an endpoint to the back of the rotation while it
+// is banning or rate-limiting this client.
+func (c *ThorClient) noteEndpointFailure(endpoint string, err error) {
+	kind, retryAfter := classifyProviderError(err)
+	var window time.Duration
+	switch kind {
+	case providerErrBanned:
+		window = trackerBanBackoff
+	case providerErrRateLimited:
+		window = retryAfter
+		if window <= 0 {
+			window = trackerRateLimitDefault
+		}
+		window = min(window, trackerRateLimitMax)
+	default:
+		return
+	}
+	c.backoffMu.Lock()
+	defer c.backoffMu.Unlock()
+	if c.backoffUntil == nil {
+		c.backoffUntil = map[string]time.Time{}
+	}
+	c.backoffUntil[endpoint] = time.Now().Add(window)
+}
+
+// preferHealthyEndpoints keeps order but tries endpoints that are not backing
+// off first; backed-off endpoints remain as a last resort.
+func (c *ThorClient) preferHealthyEndpoints(endpoints []string) []string {
+	c.backoffMu.Lock()
+	defer c.backoffMu.Unlock()
+	if len(c.backoffUntil) == 0 {
+		return endpoints
+	}
+	now := time.Now()
+	healthy := make([]string, 0, len(endpoints))
+	var backedOff []string
+	for _, endpoint := range endpoints {
+		if until, ok := c.backoffUntil[endpoint]; ok && now.Before(until) {
+			backedOff = append(backedOff, endpoint)
+			continue
+		}
+		healthy = append(healthy, endpoint)
+	}
+	return append(healthy, backedOff...)
 }
 
 type RequestAttemptMeta struct {
@@ -65,7 +115,7 @@ func (c *ThorClient) getJSON(ctx context.Context, path string, out any, observer
 	}
 
 	var lastErr error
-	for _, endpoint := range c.endpointsForPath(cleanPath) {
+	for _, endpoint := range c.preferHealthyEndpoints(c.endpointsForPath(cleanPath)) {
 		raw := endpoint + cleanPath
 		_, err := url.Parse(raw)
 		if err != nil {
@@ -95,7 +145,7 @@ func (c *ThorClient) getJSON(ctx context.Context, path string, out any, observer
 			started := time.Now()
 			resp, err := c.client.Do(req)
 			if err != nil {
-				lastErr = err
+				lastErr = newTransportProviderError(err)
 				isTimeout := isTimeoutError(err)
 				willRetry := attempt < attempts && !isTimeout
 				if observer != nil {
@@ -134,13 +184,15 @@ func (c *ThorClient) getJSON(ctx context.Context, path string, out any, observer
 				retryable := shouldRetryStatus(resp.StatusCode)
 				willRetry := attempt < attempts && retryable
 				if isCloudflareChallenge(resp, body) {
-					lastErr = fmt.Errorf("GET %s failed: status=%d cloudflare challenge", raw, resp.StatusCode)
+					lastErr = &providerError{Kind: providerErrBanned, Status: resp.StatusCode, Err: fmt.Errorf("GET %s failed: status=%d cloudflare challenge", raw, resp.StatusCode)}
+					c.noteEndpointFailure(endpoint, lastErr)
 					if observer != nil {
 						observer(requestMetaFromResponse(resp, endpoint, raw, cleanPath, attempt, time.Since(started), "http_error", lastErr.Error(), false, retryable))
 					}
 					break
 				}
-				lastErr = fmt.Errorf("GET %s failed: status=%d body=%s", raw, resp.StatusCode, trimForLog(string(body), 200))
+				lastErr = newHTTPStatusProviderError(fmt.Errorf("GET %s failed: status=%d body=%s", raw, resp.StatusCode, trimForLog(string(body), 200)), resp.StatusCode, resp.Header, string(body))
+				c.noteEndpointFailure(endpoint, lastErr)
 				if observer != nil {
 					observer(requestMetaFromResponse(resp, endpoint, raw, cleanPath, attempt, time.Since(started), "http_error", lastErr.Error(), willRetry, retryable))
 				}
@@ -151,7 +203,7 @@ func (c *ThorClient) getJSON(ctx context.Context, path string, out any, observer
 			}
 
 			if err := json.Unmarshal(body, out); err != nil {
-				lastErr = fmt.Errorf("decode %s: %w", raw, err)
+				lastErr = &providerError{Kind: providerErrPermanent, Status: resp.StatusCode, Err: fmt.Errorf("decode %s: %w", raw, err)}
 				if observer != nil {
 					observer(requestMetaFromResponse(resp, endpoint, raw, cleanPath, attempt, time.Since(started), "decode_error", lastErr.Error(), false, false))
 				}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -24,6 +25,8 @@ type trackerHealthState struct {
 	Requests            int64
 	Successes           int64
 	Failures            int64
+	OpenUntil           time.Time
+	OpenReason          string
 }
 
 type trackerHealthStore struct {
@@ -120,12 +123,69 @@ func (s *trackerHealthStore) recordAttempt(provider, chain string, statusCode in
 			state.LastError = err.Error()
 		}
 		state.ConsecutiveFailures++
+		openTrackerCircuit(state, err, now)
 		return
 	}
 	state.Successes++
 	state.LastSuccessAt = now
 	state.LastError = ""
 	state.ConsecutiveFailures = 0
+	state.OpenUntil = time.Time{}
+	state.OpenReason = ""
+}
+
+const (
+	trackerBanBackoff        = 15 * time.Minute
+	trackerRateLimitDefault  = 30 * time.Second
+	trackerRateLimitMax      = 10 * time.Minute
+	trackerTransientBackoff  = time.Minute
+	trackerTransientFailures = 3
+)
+
+// openTrackerCircuit stops requests to a provider for a while after failures
+// that retrying immediately cannot fix. Callers hold the store lock.
+func openTrackerCircuit(state *trackerHealthState, err error, now time.Time) {
+	if errors.Is(err, context.Canceled) {
+		return
+	}
+	kind, retryAfter := classifyProviderError(err)
+	var window time.Duration
+	switch kind {
+	case providerErrBanned:
+		window = trackerBanBackoff
+	case providerErrRateLimited:
+		window = retryAfter
+		if window <= 0 {
+			window = trackerRateLimitDefault
+		}
+		window = min(window, trackerRateLimitMax)
+	case providerErrTransient:
+		if state.ConsecutiveFailures >= trackerTransientFailures {
+			window = trackerTransientBackoff
+		}
+	}
+	if window <= 0 {
+		return
+	}
+	if until := now.Add(window); until.After(state.OpenUntil) {
+		state.OpenUntil = until
+		state.OpenReason = string(kind)
+	}
+}
+
+// circuitOpenUntil returns when a provider's open circuit closes, or the zero
+// time when requests may proceed.
+func (s *trackerHealthStore) circuitOpenUntil(provider, chain string) (time.Time, string) {
+	if s == nil {
+		return time.Time{}, ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := s.state(provider, chain)
+	if state == nil || !time.Now().UTC().Before(state.OpenUntil) {
+		return time.Time{}, ""
+	}
+	return state.OpenUntil, state.OpenReason
 }
 
 func (s *trackerHealthStore) snapshot() map[string]any {
@@ -150,6 +210,10 @@ func (s *trackerHealthStore) snapshot() map[string]any {
 			"requests":             state.Requests,
 			"successes":            state.Successes,
 			"failures":             state.Failures,
+		}
+		if time.Now().UTC().Before(state.OpenUntil) {
+			entry["circuit_open_until"] = state.OpenUntil.Format(time.RFC3339)
+			entry["circuit_open_reason"] = state.OpenReason
 		}
 		if !state.LastSuccessAt.IsZero() {
 			entry["last_success_at"] = state.LastSuccessAt.Format(time.RFC3339)

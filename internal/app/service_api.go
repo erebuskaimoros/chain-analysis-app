@@ -268,3 +268,70 @@ func copyStringSliceMap(in map[string][]string) map[string][]string {
 	}
 	return out
 }
+
+const analysisJobTimeout = 15 * time.Minute
+
+// StartActorGraphBuildJob builds an actor graph in the background and saves
+// the run when it succeeds.
+func (a *App) StartActorGraphBuildJob(req ActorTrackerRequest) JobSnapshot {
+	return a.jobs.start(JobActorGraphBuild, analysisJobTimeout, a.cfg.LastRunLogPath, func(ctx context.Context) (any, error) {
+		resp, err := a.buildActorTracker(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		names := make([]string, 0, len(resp.Actors))
+		for _, actor := range resp.Actors {
+			if name := strings.TrimSpace(actor.Name); name != "" {
+				names = append(names, name)
+			}
+		}
+		if _, err := a.CreateActorGraphRun(ctx, req, strings.Join(names, ", "), len(resp.Nodes), len(resp.Edges)); err != nil {
+			logError(ctx, "graph_run_save_failed", err, nil)
+		}
+		return resp, nil
+	})
+}
+
+func (a *App) StartActorGraphExpandJob(req ActorTrackerExpandRequest) JobSnapshot {
+	return a.jobs.start(JobActorGraphExpand, analysisJobTimeout, a.cfg.LastRunLogPath, func(ctx context.Context) (any, error) {
+		return a.expandActorTrackerOneHop(ctx, req)
+	})
+}
+
+func (a *App) StartAddressExplorerJob(req AddressExplorerRequest) JobSnapshot {
+	return a.jobs.start(JobAddressExplorer, analysisJobTimeout, "", func(ctx context.Context) (any, error) {
+		resp, err := a.buildAddressExplorer(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.Mode == "graph" {
+			label := firstNonEmpty(resp.RunLabel, shortAddress(resp.Address))
+			if _, err := a.CreateAddressExplorerRun(ctx, req, label, len(resp.Nodes), len(resp.Edges)); err != nil {
+				logError(ctx, "address_explorer_run_save_failed", err, nil)
+			}
+		}
+		return resp, nil
+	})
+}
+
+// StartLiveHoldingsJob refreshes live holdings for nodes in the background;
+// force bypasses recent snapshots.
+func (a *App) StartLiveHoldingsJob(nodes []FlowNode, force bool) JobSnapshot {
+	return a.jobs.start(JobLiveHoldings, liveHoldingsJobBudget+time.Minute, "", func(ctx context.Context) (any, error) {
+		return a.runLiveHoldingsJob(ctx, nodes, force)
+	})
+}
+
+// Job returns a job's snapshot. The full partial result is omitted unless
+// includePartial is set.
+func (a *App) Job(id string, includePartial bool) (JobSnapshot, bool) {
+	snap, ok := a.jobs.get(id)
+	if ok && !includePartial {
+		snap.Partial = nil
+	}
+	return snap, ok
+}
+
+func (a *App) CancelJob(id string) bool {
+	return a.jobs.cancel(id)
+}

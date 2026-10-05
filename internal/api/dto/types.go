@@ -52,6 +52,13 @@ type LiveHoldingsRefreshRequest struct {
 	Nodes []LiveHoldingsRefreshNode `json:"nodes"`
 }
 
+// LiveHoldingsJobRequest starts a background live-holdings refresh; Force
+// bypasses recent holdings snapshots.
+type LiveHoldingsJobRequest struct {
+	Nodes []LiveHoldingsRefreshNode `json:"nodes"`
+	Force bool                      `json:"force"`
+}
+
 type LiveHoldingsRefreshResponse struct {
 	Nodes       []LiveHoldingsNodeUpdate `json:"nodes"`
 	Warnings    []string                 `json:"warnings"`

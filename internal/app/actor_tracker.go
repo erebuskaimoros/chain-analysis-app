@@ -431,6 +431,11 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 	calcStrategyTxIDs := map[string]struct{}{}
 	calcStrategyProcessTxIDs := map[string]struct{}{}
 	for len(queue) > 0 {
+		publishJobPartial(ctx, func() (any, map[string]int) {
+			nodes, edges := builder.nodeList(), builder.edgeList()
+			return ActorTrackerResponse{Query: query, Actors: actors, Warnings: uniqueStrings(builder.warnings), Nodes: nodes, Edges: edges},
+				map[string]int{"nodes": len(nodes), "edges": len(edges)}
+		})
 		// Drain current hop level into a wave for concurrent Midgard prefetch.
 		currentHop := queue[0].Hop
 		var wave []queueItem

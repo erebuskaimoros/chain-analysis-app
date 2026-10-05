@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func mapTrackerURLs(baseURLs []string, build func(string) string) []string {
@@ -78,6 +79,9 @@ func (a *App) getJSONAbsoluteMulti(ctx context.Context, rawURLs []string, header
 }
 
 func (a *App) getJSONAbsoluteSingle(ctx context.Context, rawURL string, headers map[string]string, out any) error {
+	if err := a.trackerCircuitError(ctx, rawURL); err != nil {
+		return err
+	}
 	if meta, ok := trackerRequestMetaFromContext(ctx); ok && a.trackerThrottle != nil {
 		release, err := a.trackerThrottle.acquire(ctx, meta.Provider, meta.Chain)
 		if err != nil {
@@ -100,6 +104,7 @@ func (a *App) getJSONAbsoluteSingle(ctx context.Context, rawURL string, headers 
 	}
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
+		err = newTransportProviderError(err)
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
 			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
 		}
@@ -114,7 +119,7 @@ func (a *App) getJSONAbsoluteSingle(ctx context.Context, rawURL string, headers 
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		httpErr := fmt.Errorf("GET %s failed: status=%d body=%s", rawURL, resp.StatusCode, trimForLog(string(body), 200))
+		httpErr := newHTTPStatusProviderError(fmt.Errorf("GET %s failed: status=%d body=%s", rawURL, resp.StatusCode, trimForLog(string(body), 200)), resp.StatusCode, resp.Header, string(body))
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
 			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, resp.StatusCode, resp.Header, httpErr)
 		}
@@ -159,6 +164,9 @@ func (a *App) getTextAbsoluteMulti(ctx context.Context, rawURLs []string, header
 }
 
 func (a *App) getTextAbsoluteSingle(ctx context.Context, rawURL string, headers map[string]string) (string, error) {
+	if err := a.trackerCircuitError(ctx, rawURL); err != nil {
+		return "", err
+	}
 	if meta, ok := trackerRequestMetaFromContext(ctx); ok && a.trackerThrottle != nil {
 		release, err := a.trackerThrottle.acquire(ctx, meta.Provider, meta.Chain)
 		if err != nil {
@@ -181,6 +189,7 @@ func (a *App) getTextAbsoluteSingle(ctx context.Context, rawURL string, headers 
 	}
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
+		err = newTransportProviderError(err)
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
 			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
 		}
@@ -195,7 +204,7 @@ func (a *App) getTextAbsoluteSingle(ctx context.Context, rawURL string, headers 
 		return "", err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		httpErr := fmt.Errorf("GET %s failed: status=%d body=%s", rawURL, resp.StatusCode, trimForLog(string(body), 200))
+		httpErr := newHTTPStatusProviderError(fmt.Errorf("GET %s failed: status=%d body=%s", rawURL, resp.StatusCode, trimForLog(string(body), 200)), resp.StatusCode, resp.Header, string(body))
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
 			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, resp.StatusCode, resp.Header, httpErr)
 		}
@@ -231,6 +240,9 @@ func (a *App) postJSONAbsoluteMulti(ctx context.Context, rawURLs []string, heade
 }
 
 func (a *App) postJSONAbsoluteSingle(ctx context.Context, rawURL string, headers map[string]string, payload any, out any) error {
+	if err := a.trackerCircuitError(ctx, rawURL); err != nil {
+		return err
+	}
 	if meta, ok := trackerRequestMetaFromContext(ctx); ok && a.trackerThrottle != nil {
 		release, err := a.trackerThrottle.acquire(ctx, meta.Provider, meta.Chain)
 		if err != nil {
@@ -258,6 +270,7 @@ func (a *App) postJSONAbsoluteSingle(ctx context.Context, rawURL string, headers
 	}
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
+		err = newTransportProviderError(err)
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
 			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, 0, nil, err)
 		}
@@ -272,7 +285,7 @@ func (a *App) postJSONAbsoluteSingle(ctx context.Context, rawURL string, headers
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		httpErr := fmt.Errorf("POST %s failed: status=%d body=%s", rawURL, resp.StatusCode, trimForLog(string(body), 200))
+		httpErr := newHTTPStatusProviderError(fmt.Errorf("POST %s failed: status=%d body=%s", rawURL, resp.StatusCode, trimForLog(string(body), 200)), resp.StatusCode, resp.Header, string(body))
 		if meta, ok := trackerRequestMetaFromContext(ctx); ok {
 			a.trackerHealth.recordAttempt(meta.Provider, meta.Chain, resp.StatusCode, resp.Header, httpErr)
 		}
@@ -313,4 +326,22 @@ func (a *App) postRPCJSON(ctx context.Context, rawURLs []string, method string, 
 		return nil
 	}
 	return json.Unmarshal(env.Result, out)
+}
+
+// trackerCircuitError fails fast while the request's provider is backing off,
+// without contacting the upstream.
+func (a *App) trackerCircuitError(ctx context.Context, rawURL string) error {
+	meta, ok := trackerRequestMetaFromContext(ctx)
+	if !ok || a.trackerHealth == nil {
+		return nil
+	}
+	until, reason := a.trackerHealth.circuitOpenUntil(meta.Provider, meta.Chain)
+	if until.IsZero() {
+		return nil
+	}
+	return &providerError{
+		Kind:       providerErrCircuitOpen,
+		RetryAfter: time.Until(until),
+		Err:        fmt.Errorf("%s skipped: %s/%s backing off (%s) until %s", rawURL, meta.Provider, meta.Chain, reason, until.Format(time.RFC3339)),
+	}
 }

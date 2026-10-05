@@ -191,6 +191,7 @@ func markUnresolvedAddressLookupTasksPending(nodes []FlowNode, tasks map[string]
 			}
 			nodes[ref.index].Metrics["live_holdings_available"] = false
 			nodes[ref.index].Metrics["live_holdings_status"] = "pending"
+			nodes[ref.index].Metrics["live_holdings_error_kind"] = "budget"
 		}
 	}
 }
@@ -490,9 +491,11 @@ func (a *App) enrichNodesWithLiveHoldings(
 						}
 						nodes[ref.index].Metrics["live_holdings_available"] = false
 						nodes[ref.index].Metrics["live_holdings_status"] = "pending"
+						nodes[ref.index].Metrics["live_holdings_error_kind"] = "budget"
 					}
 					continue
 				}
+				errorKind, _ := classifyProviderError(result.err)
 				failed = append(failed, fmt.Sprintf("%s:%s", task.chain, shortAddress(task.address)))
 				fields := map[string]any{
 					"chain":      task.chain,
@@ -507,6 +510,7 @@ func (a *App) enrichNodesWithLiveHoldings(
 				} else if providers := strings.Join(a.cfg.trackerProvidersForChain(task.chain), ","); providers != "" {
 					fields["provider_candidates"] = providers
 				}
+				fields["error_kind"] = string(errorKind)
 				logError(baseLookupCtx, "actor_tracker_live_holdings_lookup_failed", result.err, fields)
 				for _, ref := range refs {
 					if nodes[ref.index].Metrics == nil {
@@ -514,6 +518,7 @@ func (a *App) enrichNodesWithLiveHoldings(
 					}
 					nodes[ref.index].Metrics["live_holdings_available"] = false
 					nodes[ref.index].Metrics["live_holdings_status"] = "error"
+					nodes[ref.index].Metrics["live_holdings_error_kind"] = string(errorKind)
 				}
 				continue
 			}
@@ -637,6 +642,8 @@ func applyLiveHoldingMetrics(node *FlowNode, holdings []liveHoldingValue, source
 	if node.Metrics == nil {
 		node.Metrics = map[string]any{}
 	}
+	delete(node.Metrics, "live_holdings_error_kind")
+	delete(node.Metrics, "live_holdings_last_error_kind")
 	sort.Slice(holdings, func(i, j int) bool {
 		return holdings[i].USDSpot > holdings[j].USDSpot
 	})

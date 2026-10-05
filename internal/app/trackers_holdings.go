@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (a *App) fetchAddressLiveHoldings(ctx context.Context, chain, address string, prices priceBook) ([]liveHoldingValue, error) {
@@ -270,7 +271,35 @@ func (a *App) fetchTHORBondIndexes(ctx context.Context) (map[string]string, map[
 	return a.fetchProtocolBondIndexes(ctx, sourceProtocolTHOR)
 }
 
+// protocolBondIndexes is one /nodes snapshot indexed three ways.
+type protocolBondIndexes struct {
+	bondedByAddress map[string]string
+	totalBondByNode map[string]string
+	statusByNode    map[string]string
+}
+
+const bondIndexesCacheTTL = time.Minute
+
+// fetchProtocolBondIndexes returns bonded amounts by bond address, total bond
+// by node, and node status. The node list is large and changes slowly, so one
+// snapshot is shared for bondIndexesCacheTTL across lookups and chunks.
 func (a *App) fetchProtocolBondIndexes(ctx context.Context, protocol string) (map[string]string, map[string]string, map[string]string, error) {
+	cache := &a.bondIndexesTHOR
+	if normalizeSourceProtocol(protocol) == sourceProtocolMAYA {
+		cache = &a.bondIndexesMAYA
+	}
+	cache.init(bondIndexesCacheTTL, nil)
+	indexes, err := cache.get(ctx, func(ctx context.Context) (protocolBondIndexes, error) {
+		bonded, totals, statuses, err := a.fetchProtocolBondIndexesFresh(ctx, protocol)
+		return protocolBondIndexes{bondedByAddress: bonded, totalBondByNode: totals, statusByNode: statuses}, err
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return indexes.bondedByAddress, indexes.totalBondByNode, indexes.statusByNode, nil
+}
+
+func (a *App) fetchProtocolBondIndexesFresh(ctx context.Context, protocol string) (map[string]string, map[string]string, map[string]string, error) {
 	client := a.protocolNodeClient(protocol)
 	if client == nil {
 		return nil, nil, nil, errExternalTrackerUnavailable

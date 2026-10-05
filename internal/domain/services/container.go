@@ -10,6 +10,7 @@ type Container struct {
 	AddressExplorer *AddressExplorerService
 	Runs            *RunService
 	GraphStates     *GraphStateService
+	Jobs            *JobService
 }
 
 func New(legacy *app.App) *Container {
@@ -21,5 +22,6 @@ func New(legacy *app.App) *Container {
 		AddressExplorer: &AddressExplorerService{legacy: legacy},
 		Runs:            &RunService{legacy: legacy},
 		GraphStates:     &GraphStateService{legacy: legacy},
+		Jobs:            &JobService{legacy: legacy},
 	}
 }
