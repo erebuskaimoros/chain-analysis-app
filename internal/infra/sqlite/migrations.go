@@ -21,6 +21,7 @@ var migrations = []migration{
 	{id: 5, name: "ledger", up: migrateLedger},
 	{id: 6, name: "holdings_snapshots", up: migrateHoldingsSnapshots},
 	{id: 7, name: "price_points", up: migratePricePoints},
+	{id: 8, name: "labels", up: migrateLabels},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -363,6 +364,41 @@ func migratePricePoints(ctx context.Context, db *sql.Tx) error {
 		)
 	`)
 	return err
+}
+
+// migrateLabels stores address attributions from built-in, imported, and
+// third-party sources.
+func migrateLabels(ctx context.Context, db *sql.Tx) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS labels (
+			chain TEXT NOT NULL DEFAULT '',
+			address TEXT NOT NULL,
+			normalized_address TEXT NOT NULL,
+			label TEXT NOT NULL,
+			category TEXT NOT NULL DEFAULT '',
+			actor_name TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL,
+			source_ref TEXT NOT NULL DEFAULT '',
+			confidence INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE(normalized_address, source, label)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_labels_address ON labels(normalized_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_labels_source ON labels(source)`,
+		`CREATE TABLE IF NOT EXISTS label_sources (
+			source TEXT PRIMARY KEY,
+			version TEXT NOT NULL DEFAULT '',
+			license TEXT NOT NULL DEFAULT '',
+			imported_at TEXT NOT NULL,
+			count INTEGER NOT NULL DEFAULT 0
+		)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func tableColumnSet(ctx context.Context, db execQuerier, table string) (map[string]struct{}, error) {

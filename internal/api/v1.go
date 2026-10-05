@@ -91,6 +91,8 @@ func (h *V1) Register(mux *http.ServeMux) {
 	handle("POST /api/v1/jobs/live-holdings", h.handleStartLiveHoldingsJob)
 	handle("GET /api/v1/jobs/{id}", h.handleJob)
 	handle("DELETE /api/v1/jobs/{id}", h.handleCancelJob)
+	handle("GET /api/v1/labels", h.handleLabels)
+	handle("GET /api/v1/labels/sources", h.handleLabelSources)
 }
 
 func (h *V1) handleHealth(w http.ResponseWriter, r *http.Request) {

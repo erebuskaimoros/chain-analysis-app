@@ -50,25 +50,9 @@ var frontierBlacklist = map[string]string{
 
 // knownAddressLabels provides display labels for well-known addresses that are
 // not in the protocol directory. These addresses are still eligible for hop
-// expansion unlike frontierBlacklist entries.
-var knownAddressLabels = map[string]string{
-	"thor1v8ppstuf6e3x0r4glqc68d5jqcs2tf38cg2q6y": "Synth Module",
-	"thor17hwqt302e5f2xm4h95ma8wuggqkvfzgvsnh5z9": "Arb Bot",
-	"thor1g98cy3n9mmjrpn0sxmn63lztelera37n8n67c0": "Asgard Module",
-	"thor15q46zcln5qkmyt7azje3qyvlrfxzl8j2v9k6rw": "Scheduler Module",
-	"0x0b354326e140bdfb605b90aff0fe2cb07d48f7a3":  "Treasury Eth Wallet",
-	"TWS1onJnNTg8tJHomceqxBxTsUB1DHh7PV":          "ChangeNOW",
-	// Rujira / TCY flow labels discovered from on-chain contract metadata.
-	"thor1n5a08r0zvmqca39ka2tgwlkjy9ugalutk7fjpzptfppqcccnat2ska5t4g": "Rujira THORChain Swap",
-	"thor1f2cgnj7elhxk9f2uq8dufl6vm96rhzz3ve0t4x9z099untck2xfqj9qpe8": "DCA into TCY",
-	"thor1jshw3secvxhzfyza6aj530hrc73zave42zgs525n0xkc3e9d6wkqrm8j3y": "Rujira FIN TCY/BTC",
-	"thor197g3d76rp4dsvfy5zz67h5fr3aj8vjmzezmfy9c8z7t9nh63wsms85amlw": "TCY Vault",
-	"thor136rwqvwy3flttm9wfnc5xgnlr6mu5k8e2elgzs2hdhuwf50w3l2q0nu2qu": "CALC Manager",
-	"thor1t2cnyn98xusxakgemsenn2p9n3ykd6accr2c0zg22nczh097ln7qeze20f": "CALC Scheduler",
-	"thor17dxtxrne37gguxdeun4n36vqd5jmxxku5tr6gkuhhsh4lz9e8gksck4ygu": "CALC DAO",
-	// Shared deployer repeated across audited/mainnet-targeted Rujira contract manifests.
-	"thor1e0lmk5juawc46jwjwd0xfz587njej7ay5fh6cd": "Rujira Contract Deployer",
-}
+// expansion unlike frontierBlacklist entries. They come from the built-in
+// TagPack (labels/builtin.yaml).
+var knownAddressLabels = builtinLabelMap()
 
 // knownCalcRepresentativePayouts preserves stable Treasury destinations for
 // long-lived CALC strategies whose live Midgard process rows only expose
@@ -730,6 +714,7 @@ func (a *App) buildActorTracker(ctx context.Context, req ActorTrackerRequest) (A
 	}
 
 	nodes := builder.nodeList()
+	a.applyAddressLabels(ctx, nodes)
 	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, false)...)
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()
@@ -1038,6 +1023,7 @@ func (a *App) expandActorTrackerOneHop(ctx context.Context, req ActorTrackerExpa
 	}
 
 	nodes := builder.nodeList()
+	a.applyAddressLabels(ctx, nodes)
 	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, false)...)
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()

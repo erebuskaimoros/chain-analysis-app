@@ -248,6 +248,7 @@ func (a *App) buildAddressExplorer(ctx context.Context, req AddressExplorerReque
 	}
 
 	nodes := builder.nodeList()
+	a.applyAddressLabels(ctx, nodes)
 	builder.warnings = append(builder.warnings, a.enrichNodesWithLiveHoldings(ctx, nodes, prices, builder.protocols, true)...)
 	builder.applyNodeLabelsToValidatorMetadata(nodes)
 	edges := builder.edgeList()

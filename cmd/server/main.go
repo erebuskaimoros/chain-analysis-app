@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -21,6 +22,9 @@ var (
 
 func main() {
 	cfg := app.LoadConfigFromEnv()
+	if len(os.Args) > 1 && os.Args[1] == "labels" {
+		os.Exit(runLabelsCommand(cfg, os.Args[2:]))
+	}
 	if strings.TrimSpace(version) != "" {
 		cfg.BuildVersion = strings.TrimSpace(version)
 	}
@@ -51,4 +55,40 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*cfg.RequestTimeout)
 	defer cancel()
 	_ = runtime.Shutdown(shutdownCtx)
+}
+
+// runLabelsCommand handles `labels import <source> <path>` and
+// `labels sources` against the configured database.
+func runLabelsCommand(cfg app.Config, args []string) int {
+	usage := "usage: chain-analysis-server labels import <graphsense|ofac|eth-labels|scamsniffer> <path>\n       chain-analysis-server labels sources"
+	a, err := app.New(cfg)
+	if err != nil {
+		log.Printf("open app: %v", err)
+		return 1
+	}
+	defer a.Close()
+	ctx := context.Background()
+	switch {
+	case len(args) == 3 && args[0] == "import":
+		result, err := a.ImportLabels(ctx, args[1], args[2])
+		if err != nil {
+			log.Printf("import %s labels: %v", args[1], err)
+			return 1
+		}
+		fmt.Printf("imported %d %s labels\n", result.Count, result.Source)
+		return 0
+	case len(args) == 1 && args[0] == "sources":
+		sources, err := a.LabelSources(ctx)
+		if err != nil {
+			log.Printf("list label sources: %v", err)
+			return 1
+		}
+		for _, s := range sources {
+			fmt.Printf("%-12s %8d labels  imported %s  (%s, %s)\n", s.Source, s.Count, s.ImportedAt, s.Version, s.License)
+		}
+		return 0
+	default:
+		fmt.Fprintln(os.Stderr, usage)
+		return 2
+	}
 }

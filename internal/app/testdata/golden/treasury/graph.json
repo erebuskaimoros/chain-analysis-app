@@ -23571,6 +23571,17 @@
    "metrics": {
     "address": "0x0B354326E140bDFb605b90AFF0Fe2CB07D48F7a3",
     "in_edges": 1,
+    "label_category": "protocol",
+    "label_confidence": 100,
+    "label_source": "builtin",
+    "labels": [
+     {
+      "category": "protocol",
+      "confidence": 100,
+      "label": "Treasury Eth Wallet",
+      "source": "builtin"
+     }
+    ],
     "source_protocol": "THOR",
     "source_protocols": [
      "THOR"

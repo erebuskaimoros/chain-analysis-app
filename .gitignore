@@ -13,3 +13,4 @@ frontend/vite.config.d.ts
 internal/app/data/
 Saved Graphs/
 .DS_Store
+data/labels/

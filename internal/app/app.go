@@ -68,6 +68,9 @@ func New(cfg Config) (*App, error) {
 	if err := initSchema(ctx, db); err != nil {
 		return nil, err
 	}
+	if err := seedBuiltinLabels(ctx, db); err != nil {
+		return nil, fmt.Errorf("seed built-in labels: %w", err)
+	}
 	// One-time move of the retired query-window caches into the ledger. Large
 	// databases need more than the schema timeout.
 	backfillCtx, cancelBackfill := context.WithTimeout(context.Background(), 30*time.Minute)
