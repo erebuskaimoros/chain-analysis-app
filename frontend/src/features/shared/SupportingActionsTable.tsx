@@ -22,7 +22,7 @@ export function SupportingActionsTable({ actions, onLookup }: SupportingActionsT
             <th>TX</th>
             <th>Asset</th>
             <th>Amount</th>
-            <th>USD</th>
+            <th>USD at time</th>
           </tr>
         </thead>
         <tbody>
@@ -38,7 +38,7 @@ export function SupportingActionsTable({ actions, onLookup }: SupportingActionsT
               </td>
               <td>{action.primary_asset || "n/a"}</td>
               <td>{action.amount_raw || "n/a"}</td>
-              <td>{formatUSD(action.usd_spot)}</td>
+              <td title={action.price_source ? `Priced from ${action.price_source}` : undefined}>{formatUSD(action.usd_spot)}</td>
             </tr>
           ))}
         </tbody>

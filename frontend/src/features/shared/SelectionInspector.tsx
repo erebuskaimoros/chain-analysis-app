@@ -142,9 +142,15 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
           <dd className="mono-wrap">{edge.to}</dd>
         </div>
         <div>
-          <dt>USD</dt>
+          <dt>{typeof edge.usd_now === "number" ? "USD at time" : "USD"}</dt>
           <dd>{formatUSD(edge.usd_spot)}</dd>
         </div>
+        {typeof edge.usd_now === "number" ? (
+          <div>
+            <dt>USD today</dt>
+            <dd>{formatUSD(edge.usd_now)}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Transactions</dt>
           <dd>{edge.tx_ids.length}</dd>
@@ -176,7 +182,7 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
                 <th>Time</th>
                 <th>Source</th>
                 <th>TX</th>
-                <th>USD</th>
+                <th>USD at time</th>
               </tr>
             </thead>
             <tbody>

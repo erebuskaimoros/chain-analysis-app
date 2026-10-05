@@ -68,6 +68,7 @@ function requestFromState(form: GraphFormState, actorIDs: number[]): ActorGraphR
     max_hops: Number(form.max_hops) || 4,
     flow_types: [...DEFAULT_FLOW_TYPES],
     min_usd: Number.isFinite(minUSD) ? minUSD : 0,
+    include_unpriced: Boolean(form.include_unpriced),
     collapse_external: false,
     display_mode: DEFAULT_DISPLAY_MODE,
   };
@@ -79,6 +80,7 @@ function stateFromRequest(request: ActorGraphRequest): GraphFormState {
     end_time: request.end_time,
     max_hops: request.max_hops || 4,
     min_usd: String(request.min_usd ?? 0),
+    include_unpriced: Boolean(request.include_unpriced),
   };
 }
 

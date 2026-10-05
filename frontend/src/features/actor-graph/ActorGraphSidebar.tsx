@@ -6,6 +6,7 @@ export interface GraphFormState {
   end_time: string;
   max_hops: number;
   min_usd: string;
+  include_unpriced?: boolean;
 }
 
 interface ActorGraphSidebarProps {
@@ -131,13 +132,21 @@ export function ActorGraphSidebar({
             />
           </label>
           <label className="field">
-            <span>Min USD</span>
+            <span>Min USD (at time)</span>
             <input
               type="number"
               step="any"
               value={form.min_usd}
               onChange={(event) => onFormChange({ ...form, min_usd: event.target.value })}
             />
+          </label>
+          <label className="field field-checkbox" title="Keep flows of assets with no known price when a minimum is set">
+            <input
+              type="checkbox"
+              checked={Boolean(form.include_unpriced)}
+              onChange={(event) => onFormChange({ ...form, include_unpriced: event.target.checked })}
+            />
+            <span>Include unpriced assets</span>
           </label>
           <div className="form-actions field-full">
             <button type="submit" className="button" disabled={isBuilding || !canBuild}>

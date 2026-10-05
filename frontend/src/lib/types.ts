@@ -79,6 +79,9 @@ export interface FlowAssetValue {
   asset: string;
   amount_raw: string;
   usd_spot: number;
+  usd_at_time?: number;
+  usd_now?: number;
+  price_source?: string;
   direction?: string;
   asset_kind?: string;
   token_standard?: string;
@@ -106,6 +109,8 @@ export interface FlowEdgeTransaction {
   height: number;
   time: string;
   usd_spot: number;
+  usd_at_time?: number;
+  usd_now?: number;
   assets: FlowAssetValue[];
   source_protocol?: string;
 }
@@ -125,6 +130,8 @@ export interface FlowEdge {
   assets: FlowAssetValue[];
   transactions: FlowEdgeTransaction[];
   usd_spot: number;
+  usd_at_time?: number;
+  usd_now?: number;
   tx_ids: string[];
   heights: number[];
   actor_ids: number[];
@@ -145,6 +152,9 @@ export interface SupportingAction {
   primary_asset: string;
   amount_raw: string;
   usd_spot: number;
+  usd_at_time?: number;
+  usd_now?: number;
+  price_source?: string;
   height: number;
   time: string;
   from_node: string;
@@ -174,6 +184,7 @@ export interface ActorGraphRequest {
   max_hops: number;
   flow_types: string[];
   min_usd: number;
+  include_unpriced?: boolean;
   collapse_external: boolean;
   display_mode: string;
   progress_token?: string;

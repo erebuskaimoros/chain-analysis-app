@@ -145,7 +145,7 @@ describe("ActorGraphPage", () => {
 
     await waitFor(() => expect(screen.getByText("Loaded graph state from actor-state.json.")).toBeTruthy());
     expect(screen.getByRole("heading", { name: "Current Flow Graph" })).toBeTruthy();
-    expect((screen.getByLabelText("Min USD") as HTMLInputElement).value).toBe("25");
+    expect((screen.getByLabelText("Min USD (at time)") as HTMLInputElement).value).toBe("25");
     expect((screen.getByLabelText("Max Hops") as HTMLInputElement).value).toBe("3");
     expect((screen.getByLabelText("Start") as HTMLInputElement).value).toBe("2026-02-01T00:00");
     expect((screen.getByRole("checkbox", { name: /Treasury/ }) as HTMLInputElement).checked).toBe(true);
@@ -230,7 +230,7 @@ describe("ActorGraphPage", () => {
     await waitFor(() => expect(screen.getByText('Loaded graph state from "Treasury case".')).toBeTruthy());
     expect(apiMocks.getGraphState).toHaveBeenCalledWith(3);
     expect(screen.getByRole("heading", { name: "Current Flow Graph" })).toBeTruthy();
-    expect((screen.getByLabelText("Min USD") as HTMLInputElement).value).toBe("25");
+    expect((screen.getByLabelText("Min USD (at time)") as HTMLInputElement).value).toBe("25");
   });
 
   it("refreshes live holdings after loading a saved graph state", async () => {
@@ -346,7 +346,7 @@ describe("ActorGraphPage", () => {
     renderPage();
 
     await screen.findByText("Treasury");
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Treasury/ }));
     fireEvent.click(screen.getByRole("button", { name: "Build Graph" }));
 
     await screen.findByRole("heading", { name: "Current Flow Graph" });
@@ -392,7 +392,7 @@ describe("ActorGraphPage", () => {
 
     renderPage();
     await screen.findByText("Treasury");
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Treasury/ }));
     fireEvent.click(screen.getByRole("button", { name: "Build Graph" }));
 
     await screen.findByRole("heading", { name: "Current Flow Graph" });
@@ -429,7 +429,7 @@ describe("ActorGraphPage", () => {
 
     renderPage();
     await screen.findByText("Treasury");
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Treasury/ }));
     fireEvent.click(screen.getByRole("button", { name: "Build Graph" }));
 
     await screen.findByRole("heading", { name: "Current Flow Graph" });

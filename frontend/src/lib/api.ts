@@ -20,6 +20,7 @@ import type {
   LiveHoldingsRefreshNode,
   LiveHoldingsRefreshResponse,
 } from "./types";
+import { preferAtTimeValues } from "./atTimeValues";
 
 export async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -126,12 +127,12 @@ export async function runJob<T, P = unknown>(path: string, payload: unknown, opt
   throw new Error(job.error || `Job ${job.status}.`);
 }
 
-export function buildActorGraph(payload: ActorGraphRequest, onProgress?: (job: JobSnapshot) => void) {
-  return runJob<ActorGraphResponse>("/api/v1/jobs/actor-graph", payload, { onProgress });
+export async function buildActorGraph(payload: ActorGraphRequest, onProgress?: (job: JobSnapshot) => void) {
+  return preferAtTimeValues(await runJob<ActorGraphResponse>("/api/v1/jobs/actor-graph", payload, { onProgress }));
 }
 
-export function expandActorGraph(payload: ActorGraphExpandRequest) {
-  return runJob<ActorGraphResponse>("/api/v1/jobs/actor-graph/expand", payload);
+export async function expandActorGraph(payload: ActorGraphExpandRequest) {
+  return preferAtTimeValues(await runJob<ActorGraphResponse>("/api/v1/jobs/actor-graph/expand", payload));
 }
 
 // refreshLiveHoldingsInBackground runs a server-side live-holdings job. The
@@ -164,8 +165,8 @@ export function deleteActorGraphRun(id: number) {
   return fetchJSON<{ ok: boolean }>(`/api/v1/runs/actor-graph/${id}`, { method: "DELETE" });
 }
 
-export function buildAddressExplorer(payload: AddressExplorerRequest) {
-  return runJob<AddressExplorerResponse>("/api/v1/jobs/address-explorer", payload);
+export async function buildAddressExplorer(payload: AddressExplorerRequest) {
+  return preferAtTimeValues(await runJob<AddressExplorerResponse>("/api/v1/jobs/address-explorer", payload));
 }
 
 export async function listAddressExplorerRuns() {
