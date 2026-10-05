@@ -23,6 +23,7 @@ var migrations = []migration{
 	{id: 7, name: "price_points", up: migratePricePoints},
 	{id: 8, name: "labels", up: migrateLabels},
 	{id: 9, name: "actor_monitoring", up: migrateActorMonitoring},
+	{id: 10, name: "trace_runs", up: migrateTraceRuns},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -425,6 +426,28 @@ func migrateActorMonitoring(ctx context.Context, db *sql.Tx) error {
 			FOREIGN KEY(actor_id) REFERENCES actors(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_actor_snapshots_actor ON actor_snapshots(actor_id, taken_at)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateTraceRuns(ctx context.Context, db *sql.Tx) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS trace_runs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			created_at TEXT NOT NULL,
+			title TEXT NOT NULL,
+			direction TEXT NOT NULL,
+			policy TEXT NOT NULL,
+			request_json TEXT NOT NULL,
+			summary_json TEXT NOT NULL,
+			response_json TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_trace_runs_created ON trace_runs(created_at)`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {

@@ -97,6 +97,11 @@ func (h *V1) Register(mux *http.ServeMux) {
 	handle("PUT /api/v1/actors/{id}/watch", h.handleActorWatch)
 	handle("POST /api/v1/actors/{id}/viewed", h.handleActorViewed)
 	handle("POST /api/v1/jobs/actor-refresh", h.handleStartActorRefreshJob)
+	handle("POST /api/v1/jobs/trace", h.handleStartTraceJob)
+	handle("POST /api/v1/analysis/trace", h.handleStartTraceJob)
+	handle("GET /api/v1/traces", h.handleTraceRuns)
+	handle("GET /api/v1/traces/{id}", h.handleTraceRun)
+	handle("DELETE /api/v1/traces/{id}", h.handleTraceRun)
 }
 
 func (h *V1) handleHealth(w http.ResponseWriter, r *http.Request) {

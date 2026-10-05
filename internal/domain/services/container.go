@@ -13,6 +13,7 @@ type Container struct {
 	Jobs            *JobService
 	Labels          *LabelService
 	Monitor         *MonitorService
+	Trace           *TraceService
 }
 
 func New(legacy *app.App) *Container {
@@ -27,5 +28,6 @@ func New(legacy *app.App) *Container {
 		Jobs:            &JobService{legacy: legacy},
 		Labels:          &LabelService{legacy: legacy},
 		Monitor:         &MonitorService{legacy: legacy},
+		Trace:           &TraceService{legacy: legacy},
 	}
 }

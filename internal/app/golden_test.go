@@ -181,6 +181,31 @@ func runGoldenCase(t *testing.T, dir string, gc goldenCase) ([]byte, []string) {
 
 func buildGoldenGraph(t *testing.T, gc goldenCase, transport *httpCassette, keys map[string]string) (ActorTrackerResponse, error) {
 	t.Helper()
+	app, err := newGoldenApp(t, transport, keys)
+	if err != nil {
+		return ActorTrackerResponse{}, err
+	}
+	defer app.Close()
+
+	ctx := context.Background()
+	req := gc.Request
+	req.ActorIDs = nil
+	for _, actor := range gc.Actors {
+		created, err := app.UpsertActor(ctx, 0, actor)
+		if err != nil {
+			return ActorTrackerResponse{}, fmt.Errorf("create actor %q: %w", actor.Name, err)
+		}
+		req.ActorIDs = append(req.ActorIDs, created.ID)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Minute)
+	defer cancel()
+	return app.buildActorTracker(ctx, req)
+}
+
+// newGoldenApp opens an app on a temp database whose HTTP goes through the
+// cassette, with the built-in endpoint defaults.
+func newGoldenApp(t *testing.T, transport *httpCassette, keys map[string]string) (*App, error) {
+	t.Helper()
 	for _, name := range goldenEnvOverrides {
 		t.Setenv(name, "")
 	}
@@ -201,27 +226,13 @@ func buildGoldenGraph(t *testing.T, gc goldenCase, transport *httpCassette, keys
 
 	app, err := New(cfg)
 	if err != nil {
-		return ActorTrackerResponse{}, err
+		return nil, err
 	}
-	defer app.Close()
 	if transport.mode == cassetteReplay {
 		// Provider spacing protects live upstreams; replay has none.
 		app.trackerThrottle = nil
 	}
-
-	ctx := context.Background()
-	req := gc.Request
-	req.ActorIDs = nil
-	for _, actor := range gc.Actors {
-		created, err := app.UpsertActor(ctx, 0, actor)
-		if err != nil {
-			return ActorTrackerResponse{}, fmt.Errorf("create actor %q: %w", actor.Name, err)
-		}
-		req.ActorIDs = append(req.ActorIDs, created.ID)
-	}
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Minute)
-	defer cancel()
-	return app.buildActorTracker(ctx, req)
+	return app, nil
 }
 
 // canonicalGoldenGraph removes wall-clock and live-holdings fields and sorts
