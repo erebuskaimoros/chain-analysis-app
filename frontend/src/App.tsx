@@ -8,7 +8,7 @@ import {
   type LazyExoticComponent,
 } from "react";
 
-type ViewKey = "overview" | "actors" | "graph" | "explorer" | "annotations";
+type ViewKey = "overview" | "actors" | "graph" | "explorer" | "trace" | "annotations";
 
 interface ViewDef {
   key: ViewKey;
@@ -24,7 +24,7 @@ const views: ViewDef[] = [
     label: "Overview",
     eyebrow: "System",
     title: "Liquidity Flow Workspace",
-    description: "The typed React frontend drives the unified THOR + MAYA flow-analysis workflow directly against `/api/v1`, with `/legacy/` left untouched.",
+    description: "Trace, monitor and explore THOR, MAYA and connected-chain flows against `/api/v1`.",
   },
   {
     key: "actors",
@@ -46,6 +46,13 @@ const views: ViewDef[] = [
     eyebrow: "Analysis",
     title: "Address Explorer",
     description: "Preview address activity, choose loading direction when needed, and page explorer graph batches natively.",
+  },
+  {
+    key: "trace",
+    label: "Trace",
+    eyebrow: "Analysis",
+    title: "Follow the Funds",
+    description: "Follow value hop by hop from an address or transaction, through swaps across chains, to where it rests: exchanges, sanctioned addresses, pools, or wallets that still hold it.",
   },
   {
     key: "annotations",
@@ -76,6 +83,9 @@ const pageComponents: Record<ViewKey, LazyPageComponent> = {
   ),
   explorer: lazyPage(() =>
     import("./features/explorer/ExplorerPage").then((module) => ({ default: module.ExplorerPage }))
+  ),
+  trace: lazyPage(() =>
+    import("./features/trace/TracePage").then((module) => ({ default: module.TracePage }))
   ),
   annotations: lazyPage(() =>
     import("./features/annotations/AnnotationsPage").then((module) => ({ default: module.AnnotationsPage }))
@@ -139,9 +149,6 @@ function App() {
             </button>
           ))}
         </nav>
-        <a className="link-button secondary" href="/legacy/" target="_blank" rel="noreferrer">
-          Open Legacy App
-        </a>
       </aside>
 
       <main className="shell-main">

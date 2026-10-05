@@ -176,3 +176,49 @@ export function explorerURLForAddress(address: string, chain: string) {
       return "";
   }
 }
+
+// chainForAsset reads the chain from a THORChain asset (ETH.USDC-0X…, BTC-BTC).
+export function chainForAsset(asset: string) {
+  const value = String(asset || "").trim().toUpperCase();
+  const match = value.match(/^([A-Z0-9]+)[.~-]/);
+  return match ? match[1] : "";
+}
+
+// explorerURLForTx links a transaction hash on its chain. Hashes arrive in
+// THORChain's form (upper case, no 0x).
+export function explorerURLForTx(txID: string, chain: string) {
+  const raw = String(txID || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const lower = raw.toLowerCase().replace(/^0x/, "");
+  switch (String(chain || "").trim().toUpperCase()) {
+    case "THOR":
+    case "MAYA":
+      return `https://thorchain.net/tx/${encodeURIComponent(raw.toUpperCase())}`;
+    case "BTC":
+      return `https://mempool.space/tx/${encodeURIComponent(lower)}`;
+    case "LTC":
+      return `https://litecoinspace.org/tx/${encodeURIComponent(lower)}`;
+    case "BCH":
+      return `https://blockchair.com/bitcoin-cash/transaction/${encodeURIComponent(lower)}`;
+    case "DOGE":
+      return `https://blockchair.com/dogecoin/transaction/${encodeURIComponent(lower)}`;
+    case "ETH":
+      return `https://etherscan.io/tx/0x${encodeURIComponent(lower)}`;
+    case "BSC":
+      return `https://bscscan.com/tx/0x${encodeURIComponent(lower)}`;
+    case "BASE":
+      return `https://basescan.org/tx/0x${encodeURIComponent(lower)}`;
+    case "AVAX":
+      return `https://snowtrace.io/tx/0x${encodeURIComponent(lower)}`;
+    case "GAIA":
+      return `https://www.mintscan.io/cosmos/tx/${encodeURIComponent(raw.toUpperCase())}`;
+    case "TRON":
+      return `https://tronscan.org/#/transaction/${encodeURIComponent(lower)}`;
+    case "XRP":
+      return `https://xrpscan.com/tx/${encodeURIComponent(raw.toUpperCase())}`;
+    default:
+      return "";
+  }
+}

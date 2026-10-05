@@ -1328,3 +1328,48 @@ textarea {
   padding: 0.3rem 0.65rem;
   font-size: 0.78rem;
 }
+
+/* Trace results. */
+.trace-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.trace-tile {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  background: var(--surface-strong);
+}
+.trace-tile-label,
+.trace-tile-detail,
+.trace-fraction {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+.trace-tile-value {
+  font-size: 1.5rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.trace-method {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--ink-soft);
+}
+.trace-graph {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr);
+  gap: 1rem;
+  min-height: 480px;
+}
+.trace-stops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  border: none;
+  padding: 0;
+}

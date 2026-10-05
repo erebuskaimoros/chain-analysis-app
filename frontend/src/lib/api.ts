@@ -21,6 +21,9 @@ import type {
   JobSnapshot,
   LiveHoldingsRefreshNode,
   LiveHoldingsRefreshResponse,
+  TraceRequest,
+  TraceResponse,
+  TraceRun,
 } from "./types";
 import { preferAtTimeValues } from "./atTimeValues";
 
@@ -250,4 +253,22 @@ export function markActorViewed(actorID: number) {
 // current holdings) as a background job.
 export function refreshActor(actorID: number, onProgress?: (job: JobSnapshot) => void) {
   return runJob<ActorSnapshot>("/api/v1/jobs/actor-refresh", { actor_id: actorID }, { onProgress });
+}
+
+// startTrace follows funds from the request's seeds as a background job; the
+// server saves each finished trace as a run.
+export function startTrace(payload: TraceRequest, onProgress?: (job: JobSnapshot) => void) {
+  return runJob<TraceResponse>("/api/v1/jobs/trace", payload, { onProgress });
+}
+
+export function listTraceRuns() {
+  return fetchJSON<TraceRun[]>("/api/v1/traces");
+}
+
+export function getTraceRun(id: number) {
+  return fetchJSON<TraceRun>(`/api/v1/traces/${id}`);
+}
+
+export function deleteTraceRun(id: number) {
+  return fetchJSON<{ ok: boolean }>(`/api/v1/traces/${id}`, { method: "DELETE" });
 }

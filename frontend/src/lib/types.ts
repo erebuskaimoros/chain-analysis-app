@@ -443,3 +443,135 @@ export interface ActorMonitor {
   latest?: ActorSnapshot;
   since_last_view?: ActorChanges;
 }
+
+export type TraceDirection = "forward" | "backward";
+export type TracePolicy = "fifo" | "haircut" | "largest_out";
+
+export interface TraceSeed {
+  chain?: string;
+  address?: string;
+  tx_id?: string;
+}
+
+export interface TraceRequest {
+  seeds: TraceSeed[];
+  start_time: string;
+  end_time?: string;
+  amount?: number;
+  asset?: string;
+  direction?: TraceDirection;
+  policy?: TracePolicy;
+  max_depth?: number;
+  max_branches?: number;
+  min_usd_at_time?: number;
+  stop_categories?: string[];
+  include_holdings?: boolean;
+}
+
+export interface TraceQuery {
+  seeds: TraceSeed[];
+  start_time: string;
+  end_time: string;
+  amount?: number;
+  asset?: string;
+  direction: TraceDirection;
+  policy: TracePolicy;
+  max_depth: number;
+  max_branches: number;
+  min_usd_at_time: number;
+  stop_categories: string[];
+}
+
+export interface TraceAmount {
+  asset: string;
+  amount: number;
+  usd_at_time: number;
+}
+
+export interface TraceTransaction {
+  tx_id: string;
+  inbound_tx_id?: string;
+  time: string;
+  height?: number;
+  asset: string;
+  amount: number;
+  traced_amount: number;
+  input_asset?: string;
+  input_amount?: number;
+  traced_input_amount?: number;
+  traced_usd_at_time: number;
+  priced: boolean;
+  fraction: number;
+  confidence: number;
+  confidence_reason?: string;
+}
+
+export interface TraceEdge extends FlowEdge {
+  depth: number;
+  traced_assets: TraceAmount[];
+  traced_input_assets?: TraceAmount[];
+  traced_usd_at_time: number;
+  confidence_reason?: string;
+  traced_transactions: TraceTransaction[];
+}
+
+export interface TraceEndpoint {
+  node_id: string;
+  chain?: string;
+  address?: string;
+  label: string;
+  kind: string;
+  category?: string;
+  reason: string;
+  depth: number;
+  assets: TraceAmount[];
+  traced_usd_at_time: number;
+  confidence: number;
+  first_at: string;
+  last_at: string;
+  holdings_usd?: number;
+  holdings_status?: string;
+}
+
+export interface TraceTotals {
+  seed_assets: TraceAmount[];
+  seed_usd: number;
+  sink_usd: number;
+  frontier_usd: number;
+}
+
+export interface TraceResponse {
+  run_id?: number;
+  query: TraceQuery;
+  nodes: FlowNode[];
+  edges: TraceEdge[];
+  sinks: TraceEndpoint[];
+  frontier: TraceEndpoint[];
+  coverage_gaps: string[] | null;
+  warnings: string[] | null;
+  method: string[];
+  totals: TraceTotals;
+  stats: Record<string, unknown>;
+}
+
+export interface TraceSummary {
+  seeds: TraceSeed[];
+  seed_usd: number;
+  sink_usd: number;
+  frontier_usd: number;
+  sinks: number;
+  frontier: number;
+  edges: number;
+  top_sink?: string;
+}
+
+export interface TraceRun {
+  id: number;
+  created_at: string;
+  title: string;
+  direction: TraceDirection;
+  policy: TracePolicy;
+  request: TraceRequest;
+  summary: TraceSummary;
+  response?: TraceResponse;
+}

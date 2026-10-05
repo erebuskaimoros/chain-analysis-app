@@ -243,7 +243,7 @@ describe("ExplorerPage", () => {
     fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
 
     await screen.findByText("Explorer provider warning");
-    fireEvent.click(screen.getByTitle("Fullscreen (F)"));
+    fireEvent.click(await screen.findByTitle("Fullscreen (F)"));
 
     await waitFor(() => {
       expect(screen.queryByText("Explorer provider warning")).toBeNull();
