@@ -82,7 +82,8 @@ export function GraphCanvasOverlays({
         <input
           ref={searchInputRef}
           type="text"
-          placeholder="Search nodes (/)"
+          placeholder="Find a node (/)"
+          aria-label="Find a node"
           value={search.query}
           onChange={(event) => search.setQuery(event.target.value)}
           onKeyDown={(event) => {
@@ -126,7 +127,7 @@ export function GraphCanvasOverlays({
         {filters ? (
           <ToolbarButton
             active={filters.isActive || filters.isOpen}
-            title="Filters"
+            title="Filter the graph"
             onClick={() => onToolbarAction("filters")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
@@ -147,7 +148,7 @@ export function GraphCanvasOverlays({
         </ToolbarButton>
         <ToolbarButton title="Fit to view (0)" onClick={() => onToolbarAction("fit")}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" />
+            <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
           </svg>
         </ToolbarButton>
         <ToolbarButton title="Fullscreen (F)" onClick={() => onToolbarAction("fullscreen")}>
@@ -208,46 +209,65 @@ export function GraphCanvasOverlays({
 
       {hoverCard ? <GraphHoverCard hoverCard={hoverCard} /> : null}
 
-      <div className="graph-help">
-        Wheel or pinch to zoom · Trackpad scroll, middle-drag, or space+drag to pan · Left-drag to box-select ·
-        Right-click for actions · Double-click to {doubleActivateLabel.toLowerCase()}
-      </div>
-
       {menuState ? (
         <div
           className="graph-context-menu"
           ref={menuRef}
+          role="menu"
           style={{ left: `${menuState.x}px`, top: `${menuState.y}px` }}
         >
           {menuState.mode === "nodes" ? (
             <>
               <ContextAction
-                label={`Expand Nodes (${menuState.nodes.length})`}
+                label={`Expand selected (${menuState.nodes.length})`}
                 onClick={() => onContextMenuAction("expand-nodes")}
               />
-              <ContextAction label="Cluster Nodes" onClick={() => onContextMenuAction("cluster-nodes")} />
+              {nodeMenuActions?.onAddNodesToCase ? (
+                <ContextAction
+                  label={`Add ${menuState.nodes.length} to the active case`}
+                  onClick={() => onContextMenuAction("add-nodes-to-case")}
+                />
+              ) : null}
+              <ContextAction label="Cluster selected" onClick={() => onContextMenuAction("cluster-nodes")} />
             </>
           ) : null}
           {menuState.mode === "node" ? (
             <>
-              {nodeMenuActions?.onOpenExplorer ? (
-                <ContextAction label="Open explorer" onClick={() => onContextMenuAction("explorer")} />
+              <ContextAction label={doubleActivateLabel} onClick={() => onContextMenuAction("expand-hop")} />
+              {nodeMenuActions?.onExploreAddress ? (
+                <ContextAction label="Explore this address" onClick={() => onContextMenuAction("explore-address")} />
+              ) : null}
+              {nodeMenuActions?.onTraceFrom ? (
+                <ContextAction label="Trace funds from here" onClick={() => onContextMenuAction("trace-from")} />
+              ) : null}
+              {nodeMenuActions?.onAddToCase ? (
+                <ContextAction label="Add to the active case" onClick={() => onContextMenuAction("add-to-case")} />
+              ) : null}
+              <div className="graph-context-sep" role="separator" />
+              {nodeMenuActions?.onLabelNode ? (
+                <ContextAction label="Label this address…" onClick={() => onContextMenuAction("label-node")} />
               ) : null}
               {nodeMenuActions?.onCopyAddress ? (
                 <ContextAction label="Copy address" onClick={() => onContextMenuAction("copy-address")} />
               ) : null}
+              {nodeMenuActions?.onOpenExplorer ? (
+                <ContextAction label="Open in a block explorer" onClick={() => onContextMenuAction("explorer")} />
+              ) : null}
               {nodeMenuActions?.onRefreshLiveValue ? (
                 <ContextAction label="Refresh live value" onClick={() => onContextMenuAction("refresh-live-value")} />
               ) : null}
-              <ContextAction label={doubleActivateLabel} onClick={() => onContextMenuAction("expand-hop")} />
-              {nodeMenuActions?.onLabelNode ? (
-                <ContextAction label="Label node" onClick={() => onContextMenuAction("label-node")} />
-              ) : null}
               {nodeMenuActions?.onMarkAsgard ? (
-                <ContextAction label="Mark Asgard" onClick={() => onContextMenuAction("mark-asgard")} />
+                <ContextAction label="Mark as Asgard vault" onClick={() => onContextMenuAction("mark-asgard")} />
               ) : null}
               {nodeMenuActions?.onRemoveNode ? (
-                <ContextAction label="Remove from graph" onClick={() => onContextMenuAction("remove-node")} />
+                <>
+                  <div className="graph-context-sep" role="separator" />
+                  <ContextAction
+                    label="Exclude from all graphs"
+                    danger
+                    onClick={() => onContextMenuAction("remove-node")}
+                  />
+                </>
               ) : null}
             </>
           ) : null}
@@ -306,9 +326,9 @@ function ToolbarButton({
   );
 }
 
-function ContextAction({ label, onClick }: { label: string; onClick: () => void }) {
+function ContextAction({ label, onClick, danger = false }: { label: string; onClick: () => void; danger?: boolean }) {
   return (
-    <button type="button" onClick={onClick}>
+    <button type="button" role="menuitem" className={danger ? "graph-context-danger" : undefined} onClick={onClick}>
       {label}
     </button>
   );

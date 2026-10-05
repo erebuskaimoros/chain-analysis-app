@@ -13,6 +13,7 @@ import {
   lookupAction,
   refreshLiveHoldingsInBackground,
 } from "../../../lib/api";
+import { isJobCanceled } from "../../../lib/jobErrors";
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES, defaultActorGraphWindow } from "../../../lib/constants";
 import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
 import { formatShortDateTime, toLocalInputValue } from "../../../lib/format";
@@ -42,14 +43,26 @@ import type {
   Actor,
   ActorGraphRequest,
   ActorGraphResponse,
+  GraphRun,
+  GraphStateSummary,
   JobSnapshot,
   LiveHoldingsRefreshResponse,
 } from "../../../lib/types";
+import { useToast } from "../../../app/toast";
 import { useGraphFilterState } from "../../shared/graph-hooks/useGraphFilterState";
 import { useGraphMetadata } from "../../shared/graph-hooks/useGraphMetadata";
 import { useSelectionGuard } from "../../shared/graph-hooks/useSelectionGuard";
 import { useSharedGraphNodeActions } from "../../shared/graph-hooks/useSharedGraphNodeActions";
 import type { GraphFormState } from "../ActorGraphSidebar";
+
+export interface BuildProgress {
+  stage: string;
+  done: number;
+  total: number;
+  message: string;
+  nodes: number;
+  edges: number;
+}
 
 function defaultFormState(): GraphFormState {
   const window = defaultActorGraphWindow();
@@ -151,12 +164,13 @@ function normalizeActorFormState(value: unknown, fallback: GraphFormState): Grap
 function buildProgressText(job: JobSnapshot) {
   const fraction = job.total > 0 ? ` ${Math.min(job.done, job.total)}/${job.total}` : "";
   const detail = job.message ? ` (${job.message})` : "";
-  const sofar = job.partial_counts?.nodes ? ` — ${job.partial_counts.nodes} nodes so far` : "";
-  return `Building graph — ${job.stage || "starting"}${fraction}${detail}${sofar}…`;
+  const sofar = job.partial_counts?.nodes ? `, ${job.partial_counts.nodes} nodes so far` : "";
+  return `Building graph: ${job.stage || "starting"}${fraction}${detail}${sofar}…`;
 }
 
 export function useActorGraphController() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const actorsQuery = useQuery({
     queryKey: ["actors"],
     queryFn: listActors,
@@ -188,19 +202,23 @@ export function useActorGraphController() {
   const [selectedActorIDs, setSelectedActorIDs] = useState<number[]>([]);
   const [form, setForm] = useState<GraphFormState>(defaultFormState);
   const [graph, setGraph] = useState<ActorGraphResponse | null>(null);
+  const [isPartialGraph, setIsPartialGraph] = useState(false);
+  const [buildProgress, setBuildProgress] = useState<BuildProgress | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
-  const [selectedRunID, setSelectedRunID] = useState("");
-  const [selectedSavedStateID, setSelectedSavedStateID] = useState("");
-  const [statusText, setStatusText] = useState("Select actors and build a graph.");
+  const [statusText, setStatusText] = useState("Pick one or more actors, then build the graph.");
   const [lookupResult, setLookupResult] = useState<ActionLookupResponse | null>(null);
   const [lookupError, setLookupError] = useState("");
+  const [lookupTxID, setLookupTxID] = useState("");
   const [expandedActorIDs, setExpandedActorIDs] = useState<number[]>([]);
   const [expandedExternalChains, setExpandedExternalChains] = useState<string[]>([]);
   const [expandedHopSeeds, setExpandedHopSeeds] = useState<string[]>([]);
+  const [isExpanding, setIsExpanding] = useState(false);
   const [graphResetKey, setGraphResetKey] = useState(0);
   const [savedCanvasState, setSavedCanvasState] = useState<SavedGraphCanvasState | null>(null);
   const [isRefreshingLiveHoldings, setIsRefreshingLiveHoldings] = useState(false);
   const liveRefreshRunRef = useRef(0);
+  const buildRunRef = useRef(0);
+  const graphBeforeBuildRef = useRef<ActorGraphResponse | null>(null);
 
   function mergeLiveHoldingsResponse(response: LiveHoldingsRefreshResponse) {
     setGraph((current) => {
@@ -266,13 +284,57 @@ export function useActorGraphController() {
   }
 
   const buildMutation = useMutation({
-    mutationFn: (request: ActorGraphRequest) =>
-      buildActorGraph(request, (job) => setStatusText(buildProgressText(job))),
+    mutationFn: (request: ActorGraphRequest) => {
+      const runID = buildRunRef.current + 1;
+      buildRunRef.current = runID;
+      const isCanceled = () => buildRunRef.current !== runID;
+      return buildActorGraph(
+        request,
+        (job) => {
+          if (isCanceled()) {
+            return;
+          }
+          setStatusText(buildProgressText(job));
+          setBuildProgress({
+            stage: job.stage || "starting",
+            done: job.done,
+            total: job.total,
+            message: job.message ?? "",
+            nodes: job.partial_counts?.nodes ?? 0,
+            edges: job.partial_counts?.edges ?? 0,
+          });
+        },
+        {
+          isCanceled,
+          onPartial: (partial) => {
+            // Draw what the server has so far; the finished graph replaces it
+            // with a full layout.
+            if (isCanceled() || !partial.nodes.length) {
+              return;
+            }
+            setGraph(partial);
+            setIsPartialGraph(true);
+            syncWithGraph(partial, true);
+          },
+        }
+      );
+    },
+    onMutate: () => {
+      graphBeforeBuildRef.current = graph && !isPartialGraph ? graph : graphBeforeBuildRef.current;
+      setBuildProgress({ stage: "starting", done: 0, total: 0, message: "", nodes: 0, edges: 0 });
+      setGraph(null);
+      setIsPartialGraph(false);
+      setSelection(null);
+    },
     onSuccess: async (response, request) => {
+      graphBeforeBuildRef.current = null;
+      setBuildProgress(null);
+      setIsPartialGraph(false);
       setGraph(response);
       setSelection(null);
       setLookupResult(null);
       setLookupError("");
+      setLookupTxID("");
       setExpandedActorIDs([]);
       setExpandedExternalChains([]);
       setExpandedHopSeeds([]);
@@ -290,7 +352,27 @@ export function useActorGraphController() {
       void refreshGraphLiveHoldings(response.nodes, "auto");
     },
     onError: (error) => {
-      setStatusText(error instanceof Error ? error.message : "Graph build failed.");
+      setBuildProgress(null);
+      const canceled = isJobCanceled(error);
+      const previous = graphBeforeBuildRef.current;
+      graphBeforeBuildRef.current = null;
+      if (previous) {
+        // Put the graph from before the build back rather than leave a
+        // half-built one on screen.
+        setGraph(previous);
+        setIsPartialGraph(false);
+        syncWithGraph(previous, true);
+        setGraphResetKey((value) => value + 1);
+      }
+      setStatusText(
+        canceled
+          ? previous
+            ? "Build canceled. Showing the graph from before."
+            : "Build canceled."
+          : error instanceof Error
+            ? error.message
+            : "Graph build failed."
+      );
     },
   });
 
@@ -304,7 +386,6 @@ export function useActorGraphController() {
   const deleteSavedStateMutation = useMutation({
     mutationFn: deleteGraphState,
     onSuccess: async () => {
-      setSelectedSavedStateID("");
       await queryClient.invalidateQueries({ queryKey: ["graph-states", "actor-graph"] });
     },
   });
@@ -320,16 +401,6 @@ export function useActorGraphController() {
     },
   });
 
-  const selectedRun = useMemo(
-    () => runsQuery.data?.find((run) => String(run.id) === selectedRunID) ?? null,
-    [runsQuery.data, selectedRunID]
-  );
-
-  const selectedSavedState = useMemo(
-    () => savedStatesQuery.data?.find((state) => String(state.id) === selectedSavedStateID) ?? null,
-    [savedStatesQuery.data, selectedSavedStateID]
-  );
-
   const visibleGraph = useMemo(
     () =>
       applyLabelCategoryFilter(
@@ -344,7 +415,7 @@ export function useActorGraphController() {
     [expandedActorIDs, expandedExternalChains, graph, graphFilters, metadata]
   );
   const defaultSaveStateName = graph
-    ? `${actorNames(graph.actors) || selectedActorIDs.join("-") || "graph"} — ${formatShortDateTime(new Date().toISOString())}`
+    ? `${actorNames(graph.actors) || selectedActorIDs.join("-") || "graph"}, ${formatShortDateTime(new Date().toISOString())}`
     : "graph state";
 
   const filteredActions = useMemo(
@@ -381,22 +452,67 @@ export function useActorGraphController() {
   // Builds run as server-side jobs; progress narrates long uncached scans.
   async function buildWithProgress(request: ActorGraphRequest) {
     setStatusText("Building graph…");
-    await buildMutation.mutateAsync(request);
+    try {
+      await buildMutation.mutateAsync(request);
+    } catch {
+      // onError reports the failure in the status line.
+    }
   }
 
-  async function onLoadRun() {
-    if (!selectedRun) {
+  function cancelBuild() {
+    if (!buildMutation.isPending) {
       return;
     }
-    setStatusText("Rebuilding saved run...");
-    await buildWithProgress(selectedRun.request);
+    // The job poller sees the run change, cancels the server job and rejects.
+    buildRunRef.current += 1;
+    setStatusText("Canceling the build…");
   }
 
-  async function onDeleteRun() {
-    if (!selectedRun) {
+  // Saved runs store the request, not the graph, so opening one builds it
+  // again. The form shows the run's settings straight away.
+  async function onRunAgain(run: GraphRun) {
+    setForm(stateFromRequest(run.request));
+    setSelectedActorIDs([...run.request.actor_ids]);
+    setStatusText(`Building ${run.actor_names || "the saved run"} again…`);
+    await buildWithProgress(run.request);
+  }
+
+  async function onDeleteRun(run: GraphRun) {
+    await deleteRunMutation.mutateAsync(run.id);
+    toast(`Deleted the run for ${run.actor_names || "the selected actors"}`);
+  }
+
+  // Opening the page from a link or search: "Graph TC Treasury", a saved
+  // graph from Home or a case, or a recent build to run again.
+  function applyIntent(params: Record<string, string>) {
+    if (params.state) {
+      void onOpenSavedState({ id: Number(params.state) } as GraphStateSummary);
       return;
     }
-    await deleteRunMutation.mutateAsync(selectedRun.id);
+    if (params.run_id) {
+      void queryClient
+        .fetchQuery({ queryKey: ["actor-graph-runs"], queryFn: listActorGraphRuns })
+        .then((runs) => {
+          const run = runs.find((item) => String(item.id) === params.run_id);
+          if (run) {
+            void onRunAgain(run);
+          } else {
+            setStatusText("That build is no longer in the recent builds list.");
+          }
+        });
+      return;
+    }
+    const actorIDs = (params.actors ?? "")
+      .split(",")
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (!actorIDs.length) {
+      return;
+    }
+    setSelectedActorIDs(actorIDs);
+    if (params.run === "1") {
+      void buildWithProgress(requestFromState(form, actorIDs));
+    }
   }
 
   async function onExpandNode(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
@@ -443,6 +559,7 @@ export function useActorGraphController() {
     }
 
     setStatusText(`Expanding one ${distanceLabel} from ${seeds.length} address(es)…`);
+    setIsExpanding(true);
     try {
       const response = await expandActorGraph({
         actor_ids: graph.query.actor_ids,
@@ -465,6 +582,8 @@ export function useActorGraphController() {
       void refreshGraphLiveHoldings(response.nodes, "auto");
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Expansion failed.");
+    } finally {
+      setIsExpanding(false);
     }
   }
 
@@ -529,8 +648,8 @@ export function useActorGraphController() {
         edge_count: graph.edges.length,
       });
       await queryClient.invalidateQueries({ queryKey: ["graph-states", "actor-graph"] });
-      setSelectedSavedStateID(String(summary.id));
       setStatusText(`Saved graph state "${summary.name}".`);
+      toast(`Saved ${summary.name}`);
     } catch (error) {
       setStatusText(error instanceof Error ? `Could not save graph state: ${error.message}` : "Could not save graph state.");
     }
@@ -560,14 +679,15 @@ export function useActorGraphController() {
     setForm(normalizeActorFormState(uiState.form, stateFromRequest(savedRequest)));
     setSelectedActorIDs(nextSelectedActorIDs.length ? nextSelectedActorIDs : [...savedRequest.actor_ids]);
     setGraph(graphState);
+    setIsPartialGraph(false);
     setSelection((uiState.selection as GraphSelection | null) ?? null);
     setLookupResult(null);
     setLookupError("");
+    setLookupTxID("");
     setExpandedActorIDs(readNumberArray(uiState.expanded_actor_ids));
     setExpandedExternalChains(readStringArray(uiState.expanded_external_chains));
     setExpandedHopSeeds(readStringArray(uiState.expanded_hop_seeds));
     setSavedCanvasState(readSavedGraphCanvasState(uiState.canvas));
-    setSelectedRunID("");
     setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
     setGraphResetKey((value) => value + 1);
     setStatusText(`Loaded graph state from ${sourceLabel}.`);
@@ -584,37 +704,35 @@ export function useActorGraphController() {
     }
   }
 
-  async function onLoadSavedState() {
-    if (!selectedSavedState) {
-      return;
-    }
+  async function onOpenSavedState(state: GraphStateSummary) {
     try {
-      const detail = await getGraphState(selectedSavedState.id);
-      applyGraphStatePayload(detail.state, `"${detail.name}"`);
+      const detail = await getGraphState(state.id);
+      return applyGraphStatePayload(detail.state, `"${detail.name}"`);
     } catch (error) {
       setStatusText(error instanceof Error ? `Could not load saved state: ${error.message}` : "Could not load saved state.");
+      return false;
     }
   }
 
-  async function onDeleteSavedState() {
-    if (!selectedSavedState) {
-      return;
-    }
-    await deleteSavedStateMutation.mutateAsync(selectedSavedState.id);
+  async function onDeleteSavedState(state: GraphStateSummary) {
+    await deleteSavedStateMutation.mutateAsync(state.id);
+    toast(`Deleted ${state.name}`);
   }
 
-  async function onExportSavedState() {
-    if (!selectedSavedState) {
-      return;
-    }
+  async function onExportSavedState(state: GraphStateSummary) {
     try {
-      const detail = await getGraphState(selectedSavedState.id);
+      const detail = await getGraphState(state.id);
       const filename = buildGraphStateFilename("actor-graph", detail.name);
       downloadJSON(filename, detail.state);
       setStatusText(`Exported "${detail.name}" to ${filename}.`);
     } catch (error) {
       setStatusText(error instanceof Error ? `Could not export saved state: ${error.message}` : "Could not export saved state.");
     }
+  }
+
+  function onLookup(txID: string) {
+    setLookupTxID(txID);
+    lookupMutation.mutate(txID);
   }
 
   const actorOptions = [...(actorsQuery.data ?? [])].sort((left, right) => left.name.localeCompare(right.name));
@@ -629,33 +747,32 @@ export function useActorGraphController() {
 
   return {
     actorOptions,
+    actorsLoading: actorsQuery.isLoading,
     selectedActorIDs,
+    setSelectedActorIDs,
     toggleActor,
     form,
     setForm,
     onBuild,
+    cancelBuild,
     isBuilding: buildMutation.isPending,
+    buildProgress,
+    isPartialGraph,
+    isExpanding,
     canBuild: selectedActorIDs.length > 0,
     onRefreshAllLiveHoldings,
     isRefreshingLiveHoldings,
     statusText,
     runs: runsQuery.data ?? [],
-    selectedRunID,
-    setSelectedRunID,
-    onLoadRun,
+    onRunAgain,
     onDeleteRun,
-    isDeletingRun: deleteRunMutation.isPending,
-    hasSelectedRun: Boolean(selectedRun),
     isLoadingRuns: runsQuery.isLoading,
     savedStates: savedStatesQuery.data ?? [],
-    selectedSavedStateID,
-    setSelectedSavedStateID,
-    onLoadSavedState,
+    onOpenSavedState,
     onDeleteSavedState,
     onExportSavedState,
-    isDeletingSavedState: deleteSavedStateMutation.isPending,
-    hasSelectedSavedState: Boolean(selectedSavedState),
     isLoadingSavedStates: savedStatesQuery.isLoading,
+    applyIntent,
     graph,
     visibleGraph,
     filteredActions,
@@ -694,7 +811,8 @@ export function useActorGraphController() {
     showActionFraction,
     lookupResult,
     lookupError,
+    lookupTxID,
     isLookupLoading: lookupMutation.isPending,
-    onLookup: (txID: string) => lookupMutation.mutate(txID),
+    onLookup,
   };
 }

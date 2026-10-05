@@ -1,12 +1,27 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PlusIcon, StopIcon, TrashIcon } from "../../app/icons";
+import { useRouteIntent } from "../../app/router";
+import { useToast } from "../../app/toast";
 import { deleteTraceRun, getTraceRun, listTraceRuns, startTrace } from "../../lib/api";
-import { formatShortDateTime, formatUSD } from "../../lib/format";
-import type { TraceDirection, TracePolicy, TraceRequest, TraceResponse, TraceSeed } from "../../lib/types";
+import { isJobCanceled } from "../../lib/jobErrors";
+import { formatCompactUSD, formatDateRange, formatRelativeTime, middleTruncate, pluralize } from "../../lib/format";
+import { identifyInput } from "../../lib/identify";
+import type { TraceDirection, TracePolicy, TraceRequest, TraceResponse, TraceRun, TraceSeed } from "../../lib/types";
+import { MenuButton } from "../../ui/Menu";
+import { PageHeader } from "../../ui/PageHeader";
+import { Segmented } from "../../ui/Segmented";
+import { TimeWindowField } from "../../ui/TimeWindowField";
 import { TraceResults } from "./TraceResults";
 
 const STOP_CATEGORIES = ["exchange", "sanctioned", "mixer", "scam", "hack", "bridge", "defi"];
 const DEFAULT_STOPS = ["exchange", "sanctioned", "mixer"];
+
+const POLICY_HELP: Record<TracePolicy, string> = {
+  fifo: "Each payment spends the oldest funds received first.",
+  haircut: "Each payment carries a proportional share of everything the address held.",
+  largest_out: "Traced value follows the largest payments out first.",
+};
 
 export interface TraceFormState {
   seeds: string;
@@ -100,17 +115,66 @@ function formFromRequest(request: TraceRequest): TraceFormState {
   };
 }
 
+function SeedChips({ text }: { text: string }) {
+  const lines = text
+    .split(/\n|,/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) {
+    return null;
+  }
+  return (
+    <div className="seed-chips" aria-label="What each seed was read as">
+      {lines.map((line, index) => {
+        const identified = identifyInput(line);
+        const known = identified.kind === "tx" || identified.kind === "address";
+        const label =
+          identified.kind === "tx"
+            ? `Transaction ${middleTruncate(line, 6, 4)}`
+            : identified.kind === "address"
+              ? `${identified.chainCertain ? identified.chain : `${identified.chain}?`} ${middleTruncate(identified.value, 6, 4)}`
+              : `Not recognised: ${middleTruncate(line, 10, 4)}`;
+        return (
+          <span key={`${line}:${index}`} className={`seed-chip${known ? "" : " is-unknown"}`} title={line}>
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function traceTitle(run: TraceRun) {
+  return run.title || `Trace ${run.id}`;
+}
+
 export function TracePage() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const runsQuery = useQuery({ queryKey: ["trace-runs"], queryFn: listTraceRuns });
   const [form, setForm] = useState<TraceFormState>(defaultForm);
   const [result, setResult] = useState<TraceResponse | null>(null);
   const [status, setStatus] = useState("");
+  const [progress, setProgress] = useState("");
   const [busy, setBusy] = useState(false);
+  const runRef = useRef(0);
+  const seedsRef = useRef<HTMLTextAreaElement | null>(null);
 
   function update<K extends keyof TraceFormState>(key: K, value: TraceFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
+
+  useRouteIntent("trace", (params) => {
+    if (params.seed) {
+      setForm((current) => ({ ...current, seeds: params.seed }));
+      setResult(null);
+      setStatus("Seed added. Check the window and direction, then trace.");
+      window.setTimeout(() => seedsRef.current?.focus(), 0);
+    }
+    if (params.trace) {
+      void onOpenRun(Number(params.trace));
+    }
+  });
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -119,20 +183,42 @@ export function TracePage() {
       setStatus("Enter at least one address or transaction hash.");
       return;
     }
+    const runID = runRef.current + 1;
+    runRef.current = runID;
     setBusy(true);
     setStatus("Tracing…");
+    setProgress("Starting");
     try {
-      const response = await startTrace(request, (job) =>
-        setStatus(`Tracing — ${job.stage || "starting"}${job.message ? `: ${job.message}` : ""}…`)
+      const response = await startTrace(
+        request,
+        (job) => {
+          if (runRef.current === runID) {
+            const stage = job.stage || "starting";
+            setProgress(`${stage.charAt(0).toUpperCase()}${stage.slice(1)}${job.message ? `: ${job.message}` : ""}`);
+            setStatus(`Tracing: ${job.stage || "starting"}${job.message ? `, ${job.message}` : ""}…`);
+          }
+        },
+        { isCanceled: () => runRef.current !== runID }
       );
       setResult(response);
-      setStatus(`Traced ${response.edges.length} edges to ${response.sinks.length} sinks.`);
+      // The result's own summary says what was found.
+      setStatus("");
       await queryClient.invalidateQueries({ queryKey: ["trace-runs"] });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Trace failed.");
+      setStatus(isJobCanceled(error) ? "Trace canceled." : error instanceof Error ? error.message : "Trace failed.");
     } finally {
-      setBusy(false);
+      if (runRef.current === runID) {
+        setBusy(false);
+        setProgress("");
+      }
     }
+  }
+
+  function cancelTrace() {
+    runRef.current += 1;
+    setBusy(false);
+    setProgress("");
+    setStatus("Trace canceled.");
   }
 
   async function onOpenRun(id: number) {
@@ -147,135 +233,271 @@ export function TracePage() {
     }
   }
 
-  async function onDeleteRun(id: number) {
-    await deleteTraceRun(id);
+  async function onDeleteRun(run: TraceRun) {
+    await deleteTraceRun(run.id);
     await queryClient.invalidateQueries({ queryKey: ["trace-runs"] });
+    toast(`Deleted ${traceTitle(run)}`);
+  }
+
+  function newTrace() {
+    setResult(null);
+    setForm(defaultForm());
+    setStatus("");
+    window.setTimeout(() => seedsRef.current?.focus(), 0);
   }
 
   const amountSet = Number(form.amount) > 0;
+  const runs = runsQuery.data ?? [];
+  const context = result
+    ? `${result.query.direction === "backward" ? "Backward" : "Forward"} from ${pluralize(result.query.seeds.length, "seed")}, ${formatDateRange(
+        result.query.start_time,
+        result.query.end_time
+      )}`
+    : "";
+
+  const recentList = runs.length ? (
+    <ul className="list ws-run-list">
+      {runs.map((run) => (
+        <li key={run.id} className="list-row">
+          <span className="list-row-main">
+            <span className="list-row-title">{traceTitle(run)}</span>
+            <span className="list-row-meta">
+              {run.direction === "backward" ? "Backward" : "Forward"}, {formatCompactUSD(run.summary.seed_usd)} traced to{" "}
+              {pluralize(run.summary.sinks, "endpoint")}
+              {run.summary.top_sink ? `, most to ${run.summary.top_sink}` : ""}
+            </span>
+          </span>
+          <span className="list-row-side">{formatRelativeTime(run.created_at)}</span>
+          <button type="button" className="btn btn-sm" onClick={() => void onOpenRun(run.id)}>
+            Open
+          </button>
+          <MenuButton
+            label={`Actions for ${traceTitle(run)}`}
+            items={[{ label: "Delete", icon: <TrashIcon />, danger: true, onSelect: () => void onDeleteRun(run) }]}
+          />
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <div className="empty-state">
+      <strong>No saved traces yet.</strong>
+      <span>
+        A trace follows value hop by hop from an address or transaction, through swaps across chains, to where it rests:
+        exchanges, flagged addresses, pools, or wallets that still hold it. Every trace you run is saved here.
+      </span>
+    </div>
+  );
 
   return (
-    <div className="page-stack">
-      <div className="page-grid two-up">
-        <section className="panel page-panel">
-          <div className="panel-head">
-            <div>
-              <span className="eyebrow">Follow the funds</span>
-              <h2>Trace</h2>
-            </div>
-          </div>
-          <form className="form-grid" onSubmit={(event) => void onSubmit(event)}>
-            <label className="field field-full">
-              <span>Seeds (one address, CHAIN|address, or transaction hash per line)</span>
-              <textarea rows={3} value={form.seeds} onChange={(event) => update("seeds", event.target.value)} placeholder="ETH|0x…" />
-            </label>
-            <label className="field">
-              <span>Start (UTC)</span>
-              <input type="datetime-local" value={form.startTime} onChange={(event) => update("startTime", event.target.value)} />
-            </label>
-            <label className="field">
-              <span>End (UTC)</span>
-              <input type="datetime-local" value={form.endTime} onChange={(event) => update("endTime", event.target.value)} />
-            </label>
-            <label className="field">
-              <span>Direction</span>
-              <select value={form.direction} onChange={(event) => update("direction", event.target.value as TraceDirection)}>
-                <option value="forward">Forward (where did it go?)</option>
-                <option value="backward">Backward (where did it come from?)</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Allocation</span>
-              <select value={form.policy} onChange={(event) => update("policy", event.target.value as TracePolicy)}>
-                <option value="fifo">FIFO</option>
-                <option value="haircut">Haircut (proportional)</option>
-                <option value="largest_out">Largest first</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Amount (optional)</span>
-              <input type="number" min={0} step="any" value={form.amount} onChange={(event) => update("amount", event.target.value)} placeholder="All of it" />
-            </label>
-            <label className="field">
-              <span>Asset</span>
-              <input value={form.asset} onChange={(event) => update("asset", event.target.value)} placeholder="ETH.ETH" disabled={!amountSet} />
-            </label>
-            <label className="field">
-              <span>Max hops</span>
-              <input type="number" min={1} max={8} value={form.maxDepth} onChange={(event) => update("maxDepth", event.target.value)} />
-            </label>
-            <label className="field">
-              <span>Max branches per address</span>
-              <input type="number" min={1} max={64} value={form.maxBranches} onChange={(event) => update("maxBranches", event.target.value)} />
-            </label>
-            <label className="field">
-              <span>Min USD (at time) to follow</span>
-              <input type="number" min={0} step="any" value={form.minUSD} onChange={(event) => update("minUSD", event.target.value)} />
-            </label>
-            <fieldset className="field field-full trace-stops">
-              <legend>Stop at labels</legend>
-              {STOP_CATEGORIES.map((category) => (
-                <label key={category} className="field-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={form.stopCategories.includes(category)}
-                    onChange={(event) =>
-                      update(
-                        "stopCategories",
-                        event.target.checked ? [...form.stopCategories, category] : form.stopCategories.filter((item) => item !== category)
-                      )
-                    }
-                  />
-                  <span>{category}</span>
-                </label>
-              ))}
-            </fieldset>
-            <label className="field-checkbox field-full">
-              <input type="checkbox" checked={form.includeHoldings} onChange={(event) => update("includeHoldings", event.target.checked)} />
-              <span>Look up what each endpoint holds now</span>
-            </label>
-            <div className="button-row field-full">
-              <button type="submit" className="button" disabled={busy}>
-                {busy ? "Tracing…" : "Trace"}
+    <>
+      <PageHeader
+        title="Trace"
+        context={context}
+        actions={
+          <>
+            {runs.length ? (
+              <MenuButton
+                label="Recent traces"
+                className="btn btn-sm"
+                items={runs.slice(0, 10).map((run) => ({
+                  label: `${traceTitle(run)} (${formatRelativeTime(run.created_at)})`,
+                  onSelect: () => void onOpenRun(run.id),
+                }))}
+              >
+                Recent traces
+              </MenuButton>
+            ) : null}
+            {result ? (
+              <button type="button" className="btn btn-sm" onClick={newTrace}>
+                <PlusIcon />
+                New trace
               </button>
-            </div>
-          </form>
-          {status ? <p className="form-message">{status}</p> : null}
-        </section>
+            ) : null}
+          </>
+        }
+      />
+      <div className="page-body trace-page">
+        <form className="trace-query" onSubmit={(event) => void onSubmit(event)} aria-label="Trace settings">
+          <div className="form-stack">
+            <label className="field">
+              <span>Seeds (one address, CHAIN|address, or transaction hash per line)</span>
+              <textarea
+                ref={seedsRef}
+                className="mono"
+                rows={3}
+                value={form.seeds}
+                onChange={(event) => update("seeds", event.target.value)}
+                placeholder="ETH|0x… or a THORChain transaction hash"
+                spellCheck={false}
+              />
+            </label>
+            <SeedChips text={form.seeds} />
+          </div>
 
-        <section className="panel page-panel">
-          <div className="panel-head">
-            <div>
-              <span className="eyebrow">History</span>
-              <h2>Saved traces</h2>
+          <div className="trace-query-side">
+            <div className="field">
+              <span>Direction</span>
+              <Segmented<TraceDirection>
+                label="Direction"
+                block
+                value={form.direction}
+                onChange={(value) => update("direction", value)}
+                options={[
+                  { value: "forward", label: "Where did it go?", title: "Forward: follow value out of the seeds" },
+                  { value: "backward", label: "Where did it come from?", title: "Backward: follow value into the seeds" },
+                ]}
+              />
+            </div>
+            <TimeWindowField
+              utc
+              start={form.startTime}
+              end={form.endTime}
+              onChange={(next) => setForm((current) => ({ ...current, startTime: next.start, endTime: next.end }))}
+            />
+            <div className="form-actions">
+              {busy ? (
+                <button type="button" className="btn" onClick={cancelTrace}>
+                  <StopIcon />
+                  Cancel
+                </button>
+              ) : (
+                <button type="submit" className="btn btn-primary">
+                  Trace
+                </button>
+              )}
             </div>
           </div>
-          {runsQuery.data?.length ? (
-            <div className="card-list">
-              {runsQuery.data.map((run) => (
-                <article key={run.id} className="entity-card">
-                  <strong>{run.title}</strong>
-                  <p>
-                    {formatShortDateTime(run.created_at)} · {formatUSD(run.summary.seed_usd)} traced · {run.summary.sinks} sinks
-                    {run.summary.top_sink ? ` · top: ${run.summary.top_sink}` : ""}
-                  </p>
-                  <div className="button-row">
-                    <button type="button" className="button secondary" onClick={() => void onOpenRun(run.id)}>
-                      Open
-                    </button>
-                    <button type="button" className="button secondary" onClick={() => void onDeleteRun(run.id)}>
-                      Delete
-                    </button>
-                  </div>
-                </article>
-              ))}
+
+          <details className="disclosure">
+            <summary>More options</summary>
+            <div className="disclosure-body trace-options">
+              <div className="field field-wide">
+                <span>Allocation</span>
+                <Segmented<TracePolicy>
+                  label="Allocation"
+                  value={form.policy}
+                  onChange={(value) => update("policy", value)}
+                  options={[
+                    { value: "fifo", label: "FIFO" },
+                    { value: "haircut", label: "Haircut (proportional)" },
+                    { value: "largest_out", label: "Largest first" },
+                  ]}
+                />
+                <small>{POLICY_HELP[form.policy]}</small>
+              </div>
+              <label className="field">
+                <span>Amount (optional)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={form.amount}
+                  onChange={(event) => update("amount", event.target.value)}
+                  placeholder="All of it"
+                />
+              </label>
+              <label className="field">
+                <span>Asset</span>
+                <input
+                  value={form.asset}
+                  onChange={(event) => update("asset", event.target.value)}
+                  placeholder="ETH.ETH"
+                  disabled={!amountSet}
+                />
+              </label>
+              <label className="field">
+                <span>Min USD (at time) to follow</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={form.minUSD}
+                  onChange={(event) => update("minUSD", event.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Max hops</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={8}
+                  value={form.maxDepth}
+                  onChange={(event) => update("maxDepth", event.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Max branches per address</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={form.maxBranches}
+                  onChange={(event) => update("maxBranches", event.target.value)}
+                />
+              </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={form.includeHoldings}
+                  onChange={(event) => update("includeHoldings", event.target.checked)}
+                />
+                <span>Look up what each endpoint holds now</span>
+              </label>
+              <fieldset className="field field-wide trace-stops" style={{ border: 0, padding: 0, margin: 0 }}>
+                <legend className="field-label">Stop at labels</legend>
+                <div className="chip-set">
+                  {STOP_CATEGORIES.map((category) => (
+                    <label key={category} className="toggle-chip">
+                      <input
+                        type="checkbox"
+                        className="visually-hidden"
+                        checked={form.stopCategories.includes(category)}
+                        onChange={(event) =>
+                          update(
+                            "stopCategories",
+                            event.target.checked
+                              ? [...form.stopCategories, category]
+                              : form.stopCategories.filter((item) => item !== category)
+                          )
+                        }
+                      />
+                      <span>{category}</span>
+                    </label>
+                  ))}
+                </div>
+                <small>The trace stops when value reaches an address with one of these labels.</small>
+              </fieldset>
             </div>
-          ) : (
-            <p className="empty-state">No saved traces yet.</p>
-          )}
-        </section>
+          </details>
+        </form>
+
+        {status ? (
+          <p className="status-text" role="status">
+            {status}
+          </p>
+        ) : null}
+
+        {busy ? (
+          <div className="trace-progress" aria-live="polite">
+            <span className="section-title">{progress || "Starting"}</span>
+            <div className="progress is-indeterminate">
+              <div className="progress-bar" />
+            </div>
+            <span className="section-note">Traces fetch each address's history as they go, so the first run can take a while.</span>
+          </div>
+        ) : null}
+
+        {result ? (
+          <TraceResults result={result} />
+        ) : (
+          <section className="section" aria-labelledby="trace-recent-title">
+            <div className="section-head">
+              <h2 id="trace-recent-title">Saved traces</h2>
+            </div>
+            {recentList}
+          </section>
+        )}
       </div>
-      {result ? <TraceResults result={result} /> : null}
-    </div>
+    </>
   );
 }

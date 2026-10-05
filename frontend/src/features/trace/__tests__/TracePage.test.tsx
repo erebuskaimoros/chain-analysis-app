@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TraceResponse } from "../../../lib/types";
+import { ActiveCaseProvider } from "../../../app/activeCase";
+import { ToastProvider } from "../../../app/toast";
 import { buildTraceRequest, parseTraceSeeds, TracePage, type TraceFormState } from "../TracePage";
 
 const apiMocks = vi.hoisted(() => ({
@@ -118,7 +120,11 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <TracePage />
+      <ToastProvider>
+        <ActiveCaseProvider>
+          <TracePage />
+        </ActiveCaseProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
@@ -160,6 +166,7 @@ describe("trace request helpers", () => {
 
 describe("TracePage", () => {
   beforeEach(() => {
+    window.localStorage.setItem("chain-analysis.active-case", "4");
     apiMocks.listTraceRuns.mockResolvedValue([]);
     apiMocks.startTrace.mockResolvedValue(makeTrace());
     apiMocks.listCases.mockResolvedValue([{ id: 4, title: "Bitget hack", notes_md: "", created_at: "", updated_at: "", item_count: 0 }]);
@@ -169,6 +176,7 @@ describe("TracePage", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    window.localStorage.clear();
   });
 
   it("runs a trace and shows the endpoints, flows with both hashes, and the method", async () => {
@@ -179,11 +187,11 @@ describe("TracePage", () => {
     await waitFor(() => expect(apiMocks.startTrace).toHaveBeenCalled());
     expect(apiMocks.startTrace.mock.calls[0][0].seeds).toEqual([{ chain: "ETH", address: "0xf7bc92103f23ef312658cd9b81dc2713f7b396c3" }]);
 
-    const limits = (await screen.findByRole("heading", { name: "Stopped by limits" })).closest("section") as HTMLElement;
+    const limits = (await screen.findByRole("heading", { name: /^Stopped by limits/ })).closest("section") as HTMLElement;
     expect(within(limits).getByText("Hop limit")).toBeTruthy();
     expect(within(limits).getByText("0.0316689 BTC.BTC")).toBeTruthy();
 
-    const flows = screen.getByRole("heading", { name: "Flows" }).closest("section") as HTMLElement;
+    const flows = screen.getByRole("heading", { name: /^Flows/ }).closest("section") as HTMLElement;
     const links = within(flows).getAllByRole("link").map((link) => link.getAttribute("href"));
     expect(links).toContain("https://etherscan.io/tx/0xa732e09aab76a571d768c2b5b4e2f0e1e5b1a9c3d4e5f60718293a4b5c6d7e8f");
     expect(links).toContain("https://mempool.space/tx/9cd94a8e5734dd6e4c77d0eb400f1c64935be17afc062185cb26264004e55ca9");
@@ -192,9 +200,10 @@ describe("TracePage", () => {
     expect(screen.getByTestId("graph-canvas-mock").textContent).toContain("2 nodes, 1 edges");
     await waitFor(() => expect(apiMocks.listTraceRuns).toHaveBeenCalledTimes(2));
 
-    fireEvent.click(await screen.findByRole("button", { name: "Pin trace to case" }));
-    await waitFor(() => expect(apiMocks.addCaseItem).toHaveBeenCalledWith(4, "trace_run", "7"));
-    expect(await screen.findByText("Pinned.")).toBeTruthy();
+    // With a case active, the trace files straight into it and says so.
+    fireEvent.click(await screen.findByRole("button", { name: "Add trace to case" }));
+    await waitFor(() => expect(apiMocks.addCaseItem).toHaveBeenCalledWith(4, "trace_run", "7", ""));
+    expect(await screen.findByText("Added trace 7 to Bitget hack")).toBeTruthy();
   });
 
   it("refuses to start without seeds", async () => {
@@ -219,7 +228,7 @@ describe("TracePage", () => {
     apiMocks.getTraceRun.mockResolvedValue({ id: 7, title: "Forward FIFO trace", request: { seeds: [{ chain: "ETH", address: "0xf7bc" }], start_time: "2026-09-28T03:00:00Z", max_depth: 1 }, response: makeTrace() });
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Open" }));
-    expect(await screen.findByRole("heading", { name: "Flows" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: /^Flows/ })).toBeTruthy();
     expect((screen.getByLabelText(/^Seeds/) as HTMLTextAreaElement).value).toBe("ETH|0xf7bc");
     expect((screen.getByLabelText("Max hops") as HTMLInputElement).value).toBe("1");
   });

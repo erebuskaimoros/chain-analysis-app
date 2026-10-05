@@ -56,7 +56,7 @@ describe("CasesPage", () => {
 
   it("opens a case with its items, explorer links and exports", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Bitget hack/ }));
     const details = await screen.findByRole("region", { name: "Case details" });
     expect(await within(details).findByRole("heading", { name: "Bitget hack" })).toBeTruthy();
     const address = within(details).getByRole("link", { name: /Exploiter/ });
@@ -68,7 +68,7 @@ describe("CasesPage", () => {
 
   it("pins an item, saves notes and removes an item", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Bitget hack/ }));
     const details = await screen.findByRole("region", { name: "Case details" });
     await within(details).findByRole("heading", { name: "Bitget hack" });
 
@@ -87,7 +87,8 @@ describe("CasesPage", () => {
 
   it("creates a case and opens it", async () => {
     renderPage();
-    await screen.findByRole("button", { name: "Open" });
+    await screen.findByRole("button", { name: /Bitget hack/ });
+    fireEvent.click(screen.getByRole("button", { name: "New case" }));
     fireEvent.change(screen.getByLabelText("New case title"), { target: { value: "New case" } });
     fireEvent.click(screen.getByRole("button", { name: "Create case" }));
     await waitFor(() => expect(apiMocks.createCase).toHaveBeenCalledWith("New case"));

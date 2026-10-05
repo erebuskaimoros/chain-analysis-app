@@ -69,7 +69,7 @@ export function ActorMonitorPanel({ actor }: { actor: Actor }) {
         <tr key={cp.key} className={total >= minMove && minMove > 0 ? "row-highlight" : undefined}>
           <td>
             <CategoryBadge category={cp.category} /> {cp.label}
-            {cp.first_seen ? <span className="badge new-badge">new</span> : null}
+            {cp.first_seen ? <span className="chip chip-accent new-badge">new</span> : null}
           </td>
           <td className="numeric">{cp.in_usd ? formatUSD(cp.in_usd) : "—"}</td>
           <td className="numeric">{cp.out_usd ? formatUSD(cp.out_usd) : "—"}</td>
@@ -80,26 +80,23 @@ export function ActorMonitorPanel({ actor }: { actor: Actor }) {
     });
 
   return (
-    <section className="panel page-panel monitor-panel" aria-label={`${actor.name} monitoring`}>
-      <div className="panel-head">
-        <div>
-          <span className="eyebrow">Monitoring</span>
-          <h2>{actor.name}</h2>
-        </div>
-        <div className="button-row">
-          <label className="field-checkbox">
+    <section className="section monitor" aria-label={`${actor.name} monitoring`}>
+      <div className="section-head monitor-head">
+        <h2>Monitoring</h2>
+        <div className="form-actions">
+          <label className="check">
             <input type="checkbox" checked={Boolean(monitor?.watch)} onChange={(event) => void onToggleWatch(event.target.checked)} />
             <span>Refresh on schedule</span>
           </label>
-          <button type="button" className="button" onClick={() => void onRefresh()} disabled={busy}>
+          <button type="button" className="btn btn-sm" onClick={() => void onRefresh()} disabled={busy}>
             {busy ? "Refreshing…" : "Refresh now"}
           </button>
-          <button type="button" className="button secondary" onClick={() => void onMarkSeen()} disabled={!changes}>
+          <button type="button" className="btn btn-sm" onClick={() => void onMarkSeen()} disabled={!changes}>
             Mark as seen
           </button>
         </div>
       </div>
-      {status ? <p className="form-message">{status}</p> : null}
+      {status ? <p className="status-text">{status}</p> : null}
       {monitorQuery.error ? <p className="error-text">{monitorQuery.error.message}</p> : null}
 
       {monitor?.latest ? (
@@ -122,7 +119,7 @@ export function ActorMonitorPanel({ actor }: { actor: Actor }) {
         <div className="monitor-changes">
           <div className="monitor-changes-head">
             <h3>
-              Since {monitor?.last_viewed_at ? formatShortDateTime(monitor.last_viewed_at) : "the first refresh"} · {changes.snapshots}{" "}
+              Since {monitor?.last_viewed_at ? formatShortDateTime(monitor.last_viewed_at) : "the first refresh"}, {changes.snapshots}{" "}
               refresh{changes.snapshots === 1 ? "" : "es"}
             </h3>
             <label className="field inline-field">
@@ -130,9 +127,9 @@ export function ActorMonitorPanel({ actor }: { actor: Actor }) {
               <input type="number" min={0} step="any" value={threshold} onChange={(event) => setThreshold(event.target.value)} />
             </label>
           </div>
-          <p>
-            In {formatUSD(changes.flows.in_usd)} · Out {formatUSD(changes.flows.out_usd)} · {changes.flows.transactions} transactions
-            (valued at transaction time)
+          <p className="section-note">
+            {formatUSD(changes.flows.in_usd)} in, {formatUSD(changes.flows.out_usd)} out, across {changes.flows.transactions}{" "}
+            transactions (valued at transaction time)
           </p>
 
           {changes.new_counterparties?.length ? (
@@ -149,8 +146,8 @@ export function ActorMonitorPanel({ actor }: { actor: Actor }) {
           ) : null}
 
           <h4>Holdings change by asset</h4>
-          <div className="table-wrap compact">
-            <table className="data-table compact">
+          <div className="table-wrap trace-table-wrap">
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>Asset</th>
@@ -173,8 +170,8 @@ export function ActorMonitorPanel({ actor }: { actor: Actor }) {
           </div>
 
           <h4>Holdings change by address</h4>
-          <div className="table-wrap compact">
-            <table className="data-table compact">
+          <div className="table-wrap trace-table-wrap">
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>Address</th>
@@ -199,8 +196,8 @@ export function ActorMonitorPanel({ actor }: { actor: Actor }) {
           </div>
 
           <h4>Flows by counterparty</h4>
-          <div className="table-wrap compact">
-            <table className="data-table compact">
+          <div className="table-wrap trace-table-wrap">
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>Counterparty</th>

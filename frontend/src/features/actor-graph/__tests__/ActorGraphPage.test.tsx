@@ -104,7 +104,7 @@ describe("ActorGraphPage", () => {
     });
 
     const { container } = renderPage();
-    await screen.findByRole("button", { name: "Load saved state" });
+    await screen.findByRole("button", { name: "Open a file…" });
 
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();
@@ -144,9 +144,10 @@ describe("ActorGraphPage", () => {
     fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
 
     await waitFor(() => expect(screen.getByText("Loaded graph state from actor-state.json.")).toBeTruthy());
-    expect(screen.getByRole("heading", { name: "Current Flow Graph" })).toBeTruthy();
+    // The saved graph has no flows, so the map says so and the query panel stays open.
+    expect(screen.getByRole("heading", { name: "No flows to draw" })).toBeTruthy();
     expect((screen.getByLabelText("Min USD (at time)") as HTMLInputElement).value).toBe("25");
-    expect((screen.getByLabelText("Max Hops") as HTMLInputElement).value).toBe("3");
+    expect((screen.getByLabelText("Max hops") as HTMLInputElement).value).toBe("3");
     expect((screen.getByLabelText("Start") as HTMLInputElement).value).toBe("2026-02-01T00:00");
     expect((screen.getByRole("checkbox", { name: /Treasury/ }) as HTMLInputElement).checked).toBe(true);
   });
@@ -215,21 +216,13 @@ describe("ActorGraphPage", () => {
       refreshed_at: "2026-03-18T12:00:00Z",
     });
 
-    const { container } = renderPage();
-    await screen.findByText(/Treasury case/);
-
-    const select = Array.from(container.querySelectorAll("select")).find((element) =>
-      element.textContent?.includes("Treasury case")
-    );
-    expect(select).not.toBeUndefined();
-    fireEvent.change(select as HTMLSelectElement, { target: { value: "3" } });
-
-    const loadButtons = screen.getAllByRole("button", { name: "Load" });
-    fireEvent.click(loadButtons[loadButtons.length - 1]);
+    renderPage();
+    // Saved graphs are listed by name; clicking one opens it as it was saved.
+    fireEvent.click(await screen.findByTitle("Open Treasury case exactly as it was saved"));
 
     await waitFor(() => expect(screen.getByText('Loaded graph state from "Treasury case".')).toBeTruthy());
     expect(apiMocks.getGraphState).toHaveBeenCalledWith(3);
-    expect(screen.getByRole("heading", { name: "Current Flow Graph" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "No flows to draw" })).toBeTruthy();
     expect((screen.getByLabelText("Min USD (at time)") as HTMLInputElement).value).toBe("25");
   });
 
@@ -267,7 +260,7 @@ describe("ActorGraphPage", () => {
     });
 
     const { container } = renderPage();
-    await screen.findByRole("button", { name: "Load saved state" });
+    await screen.findByRole("button", { name: "Open a file…" });
 
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();
@@ -347,12 +340,13 @@ describe("ActorGraphPage", () => {
 
     await screen.findByText("Treasury");
     fireEvent.click(screen.getByRole("checkbox", { name: /Treasury/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Build Graph" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build graph" }));
 
-    await screen.findByRole("heading", { name: "Current Flow Graph" });
+    // The header names what the graph shows once it has loaded.
+    await screen.findByText(/^Treasury,/);
     await waitFor(() => {
       expect(screen.getByText("Loaded 1 nodes and 0 edges for Treasury.")).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Build Graph" })).toBeTruthy();
+      expect(screen.queryByText("Building the graph")).toBeNull();
     });
     expect(apiMocks.refreshLiveHoldingsInBackground).toHaveBeenCalledWith(graph.nodes, expect.anything());
 
@@ -393,9 +387,9 @@ describe("ActorGraphPage", () => {
     renderPage();
     await screen.findByText("Treasury");
     fireEvent.click(screen.getByRole("checkbox", { name: /Treasury/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Build Graph" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build graph" }));
 
-    await screen.findByRole("heading", { name: "Current Flow Graph" });
+    await screen.findByText(/^Treasury,/);
     expect((await screen.findAllByText(/ETH tracker partial pass warning/)).length).toBeGreaterThan(0);
     expect(apiMocks.refreshLiveHoldingsInBackground).toHaveBeenCalledTimes(1);
   });
@@ -430,9 +424,9 @@ describe("ActorGraphPage", () => {
     renderPage();
     await screen.findByText("Treasury");
     fireEvent.click(screen.getByRole("checkbox", { name: /Treasury/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Build Graph" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build graph" }));
 
-    await screen.findByRole("heading", { name: "Current Flow Graph" });
+    await screen.findByText(/^Treasury,/);
     await waitFor(() => {
       expect(screen.getAllByText(/Background live holdings refresh finished\./).length).toBeGreaterThan(0);
     });
@@ -488,7 +482,7 @@ describe("ActorGraphPage", () => {
     });
 
     const { container } = renderPage();
-    await screen.findByRole("button", { name: "Load saved state" });
+    await screen.findByRole("button", { name: "Open a file…" });
 
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();
@@ -528,10 +522,82 @@ describe("ActorGraphPage", () => {
     fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
 
     await screen.findByText("Partial provider coverage");
-    fireEvent.click(screen.getByTitle("Fullscreen (F)"));
+    // The canvas loads lazily; wait for its toolbar before going fullscreen.
+    fireEvent.click(await screen.findByTitle("Fullscreen (F)"));
 
     await waitFor(() => {
       expect(screen.queryByText("Partial provider coverage")).toBeNull();
     });
+  });
+  it("runs a recent build again with that run's actors and settings", async () => {
+    const actor = makeActor({ id: 7, name: "Treasury", addresses: [] });
+    const run = {
+      id: 83,
+      request: {
+        actor_ids: [7],
+        start_time: "2026-02-01T00:00",
+        end_time: "2026-02-03T00:00",
+        max_hops: 2,
+        flow_types: ["liquidity", "swaps", "bonds", "transfers"],
+        min_usd: 50,
+        collapse_external: false,
+        display_mode: "combined",
+      },
+      actor_names: "Treasury",
+      node_count: 366,
+      edge_count: 495,
+      created_at: "2026-10-04T20:16:00Z",
+    };
+    apiMocks.listActors.mockResolvedValue([actor]);
+    apiMocks.listActorGraphRuns.mockResolvedValue([run]);
+    apiMocks.listAnnotations.mockResolvedValue([]);
+    apiMocks.listBlocklist.mockResolvedValue([]);
+    // Keep the build running so the pre-filled form can be checked mid-build.
+    apiMocks.buildActorGraph.mockReturnValue(new Promise(() => {}));
+
+    renderPage();
+    expect(await screen.findByText("366 nodes", { exact: false })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Run again/ }));
+
+    await waitFor(() => expect(apiMocks.buildActorGraph).toHaveBeenCalled());
+    expect(apiMocks.buildActorGraph.mock.calls[0][0]).toEqual(run.request);
+    expect((screen.getByRole("checkbox", { name: /Treasury/ }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("Max hops") as HTMLInputElement).value).toBe("2");
+    expect((screen.getByLabelText("Min USD (at time)") as HTMLInputElement).value).toBe("50");
+    expect(screen.getByText("Building the graph")).toBeTruthy();
+  });
+
+  it("cancels a running build and says so", async () => {
+    const actor = makeActor({ id: 7, name: "Treasury", addresses: [] });
+    apiMocks.listActors.mockResolvedValue([actor]);
+    apiMocks.listActorGraphRuns.mockResolvedValue([]);
+    apiMocks.listAnnotations.mockResolvedValue([]);
+    apiMocks.listBlocklist.mockResolvedValue([]);
+    // Behave like the job poller: reject once the caller cancels.
+    apiMocks.buildActorGraph.mockImplementation(
+      (_request: unknown, _onProgress: unknown, options: { isCanceled?: () => boolean }) =>
+        new Promise((_resolve, reject) => {
+          const timer = setInterval(() => {
+            if (options.isCanceled?.()) {
+              clearInterval(timer);
+              const error = new Error("Job canceled.");
+              error.name = "JobCanceledError";
+              reject(error);
+            }
+          }, 5);
+        })
+    );
+
+    renderPage();
+    await screen.findByText("Treasury");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Treasury/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Build graph" }));
+    expect(await screen.findByText("Building the graph")).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Cancel/ })[0]);
+
+    expect(await screen.findByText("Build canceled.")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Building the graph")).toBeNull());
+    expect(screen.getByRole("button", { name: "Build graph" })).toBeTruthy();
   });
 });

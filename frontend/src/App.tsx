@@ -1,74 +1,14 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useMemo,
-  useState,
-  type ComponentType,
-  type LazyExoticComponent,
-} from "react";
-
-type ViewKey = "overview" | "actors" | "graph" | "explorer" | "trace" | "cases" | "annotations";
-
-interface ViewDef {
-  key: ViewKey;
-  label: string;
-  eyebrow: string;
-  title: string;
-  description: string;
-}
-
-const views: ViewDef[] = [
-  {
-    key: "overview",
-    label: "Overview",
-    eyebrow: "System",
-    title: "Liquidity Flow Workspace",
-    description: "Trace, monitor and explore THOR, MAYA and connected-chain flows against `/api/v1`.",
-  },
-  {
-    key: "actors",
-    label: "Actors",
-    eyebrow: "CRUD",
-    title: "Actor Directory",
-    description: "Create, edit, and delete actor definitions and their address sets from the native UI.",
-  },
-  {
-    key: "graph",
-    label: "Actor Graph",
-    eyebrow: "Analysis",
-    title: "Actor-Centered Flow Graph",
-    description: "Build merged liquidity graphs, replay saved runs, expand nodes one hop, and refresh live holdings without leaving the typed workspace.",
-  },
-  {
-    key: "explorer",
-    label: "Explorer",
-    eyebrow: "Analysis",
-    title: "Address Explorer",
-    description: "Preview address activity, choose loading direction when needed, and page explorer graph batches natively.",
-  },
-  {
-    key: "trace",
-    label: "Trace",
-    eyebrow: "Analysis",
-    title: "Follow the Funds",
-    description: "Follow value hop by hop from an address or transaction, through swaps across chains, to where it rests: exchanges, sanctioned addresses, pools, or wallets that still hold it.",
-  },
-  {
-    key: "cases",
-    label: "Cases",
-    eyebrow: "Reporting",
-    title: "Investigation Cases",
-    description: "Collect addresses, transactions, saved traces, graph states and actors with notes, and export a case as a Markdown report or a flows CSV.",
-  },
-  {
-    key: "annotations",
-    label: "Annotations",
-    eyebrow: "Metadata",
-    title: "Annotations and Blocklist",
-    description: "Manage labels, special address kinds, and blocklisted addresses from the same typed UI surface.",
-  },
-];
+import { lazy, Suspense, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
+import { ActiveCaseProvider } from "./app/activeCase";
+import { MenuIcon } from "./app/icons";
+import { NAV_ITEMS } from "./app/navigation";
+import { PageErrorBoundary } from "./app/PageErrorBoundary";
+import { useMediaQuery, usePreference } from "./app/preferences";
+import { Rail } from "./app/Rail";
+import { RouterProvider, useRouter, type ViewKey } from "./app/router";
+import { SearchPaletteProvider } from "./app/search";
+import { ShortcutsDialog } from "./app/ShortcutsDialog";
+import { ToastProvider } from "./app/toast";
 
 type LazyPageComponent = LazyExoticComponent<ComponentType> & {
   preload: () => Promise<unknown>;
@@ -79,107 +19,103 @@ function lazyPage<T extends ComponentType<any>>(loader: () => Promise<{ default:
 }
 
 const pageComponents: Record<ViewKey, LazyPageComponent> = {
-  overview: lazyPage(() =>
-    import("./features/overview/OverviewPage").then((module) => ({ default: module.OverviewPage }))
-  ),
-  actors: lazyPage(() =>
-    import("./features/actors/ActorsPage").then((module) => ({ default: module.ActorsPage }))
-  ),
+  home: lazyPage(() => import("./features/home/HomePage").then((module) => ({ default: module.HomePage }))),
+  actors: lazyPage(() => import("./features/actors/ActorsPage").then((module) => ({ default: module.ActorsPage }))),
   graph: lazyPage(() =>
     import("./features/actor-graph/ActorGraphPage").then((module) => ({ default: module.ActorGraphPage }))
   ),
-  explorer: lazyPage(() =>
-    import("./features/explorer/ExplorerPage").then((module) => ({ default: module.ExplorerPage }))
-  ),
-  trace: lazyPage(() =>
-    import("./features/trace/TracePage").then((module) => ({ default: module.TracePage }))
-  ),
-  cases: lazyPage(() =>
-    import("./features/cases/CasesPage").then((module) => ({ default: module.CasesPage }))
-  ),
+  explorer: lazyPage(() => import("./features/explorer/ExplorerPage").then((module) => ({ default: module.ExplorerPage }))),
+  trace: lazyPage(() => import("./features/trace/TracePage").then((module) => ({ default: module.TracePage }))),
+  cases: lazyPage(() => import("./features/cases/CasesPage").then((module) => ({ default: module.CasesPage }))),
   annotations: lazyPage(() =>
     import("./features/annotations/AnnotationsPage").then((module) => ({ default: module.AnnotationsPage }))
   ),
 };
 
-function viewFromHash(hash: string): ViewKey {
-  const candidate = hash.replace(/^#/, "").trim().toLowerCase();
-  if (views.some((view) => view.key === candidate)) {
-    return candidate as ViewKey;
-  }
-  return "overview";
+type RailPreference = "auto" | "expanded" | "collapsed";
+
+function Shell() {
+  const { view } = useRouter();
+  const [railPreference, setRailPreference] = usePreference<RailPreference>("chain-analysis.rail", "auto");
+  const isMedium = useMediaQuery("(max-width: 1199px)");
+  const isPhone = useMediaQuery("(max-width: 699px)");
+  const [navOpen, setNavOpen] = useState(false);
+  const current = NAV_ITEMS.find((item) => item.key === view) ?? NAV_ITEMS[0];
+  const collapsed =
+    !isPhone &&
+    (isMedium || railPreference === "collapsed" || (railPreference === "auto" && Boolean(current.workspace)));
+  const ActivePage = pageComponents[view];
+
+  useEffect(() => {
+    document.title = `${current.label} - Chain Analysis`;
+  }, [current.label]);
+
+  useEffect(() => {
+    // Warm the heavier analysis pages in the background after first paint.
+    const timer = window.setTimeout(() => {
+      void pageComponents.graph.preload();
+      void pageComponents.explorer.preload();
+      void pageComponents.trace.preload();
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className={`app${collapsed ? " is-rail-collapsed" : ""}${navOpen ? " is-nav-open" : ""}`}>
+      {isPhone ? (
+        <div className="topbar">
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon"
+            aria-label="Open navigation"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen((value) => !value)}
+          >
+            <MenuIcon />
+          </button>
+          <span className="topbar-title">Chain Analysis</span>
+        </div>
+      ) : null}
+      {isPhone && navOpen ? <div className="scrim" onClick={() => setNavOpen(false)} /> : null}
+      <Rail
+        collapsed={collapsed}
+        onToggleCollapsed={() => setRailPreference(collapsed ? "expanded" : "collapsed")}
+        onNavigate={() => setNavOpen(false)}
+      />
+      <main className="app-main" id="main">
+        <PageErrorBoundary key={view} pageLabel={current.label}>
+          <Suspense fallback={<PageLoading label={current.label} />}>
+            <ActivePage />
+          </Suspense>
+        </PageErrorBoundary>
+      </main>
+      <ShortcutsDialog />
+    </div>
+  );
+}
+
+function PageLoading({ label }: { label: string }) {
+  return (
+    <header className="page-header">
+      <div className="page-header-title">
+        <h1>{label}</h1>
+        <span className="page-header-context">Loading…</span>
+      </div>
+    </header>
+  );
 }
 
 function App() {
-  const [activeView, setActiveView] = useState<ViewKey>(() => viewFromHash(window.location.hash));
-
-  useEffect(() => {
-    const onHashChange = () => {
-      setActiveView(viewFromHash(window.location.hash));
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
-
-  function navigate(view: ViewKey) {
-    window.location.hash = view;
-    setActiveView(view);
-  }
-
-  const currentView = useMemo(
-    () => views.find((view) => view.key === activeView) ?? views[0],
-    [activeView]
-  );
-  const ActivePage = pageComponents[activeView];
-
-  function preloadView(view: ViewKey) {
-    void pageComponents[view].preload();
-  }
-
   return (
-    <div className="shell">
-      <aside className="shell-sidebar">
-        <div className="brand-block">
-          <span className="eyebrow">Liquidity Flow</span>
-          <h1>Chain Analysis</h1>
-          <p>Typed backend routes and native React screens now analyze THOR, MAYA, and connected-chain flows end to end.</p>
-        </div>
-        <nav className="nav-list" aria-label="Primary">
-          {views.map((view) => (
-            <button
-              key={view.key}
-              type="button"
-              className={`nav-item ${view.key === activeView ? "active" : ""}`}
-              onClick={() => navigate(view.key)}
-              onMouseEnter={() => preloadView(view.key)}
-              onFocus={() => preloadView(view.key)}
-            >
-              <span>{view.label}</span>
-              <small>{view.eyebrow}</small>
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <main className="shell-main">
-        <section className="hero panel">
-          <span className="eyebrow">{currentView.eyebrow}</span>
-          <h2>{currentView.title}</h2>
-          <p>{currentView.description}</p>
-        </section>
-        <Suspense
-          fallback={
-            <section className="panel page-panel">
-              <span className="eyebrow">Loading</span>
-              <h2>Loading {currentView.label}</h2>
-              <p>Fetching the code bundle for this workspace view.</p>
-            </section>
-          }
-        >
-          <ActivePage />
-        </Suspense>
-      </main>
-    </div>
+    <RouterProvider>
+      <ToastProvider>
+        <ActiveCaseProvider>
+          <SearchPaletteProvider>
+            <Shell />
+          </SearchPaletteProvider>
+        </ActiveCaseProvider>
+      </ToastProvider>
+    </RouterProvider>
   );
 }
 
