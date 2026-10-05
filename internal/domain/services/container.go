@@ -14,6 +14,8 @@ type Container struct {
 	Labels          *LabelService
 	Monitor         *MonitorService
 	Trace           *TraceService
+	Cases           *CaseService
+	Investigation   *InvestigationService
 }
 
 func New(legacy *app.App) *Container {
@@ -29,5 +31,7 @@ func New(legacy *app.App) *Container {
 		Labels:          &LabelService{legacy: legacy},
 		Monitor:         &MonitorService{legacy: legacy},
 		Trace:           &TraceService{legacy: legacy},
+		Cases:           &CaseService{legacy: legacy},
+		Investigation:   &InvestigationService{legacy: legacy},
 	}
 }

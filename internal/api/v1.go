@@ -102,6 +102,17 @@ func (h *V1) Register(mux *http.ServeMux) {
 	handle("GET /api/v1/traces", h.handleTraceRuns)
 	handle("GET /api/v1/traces/{id}", h.handleTraceRun)
 	handle("DELETE /api/v1/traces/{id}", h.handleTraceRun)
+	handle("GET /api/v1/cases", h.handleCases)
+	handle("POST /api/v1/cases", h.handleCases)
+	handle("GET /api/v1/cases/{id}", h.handleCaseByID)
+	handle("PUT /api/v1/cases/{id}", h.handleCaseByID)
+	handle("DELETE /api/v1/cases/{id}", h.handleCaseByID)
+	handle("POST /api/v1/cases/{id}/items", h.handleCaseItems)
+	handle("DELETE /api/v1/cases/{id}/items/{item_id}", h.handleCaseItemDelete)
+	handle("GET /api/v1/cases/{id}/export", h.handleCaseExport)
+	handle("POST /api/v1/jobs/address-profile", h.handleStartAddressProfileJob)
+	handle("POST /api/v1/jobs/labels-import", h.handleStartLabelsImportJob)
+	handle("GET /api/v1/ledger/coverage", h.handleLedgerCoverage)
 }
 
 func (h *V1) handleHealth(w http.ResponseWriter, r *http.Request) {

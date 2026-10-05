@@ -24,6 +24,7 @@ var migrations = []migration{
 	{id: 8, name: "labels", up: migrateLabels},
 	{id: 9, name: "actor_monitoring", up: migrateActorMonitoring},
 	{id: 10, name: "trace_runs", up: migrateTraceRuns},
+	{id: 11, name: "cases", up: migrateCases},
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
@@ -448,6 +449,35 @@ func migrateTraceRuns(ctx context.Context, db *sql.Tx) error {
 			response_json TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_trace_runs_created ON trace_runs(created_at)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateCases(ctx context.Context, db *sql.Tx) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS cases (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			notes_md TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS case_items (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			case_id INTEGER NOT NULL,
+			kind TEXT NOT NULL,
+			ref TEXT NOT NULL,
+			note TEXT NOT NULL DEFAULT '',
+			pinned_at TEXT NOT NULL,
+			FOREIGN KEY(case_id) REFERENCES cases(id) ON DELETE CASCADE,
+			UNIQUE(case_id, kind, ref)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_case_items_case ON case_items(case_id, pinned_at)`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
