@@ -9,6 +9,7 @@ import { useGraphMinimap } from "./graph-canvas/useGraphMinimap";
 import { useGraphNeighborhoodHighlight } from "./graph-canvas/useGraphNeighborhoodHighlight";
 import { useGraphSearch } from "./graph-canvas/useGraphSearch";
 import type { ContextMenuState, GraphCanvasProps, GraphWheelMode } from "./graph-canvas/types";
+import type { GraphLayoutPhase } from "./graph-canvas/useGraphCanvasCore";
 import type { SavedGraphCanvasState } from "../../lib/graphState";
 
 const WHEEL_MODE_STORAGE_KEY = "graph-canvas-wheel-mode";
@@ -60,6 +61,7 @@ export function GraphCanvas({
   const [menuState, setMenuState] = useState<ContextMenuState>(null);
   const [wheelMode, setWheelMode] = useState<GraphWheelMode>(readStoredWheelMode);
   const [pendingSaveState, setPendingSaveState] = useState<SavedGraphCanvasState | null>(null);
+  const [layoutPhase, setLayoutPhase] = useState<GraphLayoutPhase | null>(null);
 
   const { labelLayerRef, scheduleLabelRender, cancelScheduledLabelRender } = useGraphLabelLayer(cyRef, surfaceRef);
 
@@ -81,7 +83,22 @@ export function GraphCanvas({
     cyMountRef,
     scheduleLabelRender,
     cancelScheduledLabelRender,
+    onLayoutPhase: (phase) =>
+      // Small incremental updates after the first layout should not hide the
+      // "zoomed to the start" note.
+      setLayoutPhase((current) =>
+        phase.phase === "done" && !phase.focused && current?.phase === "done" && current.focused ? current : phase
+      ),
   });
+
+  // The "zoomed to the start" note fades after a while or on the next fit.
+  useEffect(() => {
+    if (layoutPhase?.phase !== "done" || !layoutPhase.focused) {
+      return;
+    }
+    const timer = window.setTimeout(() => setLayoutPhase(null), 9000);
+    return () => window.clearTimeout(timer);
+  }, [layoutPhase]);
 
   const { handleToolbarAction, handleContextMenuAction } = useGraphCanvasInteractions({
     cyRef,
@@ -142,6 +159,47 @@ export function GraphCanvas({
     scheduleLabelRender();
   }, [isFullscreen, scheduleLabelRender]);
 
+  // The canvas fills a flexible area (panels open and close around it), so
+  // follow its size and keep whatever was centred in the middle.
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    let previous = { width: surface.clientWidth, height: surface.clientHeight };
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const cy = cyRef.current;
+        const next = { width: surface.clientWidth, height: surface.clientHeight };
+        if (!cy || (next.width === previous.width && next.height === previous.height)) {
+          previous = next;
+          return;
+        }
+        // Panning here fires cytoscape's viewport events, which would record
+        // this adjustment as the user's own viewport. When no viewport is
+        // recorded yet (a layout is about to fit the graph), keep it that way.
+        const recorded = viewportRef.current;
+        cy.resize();
+        const dx = (next.width - previous.width) / 2;
+        const dy = (next.height - previous.height) / 2;
+        if (previous.width && previous.height && (dx || dy)) {
+          const pan = cy.pan();
+          cy.pan({ x: pan.x + dx, y: pan.y + dy });
+        }
+        viewportRef.current = recorded ? { zoom: cy.zoom(), pan: cy.pan() } : null;
+        previous = next;
+        scheduleLabelRender();
+      });
+    });
+    observer.observe(surface);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [scheduleLabelRender]);
+
   useEffect(() => {
     onFullscreenChange?.(isFullscreen);
   }, [isFullscreen, onFullscreenChange]);
@@ -184,9 +242,26 @@ export function GraphCanvas({
             onCycleWheelMode={() => setWheelMode((current) => nextWheelMode(current))}
             hoverCard={hoverCard}
             minimapCanvasRef={minimapCanvasRef}
-            onToolbarAction={handleToolbarAction}
+            onToolbarAction={(action) => {
+              if (action === "fit") {
+                setLayoutPhase(null);
+              }
+              handleToolbarAction(action);
+            }}
             onContextMenuAction={handleContextMenuAction}
           />
+          {layoutPhase?.phase === "busy" && layoutPhase.nodeCount > 150 ? (
+            <div className="graph-layout-note" role="status">
+              <span className="spinner" aria-hidden="true" />
+              Arranging {layoutPhase.nodeCount.toLocaleString()} nodes…
+            </div>
+          ) : null}
+          {layoutPhase?.phase === "done" && layoutPhase.focused ? (
+            <div className="graph-layout-note" role="status">
+              Showing the starting addresses up close. Press 0 or use Fit to see all{" "}
+              {layoutPhase.nodeCount.toLocaleString()} nodes.
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

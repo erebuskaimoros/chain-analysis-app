@@ -1,0 +1,142 @@
+/*
+  Design tokens.
+
+  The graph canvas is a dark "night map" in both themes and is the one bold
+  surface in the app. Everything around it is flat chrome: navy ink, hairline
+  dividers, and a single action colour (rune teal). Colour that carries
+  meaning (chains, flow direction, risk labels) belongs to the data, not to
+  the chrome.
+*/
+
+:root {
+  color-scheme: light;
+
+  --bg: #f4f6f8;
+  --bg-sunken: #e9edf1;
+  --surface: #ffffff;
+  --surface-hover: #eef2f5;
+  --surface-selected: #e3efed;
+
+  --ink: #142030;
+  --ink-2: #4a5869;
+  --ink-3: #627083;
+
+  --line: #d6dde4;
+  --line-strong: #bac4ce;
+
+  --accent: #0b7a6e;
+  --accent-hover: #09685e;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcf0ec;
+  --accent-text: #08665c;
+
+  --danger: #b42d2d;
+  --danger-soft: #f9e3e1;
+  --warn: #8c5a00;
+  --warn-soft: #fbf0d6;
+  --ok: #2a7a3d;
+
+  --shadow-float: 0 1px 2px rgba(20, 32, 48, 0.08), 0 10px 28px rgba(20, 32, 48, 0.14);
+  --scrim: rgba(12, 20, 32, 0.34);
+
+  /* Night map: the graph canvas keeps this palette in both themes. */
+  --map-bg: #050c17;
+  --map-bg-2: #0a1424;
+  --map-panel: rgba(9, 18, 35, 0.9);
+  --map-line: rgba(109, 152, 222, 0.24);
+  --map-ink: #f5fbff;
+  --map-ink-2: #b9cfe6;
+  --map-ink-3: #7d95b5;
+
+  /* Risk and entity categories, shared by badges, the trace flow and legends. */
+  --cat-risk: #d64545;
+  --cat-exchange: #d99a1e;
+  --cat-mixer: #a862d6;
+  --cat-protocol: #2f9e82;
+  --cat-pool: #3f7fd8;
+  --cat-held: #7a8aa0;
+
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.125rem;
+  --text-2xl: 1.5rem;
+
+  --radius-control: 6px;
+  --radius-float: 10px;
+  --radius-pill: 999px;
+
+  --rail-expanded: 232px;
+  --rail-collapsed: 56px;
+  --header-h: 52px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #0f1824;
+    --bg-sunken: #0b131d;
+    --surface: #152030;
+    --surface-hover: #1b2839;
+    --surface-selected: #133431;
+
+    --ink: #e3e9f0;
+    --ink-2: #a7b4c3;
+    --ink-3: #7f8ea0;
+
+    --line: #223146;
+    --line-strong: #30435a;
+
+    --accent: #2fb5a2;
+    --accent-hover: #43c7b4;
+    --accent-ink: #04201c;
+    --accent-soft: #10302d;
+    --accent-text: #5fd3c1;
+
+    --danger: #f2766b;
+    --danger-soft: #3a1c1e;
+    --warn: #e6b04f;
+    --warn-soft: #36290f;
+    --ok: #6cc985;
+
+    --shadow-float: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.5);
+    --scrim: rgba(2, 6, 12, 0.62);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0f1824;
+  --bg-sunken: #0b131d;
+  --surface: #152030;
+  --surface-hover: #1b2839;
+  --surface-selected: #133431;
+
+  --ink: #e3e9f0;
+  --ink-2: #a7b4c3;
+  --ink-3: #7f8ea0;
+
+  --line: #223146;
+  --line-strong: #30435a;
+
+  --accent: #2fb5a2;
+  --accent-hover: #43c7b4;
+  --accent-ink: #04201c;
+  --accent-soft: #10302d;
+  --accent-text: #5fd3c1;
+
+  --danger: #f2766b;
+  --danger-soft: #3a1c1e;
+  --warn: #e6b04f;
+  --warn-soft: #36290f;
+  --ok: #6cc985;
+
+  --shadow-float: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(2, 6, 12, 0.62);
+}

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeEdge, makeExplorerResponse, makeNode } from "../../../test-support/graphFixtures";
+import { RouterProvider } from "../../../app/router";
 import { ExplorerPage } from "../ExplorerPage";
 
 const apiMocks = vi.hoisted(() => ({
@@ -61,12 +62,12 @@ describe("ExplorerPage", () => {
     Object.values(apiMocks).forEach((mockFn) => mockFn.mockReset());
   });
 
-  it("fills the explorer address field from a saved label annotation", async () => {
+  it("suggests labeled addresses and names what the typed address is", async () => {
     apiMocks.listAnnotations.mockResolvedValue([
       {
         id: 1,
-        address: "thor1treasury",
-        normalized_address: "thor1treasury",
+        address: "thor1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+        normalized_address: "thor1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
         kind: "label",
         value: "Treasury Hot Wallet",
         created_at: "2026-03-11T12:00:00Z",
@@ -83,19 +84,42 @@ describe("ExplorerPage", () => {
     apiMocks.listBlocklist.mockResolvedValue([]);
     apiMocks.listAddressExplorerRuns.mockResolvedValue([]);
 
-    renderPage();
+    const { container } = renderPage();
 
-    await screen.findByRole("option", { name: "Treasury Hot Wallet · thor1treasury" });
+    // Labeled addresses are offered as suggestions on the address field;
+    // other annotation kinds are not.
+    await waitFor(() => expect(container.querySelector('datalist option[value="thor1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"]')).not.toBeNull());
+    expect(container.querySelector('datalist option[value="thor1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"]')?.getAttribute("label")).toBe("Treasury Hot Wallet");
+    expect(container.querySelector('datalist option[value="thor1ignore"]')).toBeNull();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Named Addresses" }), {
-      target: { value: "1" },
-    });
+    const address = screen.getByPlaceholderText("thor1...") as HTMLInputElement;
+    expect(address.getAttribute("list")).toBe(container.querySelector("datalist")?.id);
+    fireEvent.change(address, { target: { value: "thor1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" } });
+    expect(screen.getByText("Treasury Hot Wallet, THOR address")).toBeTruthy();
+  });
 
-    await waitFor(() =>
-      expect((screen.getByPlaceholderText("thor1...") as HTMLInputElement).value).toBe("thor1treasury")
+  it("explores an address sent from search or another page", async () => {
+    apiMocks.listAnnotations.mockResolvedValue([]);
+    apiMocks.listBlocklist.mockResolvedValue([]);
+    apiMocks.listAddressExplorerRuns.mockResolvedValue([]);
+    apiMocks.buildAddressExplorer.mockReturnValue(new Promise(() => {}));
+    window.location.hash = "#explorer?address=thor1linked";
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <RouterProvider>
+        <QueryClientProvider client={queryClient}>
+          <ExplorerPage />
+        </QueryClientProvider>
+      </RouterProvider>
     );
-    expect((screen.getByRole("combobox", { name: "Named Addresses" }) as HTMLSelectElement).value).toBe("1");
-    expect(screen.queryByRole("option", { name: /Ignore me/ })).toBeNull();
+
+    await waitFor(() => expect(apiMocks.buildAddressExplorer).toHaveBeenCalled());
+    expect(apiMocks.buildAddressExplorer.mock.calls[0][0]).toMatchObject({ address: "thor1linked", mode: "preview" });
+    expect((screen.getByPlaceholderText("thor1...") as HTMLInputElement).value).toBe("thor1linked");
+    // The parameters are consumed, so reloading does not explore again.
+    expect(window.location.hash).toBe("#explorer");
+    window.location.hash = "";
   });
 
   it("loads a saved explorer graph state from disk", async () => {
@@ -119,7 +143,7 @@ describe("ExplorerPage", () => {
     });
 
     const { container } = renderPage();
-    await screen.findByRole("button", { name: "Load saved state" });
+    await screen.findByRole("button", { name: "Open a file…" });
 
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();
@@ -157,10 +181,11 @@ describe("ExplorerPage", () => {
     fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
 
     await waitFor(() => expect(screen.getByText("Loaded graph state from explorer-state.json.")).toBeTruthy());
-    expect(screen.getByRole("heading", { name: "Explorer Graph" })).toBeTruthy();
+    // The header names the explored address and how it was loaded.
+    expect(screen.getByText(/^thor1saved, oldest first/)).toBeTruthy();
     expect((screen.getByPlaceholderText("thor1...") as HTMLInputElement).value).toBe("thor1saved");
     expect((screen.getByLabelText("Min USD") as HTMLInputElement).value).toBe("42");
-    expect((screen.getByLabelText("Batch Size") as HTMLInputElement).value).toBe("7");
+    expect((screen.getByLabelText("Batch size") as HTMLInputElement).value).toBe("7");
   });
 
   it("hides graph-build warnings when the explorer graph enters fullscreen mode", async () => {
@@ -205,7 +230,7 @@ describe("ExplorerPage", () => {
     });
 
     const { container } = renderPage();
-    await screen.findByRole("button", { name: "Load saved state" });
+    await screen.findByRole("button", { name: "Open a file…" });
 
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();

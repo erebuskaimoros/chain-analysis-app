@@ -13,6 +13,10 @@ export interface GraphCanvasFilters {
 }
 
 export interface GraphCanvasNodeMenuActions {
+  onExploreAddress?: (node: VisibleGraphNode) => void;
+  onTraceFrom?: (node: VisibleGraphNode) => void;
+  onAddToCase?: (node: VisibleGraphNode) => void;
+  onAddNodesToCase?: (nodes: VisibleGraphNode[]) => void;
   onOpenExplorer?: (node: VisibleGraphNode) => void;
   onCopyAddress?: (node: VisibleGraphNode) => void;
   onRefreshLiveValue?: (node: VisibleGraphNode) => void;

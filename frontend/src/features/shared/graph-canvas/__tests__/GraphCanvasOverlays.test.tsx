@@ -61,7 +61,7 @@ describe("GraphCanvasOverlays", () => {
 
     render(<GraphCanvasOverlays {...props} />);
 
-    const input = screen.getByPlaceholderText("Search nodes (/)");
+    const input = screen.getByPlaceholderText("Find a node (/)");
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     fireEvent.keyDown(input, { key: "Escape" });

@@ -70,9 +70,9 @@ describe("GraphCanvas multi-node context menu", () => {
 
     fireEvent.contextMenu(surface, { clientX: 300, clientY: 300 });
 
-    const menuAction = await screen.findByRole("button", { name: "Expand Nodes (2)" });
+    const menuAction = await screen.findByRole("menuitem", { name: "Expand selected (2)" });
     expect(menuAction).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Cluster Nodes" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Cluster selected" })).toBeTruthy();
   });
 
   it("shows the multi-node context menu when right-clicking directly on one of the selected nodes", async () => {
@@ -100,7 +100,7 @@ describe("GraphCanvas multi-node context menu", () => {
 
     fireEvent.contextMenu(surface, { clientX: 40, clientY: 40 });
 
-    const menuAction = await screen.findByRole("button", { name: "Expand Nodes (2)" });
+    const menuAction = await screen.findByRole("menuitem", { name: "Expand selected (2)" });
     expect(menuAction).toBeTruthy();
   });
 
@@ -135,7 +135,7 @@ describe("GraphCanvas multi-node context menu", () => {
     };
 
     fireEvent.contextMenu(surface, { clientX: 120, clientY: 40 });
-    fireEvent.click(await screen.findByRole("button", { name: "Cluster Nodes" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Cluster selected" }));
 
     const after = ["node-a", "node-b", "node-c"].map((id) => mockCytoscapeState.latestCore?.nodePosition(id));
     const afterCenter = {
@@ -173,7 +173,7 @@ describe("GraphCanvas multi-node context menu", () => {
     mockCytoscapeState.latestCore.setSelectedNodeIDs(["node-a", "node-b", "node-c"]);
 
     fireEvent.contextMenu(surface, { clientX: 120, clientY: 40 });
-    fireEvent.click(await screen.findByRole("button", { name: "Cluster Nodes" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Cluster selected" }));
 
     const after = ["node-a", "node-b", "node-c"]
       .map((id) => mockCytoscapeState.latestCore?.nodePosition(id))

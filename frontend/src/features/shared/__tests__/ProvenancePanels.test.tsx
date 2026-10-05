@@ -94,7 +94,7 @@ describe("provenance panels", () => {
       <SelectionInspector selection={{ kind: "node", node }} emptyMessage="Nothing selected" />
     );
 
-    expect(screen.getByText("Source Protocols")).toBeTruthy();
+    expect(screen.getByText("Source protocols")).toBeTruthy();
     expect(screen.getByText("THOR, MAYA")).toBeTruthy();
 
     rerender(

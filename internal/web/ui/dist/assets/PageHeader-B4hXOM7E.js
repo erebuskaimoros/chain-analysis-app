@@ -1,0 +1,1 @@
+import{j as e}from"./react-vendor-BCjNPk7X.js";function d({title:r,context:a,actions:s}){return e.jsxs("header",{className:"page-header",children:[e.jsxs("div",{className:"page-header-title",children:[e.jsx("h1",{children:r}),a?e.jsx("span",{className:"page-header-context",children:a}):null]}),s?e.jsx("div",{className:"page-header-actions",children:s}):null]})}export{d as P};

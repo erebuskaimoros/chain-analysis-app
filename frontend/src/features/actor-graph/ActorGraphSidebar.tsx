@@ -1,5 +1,14 @@
-import { formatShortDateTime } from "../../lib/format";
+import { useState } from "react";
+import { ConfirmDialog } from "../../ui/Dialog";
+import { DownloadIcon, PlayIcon, StopIcon, TrashIcon } from "../../app/icons";
+import { useRouter } from "../../app/router";
+import { useActiveCase } from "../../app/activeCase";
+import { formatRelativeTime, pluralize } from "../../lib/format";
 import type { Actor, GraphRun, GraphStateSummary } from "../../lib/types";
+import { Field } from "../../ui/Field";
+import { MenuButton } from "../../ui/Menu";
+import { TimeWindowField } from "../../ui/TimeWindowField";
+import { GraphStateLoaderButton } from "../shared/GraphStateLoaderButton";
 
 export interface GraphFormState {
   start_time: string;
@@ -11,241 +20,268 @@ export interface GraphFormState {
 
 interface ActorGraphSidebarProps {
   actors: Actor[];
+  actorsLoading?: boolean;
   selectedActorIDs: number[];
   onToggleActor: (actorID: number) => void;
+  onClearActors: () => void;
   form: GraphFormState;
   onFormChange: (next: GraphFormState) => void;
   onBuild: () => void;
+  onCancelBuild: () => void;
   isBuilding: boolean;
   canBuild: boolean;
-  onRefreshLiveHoldings: () => void;
-  canRefreshLiveHoldings: boolean;
-  isRefreshingLiveHoldings: boolean;
   statusText: string;
   runs: GraphRun[];
-  selectedRunID: string;
-  onSelectedRunIDChange: (value: string) => void;
-  onLoadRun: () => void;
-  onDeleteRun: () => void;
-  isDeletingRun: boolean;
-  hasSelectedRun: boolean;
+  onRunAgain: (run: GraphRun) => void;
+  onDeleteRun: (run: GraphRun) => void;
   isLoadingRuns: boolean;
   savedStates: GraphStateSummary[];
-  selectedSavedStateID: string;
-  onSelectedSavedStateIDChange: (value: string) => void;
-  onLoadSavedState: () => void;
-  onDeleteSavedState: () => void;
-  onExportSavedState: () => void;
-  isDeletingSavedState: boolean;
-  hasSelectedSavedState: boolean;
+  onOpenSavedState: (state: GraphStateSummary) => void;
+  onDeleteSavedState: (state: GraphStateSummary) => void;
+  onExportSavedState: (state: GraphStateSummary) => void;
+  onLoadGraphFile: (file: File) => void;
   isLoadingSavedStates: boolean;
 }
 
+const RECENT_LIMIT = 5;
+
 export function ActorGraphSidebar({
   actors,
+  actorsLoading = false,
   selectedActorIDs,
   onToggleActor,
+  onClearActors,
   form,
   onFormChange,
   onBuild,
+  onCancelBuild,
   isBuilding,
   canBuild,
-  onRefreshLiveHoldings,
-  canRefreshLiveHoldings,
-  isRefreshingLiveHoldings,
   statusText,
   runs,
-  selectedRunID,
-  onSelectedRunIDChange,
-  onLoadRun,
+  onRunAgain,
   onDeleteRun,
-  isDeletingRun,
-  hasSelectedRun,
   isLoadingRuns,
   savedStates,
-  selectedSavedStateID,
-  onSelectedSavedStateIDChange,
-  onLoadSavedState,
+  onOpenSavedState,
   onDeleteSavedState,
   onExportSavedState,
-  isDeletingSavedState,
-  hasSelectedSavedState,
+  onLoadGraphFile,
   isLoadingSavedStates,
 }: ActorGraphSidebarProps) {
+  const { navigate } = useRouter();
+  const { addToCase } = useActiveCase();
+  const [showAllRuns, setShowAllRuns] = useState(false);
+  const [confirmDeleteState, setConfirmDeleteState] = useState<GraphStateSummary | null>(null);
+  const visibleRuns = showAllRuns ? runs : runs.slice(0, RECENT_LIMIT);
+
   return (
-    <div className="page-stack">
-      <section className="panel page-panel">
-        <div className="panel-head">
-          <div>
-            <span className="eyebrow">Actor Graph</span>
-            <h2>Build Graph</h2>
+    <>
+      <form
+        className="form-stack"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onBuild();
+        }}
+      >
+        <div className="ws-group">
+          <div className="ws-group-head">
+            <h3>Actors</h3>
+            {selectedActorIDs.length ? (
+              <button type="button" className="link-btn" onClick={onClearActors}>
+                Clear {selectedActorIDs.length}
+              </button>
+            ) : null}
           </div>
-        </div>
-        <form
-          className="form-grid"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onBuild();
-          }}
-        >
-          <div className="field field-full">
-            <span>Actors</span>
-            <div className="checkbox-list">
+          {actors.length ? (
+            <div className="chip-set" role="group" aria-label="Actors to graph">
               {actors.map((actor) => (
-                <label key={actor.id} className="checkbox-card">
+                <label key={actor.id} className="toggle-chip">
                   <input
                     type="checkbox"
+                    className="visually-hidden"
                     checked={selectedActorIDs.includes(actor.id)}
                     onChange={() => onToggleActor(actor.id)}
                   />
-                  <span className="actor-color-swatch" style={{ background: actor.color || "#4ca3ff" }} />
+                  <span className="swatch" style={{ background: actor.color || "#4ca3ff" }} />
                   <span>{actor.name}</span>
-                  <span className="badge">{actor.addresses.length}</span>
+                  <span className="count" aria-label={pluralize(actor.addresses.length, "address", "addresses")}>
+                    {actor.addresses.length}
+                  </span>
                 </label>
               ))}
             </div>
-          </div>
-          <label className="field">
-            <span>Start</span>
-            <input
-              type="datetime-local"
-              value={form.start_time}
-              onChange={(event) => onFormChange({ ...form, start_time: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>End</span>
-            <input
-              type="datetime-local"
-              value={form.end_time}
-              onChange={(event) => onFormChange({ ...form, end_time: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>Max Hops</span>
-            <input
-              type="number"
-              min={1}
-              max={8}
-              value={form.max_hops}
-              onChange={(event) => onFormChange({ ...form, max_hops: Number(event.target.value) || form.max_hops })}
-            />
-          </label>
-          <label className="field">
-            <span>Min USD (at time)</span>
-            <input
-              type="number"
-              step="any"
-              value={form.min_usd}
-              onChange={(event) => onFormChange({ ...form, min_usd: event.target.value })}
-            />
-          </label>
-          <label className="field field-checkbox" title="Keep flows of assets with no known price when a minimum is set">
-            <input
-              type="checkbox"
-              checked={Boolean(form.include_unpriced)}
-              onChange={(event) => onFormChange({ ...form, include_unpriced: event.target.checked })}
-            />
-            <span>Include unpriced assets</span>
-          </label>
-          <div className="form-actions field-full">
-            <button type="submit" className="button" disabled={isBuilding || !canBuild}>
-              {isBuilding ? "Building..." : "Build Graph"}
-            </button>
-            <button
-              type="button"
-              className="button secondary"
-              disabled={!canRefreshLiveHoldings || isRefreshingLiveHoldings}
-              onClick={onRefreshLiveHoldings}
-            >
-              {isRefreshingLiveHoldings ? "Refreshing..." : "Refresh Live Holdings"}
-            </button>
-          </div>
-        </form>
-        <p className="status-line">{statusText}</p>
-      </section>
+          ) : actorsLoading ? (
+            <p className="status-text">Loading actors…</p>
+          ) : (
+            <div className="empty-state">
+              An actor is a named set of addresses. Create one first, then graph its flows here.
+              <button type="button" className="btn btn-sm" onClick={() => navigate("actors", { new: "1" })}>
+                Create an actor
+              </button>
+            </div>
+          )}
+        </div>
 
-      <section className="panel page-panel">
-        <div className="panel-head">
-          <div>
-            <span className="eyebrow">Runs</span>
-            <h2>Saved Graph Runs</h2>
-          </div>
-          <span className="status-pill ok">{runs.length}</span>
-        </div>
-        {isLoadingRuns ? <div className="empty-state">Loading runs…</div> : null}
-        <div className="stack">
-          <select value={selectedRunID} onChange={(event) => onSelectedRunIDChange(event.target.value)}>
-            <option value="">Select a saved run</option>
-            {runs.map((run) => (
-              <option key={run.id} value={run.id}>
-                {run.actor_names || "Untitled"} · {run.node_count}N/{run.edge_count}E · {formatShortDateTime(run.created_at)}
-              </option>
-            ))}
-          </select>
-          <div className="button-row">
-            <button type="button" className="button secondary" disabled={!hasSelectedRun} onClick={onLoadRun}>
-              Load
-            </button>
-            <button
-              type="button"
-              className="button secondary danger"
-              disabled={!hasSelectedRun || isDeletingRun}
-              onClick={onDeleteRun}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      </section>
+        <TimeWindowField
+          start={form.start_time}
+          end={form.end_time}
+          onChange={(next) => onFormChange({ ...form, start_time: next.start, end_time: next.end })}
+        />
 
-      <section className="panel page-panel">
-        <div className="panel-head">
-          <div>
-            <span className="eyebrow">States</span>
-            <h2>Saved Graph States</h2>
+        <Field label="Max hops" hint="How far to follow flows out from the actors' own addresses.">
+          <input
+            type="number"
+            min={1}
+            max={8}
+            value={form.max_hops}
+            onChange={(event) => onFormChange({ ...form, max_hops: Number(event.target.value) || form.max_hops })}
+          />
+        </Field>
+
+        <details className="disclosure">
+          <summary>More options</summary>
+          <div className="disclosure-body">
+            <Field label="Min USD (at time)" hint="Leave out flows worth less than this when they happened.">
+              <input
+                type="number"
+                step="any"
+                value={form.min_usd}
+                onChange={(event) => onFormChange({ ...form, min_usd: event.target.value })}
+              />
+            </Field>
+            <label className="check" title="Keep flows of assets with no known price when a minimum is set">
+              <input
+                type="checkbox"
+                checked={Boolean(form.include_unpriced)}
+                onChange={(event) => onFormChange({ ...form, include_unpriced: event.target.checked })}
+              />
+              <span>Include unpriced assets</span>
+            </label>
           </div>
-          <span className="status-pill ok">{savedStates.length}</span>
+        </details>
+
+        <div className="form-actions">
+          {isBuilding ? (
+            <button type="button" className="btn" onClick={onCancelBuild}>
+              <StopIcon />
+              Cancel build
+            </button>
+          ) : (
+            <button type="submit" className="btn btn-primary" disabled={!canBuild}>
+              Build graph
+            </button>
+          )}
         </div>
-        {isLoadingSavedStates ? <div className="empty-state">Loading saved states…</div> : null}
-        <div className="stack">
-          <select value={selectedSavedStateID} onChange={(event) => onSelectedSavedStateIDChange(event.target.value)}>
-            <option value="">Select a saved state</option>
+        <p className="status-text" role="status">
+          {statusText}
+        </p>
+      </form>
+
+      <section className="ws-group" aria-label="Saved graphs">
+        <div className="ws-group-head">
+          <h3>Saved graphs</h3>
+          <GraphStateLoaderButton
+            className="btn btn-ghost btn-sm"
+            label="Open a file…"
+            disabled={isBuilding}
+            onLoadFile={(file) => onLoadGraphFile(file)}
+          />
+        </div>
+        {isLoadingSavedStates ? <p className="status-text">Loading saved graphs…</p> : null}
+        {savedStates.length ? (
+          <ul className="list ws-run-list">
             {savedStates.map((state) => (
-              <option key={state.id} value={state.id}>
-                {state.name} · {state.node_count}N/{state.edge_count}E · {formatShortDateTime(state.updated_at)}
-              </option>
+              <li key={state.id} className="list-row">
+                <button
+                  type="button"
+                  className="link-btn list-row-main"
+                  title={`Open ${state.name} exactly as it was saved`}
+                  onClick={() => onOpenSavedState(state)}
+                >
+                  <span className="list-row-title">{state.name}</span>
+                  <span className="list-row-meta">
+                    {pluralize(state.node_count, "node")}, saved {formatRelativeTime(state.updated_at)}
+                  </span>
+                </button>
+                <MenuButton
+                  label={`Actions for ${state.name}`}
+                  items={[
+                    { label: "Open", onSelect: () => onOpenSavedState(state) },
+                    {
+                      label: "Add to the active case",
+                      onSelect: () => addToCase([{ kind: "graph_state", ref: String(state.id) }], state.name),
+                    },
+                    { label: "Export as a file", icon: <DownloadIcon />, onSelect: () => onExportSavedState(state) },
+                    "separator",
+                    { label: "Delete…", icon: <TrashIcon />, danger: true, onSelect: () => setConfirmDeleteState(state) },
+                  ]}
+                />
+              </li>
             ))}
-          </select>
-          <div className="button-row">
-            <button
-              type="button"
-              className="button secondary"
-              disabled={!hasSelectedSavedState}
-              onClick={onLoadSavedState}
-            >
-              Load
-            </button>
-            <button
-              type="button"
-              className="button secondary"
-              disabled={!hasSelectedSavedState}
-              onClick={onExportSavedState}
-            >
-              Export
-            </button>
-            <button
-              type="button"
-              className="button secondary danger"
-              disabled={!hasSelectedSavedState || isDeletingSavedState}
-              onClick={onDeleteSavedState}
-            >
-              Delete
-            </button>
-          </div>
-          <p className="hint">The save button on the graph toolbar stores the current layout here.</p>
-        </div>
+          </ul>
+        ) : !isLoadingSavedStates ? (
+          <p className="section-note">
+            Save a graph from the map toolbar to reopen it here exactly as you left it, layout and filters included.
+          </p>
+        ) : null}
       </section>
-    </div>
+
+      <section className="ws-group" aria-label="Recent builds">
+        <div className="ws-group-head">
+          <h3>Recent builds</h3>
+          {runs.length > RECENT_LIMIT ? (
+            <button type="button" className="link-btn" onClick={() => setShowAllRuns((value) => !value)}>
+              {showAllRuns ? "Show fewer" : `Show all ${runs.length}`}
+            </button>
+          ) : null}
+        </div>
+        {isLoadingRuns ? <p className="status-text">Loading recent builds…</p> : null}
+        {runs.length ? (
+          <ul className="list ws-run-list">
+            {visibleRuns.map((run) => (
+              <li key={run.id} className="list-row">
+                <span className="list-row-main">
+                  <span className="list-row-title">{run.actor_names || "Untitled"}</span>
+                  <span className="list-row-meta">
+                    {pluralize(run.node_count, "node")}, {formatRelativeTime(run.created_at)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={isBuilding}
+                  title="Builds the graph again with this run's actors and settings"
+                  onClick={() => onRunAgain(run)}
+                >
+                  <PlayIcon size={12} />
+                  Run again
+                </button>
+                <MenuButton
+                  label={`Actions for the ${run.actor_names || "untitled"} run`}
+                  items={[{ label: "Delete", icon: <TrashIcon />, danger: true, onSelect: () => onDeleteRun(run) }]}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : !isLoadingRuns ? (
+          <p className="section-note">Each graph you build is listed here so you can run it again.</p>
+        ) : null}
+      </section>
+
+      {confirmDeleteState ? (
+        <ConfirmDialog
+          title={`Delete ${confirmDeleteState.name}?`}
+          message="The saved layout, filters and expansions go with it. Export it as a file first if you might want it back."
+          confirmLabel="Delete saved graph"
+          onCancel={() => setConfirmDeleteState(null)}
+          onConfirm={() => {
+            const target = confirmDeleteState;
+            setConfirmDeleteState(null);
+            onDeleteSavedState(target);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
