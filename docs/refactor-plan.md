@@ -233,6 +233,17 @@ Steps:
 - Every edge has transaction IDs.
 - It finishes in under 2 seconds on replay and under 60 seconds live when uncached.
 
+**Status (2026-10-05): done.**
+- **Storage and API:** trace runs are migration 10 (`trace_runs`). The job is `POST /api/v1/jobs/trace`, with `/api/v1/analysis/trace` as an alias.
+- **Tx-ID matching:** fixing the EVM `0x` matching revealed a second bug. Deposits and payouts through rotated vaults were drawn twice, inside the swap and as separate transfers. Both were fixed test-first.
+- **Confidence:** projection now scores 1 for legs THORChain records, with lower, explained scores for inferred legs.
+- **Acceptance, against the corrected figures (31 swaps, 87.823 BTC):**
+  - Replay takes 0.07 s.
+  - A live, uncached depth-3 trace takes 39 s.
+- **Not one sink:** the exploiter also sent 119.34 ETH to another wallet, so the BTC destination is not the only endpoint. The test checks that the swaps reach it and that its BTC is conserved.
+
+Details are in session 2026-10-05 #4.
+
 ## Phase 8: Cases, export, CLI, MCP
 
 1. **Cases.** Migration 11 adds `cases(id, title, notes_md, created_at, updated_at)` and `case_items(case_id, kind, ref, note, pinned_at)`. Item kinds are address, tx, trace_run, graph_state and actor. Graph states (from the map branch) and trace runs attach to cases.

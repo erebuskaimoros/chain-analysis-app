@@ -25,6 +25,9 @@ in the Go server.
   runs, and server-side saved graph states.
 - Actor monitoring: each refresh records an actor's holdings and the flows since
   the previous refresh, with a "since you last looked" view on the Actors page.
+- Follow-the-funds tracing: from an address or a THORChain transaction, follow
+  value hop by hop (through swaps across chains) to exchanges, sanctioned
+  addresses, pools, bonds, or wallets that still hold it.
 
 ## API
 
@@ -54,6 +57,8 @@ All endpoints live under `/api/v1`:
 - `GET /api/v1/labels?address=`, `GET /api/v1/labels/sources`
 - `GET /api/v1/actors/{id}/monitor`, `PUT /api/v1/actors/{id}/watch`,
   `POST /api/v1/actors/{id}/viewed`
+- `POST /api/v1/jobs/trace` (alias `POST /api/v1/analysis/trace`),
+  `GET /api/v1/traces`, `GET|DELETE /api/v1/traces/{id}`
 
 ## Run
 
@@ -144,6 +149,33 @@ Changes above the chosen USD threshold are highlighted. **Mark as seen** resets
 the comparison point. Tick **Refresh on schedule** and set
 `CHAIN_ANALYSIS_ACTOR_REFRESH_INTERVAL` to refresh watched actors in the
 background.
+
+## Tracing funds
+
+The Trace page (or `POST /api/v1/jobs/trace`) follows value from seeds:
+
+- **Seeds:** addresses (`CHAIN|address` when the chain is ambiguous), or a
+  THORChain transaction hash. A transaction seed follows that deposit's amount.
+- **Direction:** `forward` (where did it go) or `backward` (where did it come
+  from).
+- **Allocation policy** at each address:
+  - `fifo`: payments spend the oldest funds first.
+  - `haircut`: each payment carries the address's traced share.
+  - `largest_out`: traced funds go to the largest payments first.
+- **Limits:** hops, branches per address, and a minimum USD value at
+  transaction time.
+- **Stops:** labels in the stop categories (default exchange, sanctioned,
+  mixer), liquidity pools, validator bonds, and contracts.
+
+Swaps carry the traced share of their input into the output asset. Each traced
+edge lists its transactions (swaps show both the deposit and the payout hash),
+the value at transaction time, and a confidence with its reason. Results list:
+
+- **sinks:** where the value rests, including addresses still holding it.
+- **frontier:** where a limit stopped the trace.
+- **coverage gaps:** history the providers truncated or could not return.
+
+Every finished trace is saved and can be reopened.
 
 ## Notes
 
