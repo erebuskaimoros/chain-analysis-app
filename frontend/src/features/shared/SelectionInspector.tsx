@@ -88,6 +88,25 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
             <dt>Chain</dt>
             <dd>{selection.node.chain || "n/a"}</dd>
           </div>
+          {nodeLabels(selection.node).length ? (
+            <div>
+              <dt>Labels</dt>
+              <dd>
+                <ul className="label-list">
+                  {nodeLabels(selection.node).map((entry) => (
+                    <li key={`${entry.source}:${entry.label}`}>
+                      {entry.category ? (
+                        <span className={`label-category-badge label-category-${entry.category}`}>
+                          {entry.category.replace(/_/g, " ")}
+                        </span>
+                      ) : null}{" "}
+                      {entry.label} <span className="label-source">({entry.source}, {entry.confidence})</span>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt>Depth</dt>
             <dd>{selection.node.depth}</dd>
@@ -213,4 +232,28 @@ export function SelectionInspector({ selection, emptyMessage, onLookupTx }: Sele
       </div>
     </div>
   );
+}
+
+interface NodeLabelEntry {
+  label: string;
+  category: string;
+  source: string;
+  confidence: number;
+}
+
+// nodeLabels reads the server-provided label attributions, best first.
+function nodeLabels(node: { metrics: Record<string, unknown> | null }): NodeLabelEntry[] {
+  const raw = node.metrics?.labels;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
+    .map((entry) => ({
+      label: String(entry.label ?? ""),
+      category: String(entry.category ?? ""),
+      source: String(entry.source ?? ""),
+      confidence: Number(entry.confidence ?? 0),
+    }))
+    .filter((entry) => entry.label);
 }

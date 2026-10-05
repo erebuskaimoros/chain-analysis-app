@@ -1152,3 +1152,52 @@ textarea {
     height: 460px;
   }
 }
+
+/* Address label categories (exchange, sanctioned, scam, ...). */
+.label-category-badge {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: rgba(109, 152, 222, 0.22);
+  color: #cfe0ff;
+}
+.label-category-sanctioned,
+.label-category-scam,
+.label-category-hack,
+.label-category-ransomware,
+.label-category-terrorism,
+.label-category-extremism,
+.label-category-darknet_market {
+  background: rgba(214, 69, 69, 0.28);
+  color: #ffd6d6;
+}
+.label-category-exchange,
+.label-category-wallet_service {
+  background: rgba(232, 176, 58, 0.26);
+  color: #ffeac0;
+}
+.label-category-mixer {
+  background: rgba(168, 98, 214, 0.28);
+  color: #f0d9ff;
+}
+.label-category-defi,
+.label-category-bridge,
+.label-category-protocol {
+  background: rgba(64, 176, 140, 0.26);
+  color: #d2f7ea;
+}
+.label-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.25rem;
+}
+.label-source {
+  opacity: 0.7;
+  font-size: 0.8em;
+}

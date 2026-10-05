@@ -17,7 +17,7 @@ import {
   restoreSavedGraphFilters,
   type SavedGraphCanvasState,
 } from "../../../lib/graphState";
-import { cloneGraphFilterState, deriveExplorerVisibleGraph, filterSupportingActions, mergeAddressExplorerResponse, mergeExplorerExpansionResponse, explorerExpansionSeeds, type GraphSelection } from "../../../lib/graph";
+import { applyLabelCategoryFilter, cloneGraphFilterState, deriveExplorerVisibleGraph, labelCategoriesOf, filterSupportingActions, mergeAddressExplorerResponse, mergeExplorerExpansionResponse, explorerExpansionSeeds, type GraphSelection } from "../../../lib/graph";
 import type { ActionLookupResponse, AddressExplorerRequest, AddressExplorerResponse } from "../../../lib/types";
 import { useGraphFilterState } from "../../shared/graph-hooks/useGraphFilterState";
 import { useGraphMetadata } from "../../shared/graph-hooks/useGraphMetadata";
@@ -113,6 +113,7 @@ export function useExplorerGraphController() {
     syncWithGraph,
     toggleTxnType,
     toggleChain,
+    toggleLabelCategory,
     updateDate,
     updateNumber,
     resetAllFilters,
@@ -211,7 +212,7 @@ export function useExplorerGraphController() {
   );
 
   const visibleGraph = useMemo(
-    () => (graph ? deriveExplorerVisibleGraph(graph, graphFilters, metadata) : null),
+    () => applyLabelCategoryFilter(graph ? deriveExplorerVisibleGraph(graph, graphFilters, metadata) : null, graphFilters.hiddenLabelCategories),
     [graph, graphFilters, metadata]
   );
 
@@ -454,9 +455,11 @@ export function useExplorerGraphController() {
     savedCanvasState,
     graphFilters,
     filtersActive,
+    labelCategories: labelCategoriesOf(graph?.nodes),
     filterActions: {
       toggleTxnType,
       toggleChain,
+      toggleLabelCategory,
       updateDate,
       updateNumber,
       resetAllFilters,

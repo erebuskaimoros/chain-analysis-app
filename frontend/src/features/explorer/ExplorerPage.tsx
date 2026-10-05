@@ -282,6 +282,8 @@ export function ExplorerPage() {
                         filterState={controller.graphFilters}
                         onToggleTxnType={controller.filterActions.toggleTxnType}
                         onToggleChain={controller.filterActions.toggleChain}
+                        labelCategories={controller.labelCategories}
+                        onToggleLabelCategory={controller.filterActions.toggleLabelCategory}
                         onStartTimeChange={(value) => controller.filterActions.updateDate("startTime", value)}
                         onEndTimeChange={(value) => controller.filterActions.updateDate("endTime", value)}
                         onMinUSDChange={(value) => controller.filterActions.updateNumber("minTxnUSD", value)}

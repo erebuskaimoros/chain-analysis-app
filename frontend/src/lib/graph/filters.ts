@@ -27,6 +27,7 @@ export function createGraphFilterState(): GraphFilterState {
     },
     availableChains: [],
     selectedChains: [],
+    hiddenLabelCategories: [],
     graphMinTime: "",
     graphMaxTime: "",
     graphMinTxnUSD: null,
@@ -44,6 +45,7 @@ export function cloneGraphFilterState(filterState: GraphFilterState) {
     txnTypes: { ...filterState.txnTypes },
     availableChains: [...filterState.availableChains],
     selectedChains: [...filterState.selectedChains],
+    hiddenLabelCategories: [...(filterState.hiddenLabelCategories ?? [])],
   };
 }
 

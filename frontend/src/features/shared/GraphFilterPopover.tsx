@@ -10,6 +10,8 @@ interface GraphFilterPopoverProps {
   filterState: GraphFilterState;
   onToggleTxnType: (bucket: GraphTxnBucket, checked: boolean) => void;
   onToggleChain: (chain: string, checked: boolean) => void;
+  labelCategories?: string[];
+  onToggleLabelCategory?: (category: string, visible: boolean) => void;
   onStartTimeChange: (value: string) => void;
   onEndTimeChange: (value: string) => void;
   onMinUSDChange: (value: string) => void;
@@ -21,6 +23,8 @@ export function GraphFilterPopover({
   filterState,
   onToggleTxnType,
   onToggleChain,
+  labelCategories = [],
+  onToggleLabelCategory,
   onStartTimeChange,
   onEndTimeChange,
   onMinUSDChange,
@@ -76,6 +80,24 @@ export function GraphFilterPopover({
           )}
         </div>
       </div>
+
+      {labelCategories.length && onToggleLabelCategory ? (
+        <div className="graph-filter-section">
+          <div className="graph-filter-section-title">Labeled Entities Shown</div>
+          <div className="graph-filter-options graph-filter-options-scroll">
+            {labelCategories.map((category) => (
+              <label key={category} className="graph-filter-option">
+                <input
+                  type="checkbox"
+                  checked={!(filterState.hiddenLabelCategories ?? []).includes(category)}
+                  onChange={(event) => onToggleLabelCategory(category, event.target.checked)}
+                />
+                <span className={`label-category-badge label-category-${category}`}>{category.replace(/_/g, " ")}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="graph-filter-section">
         <div className="graph-filter-section-title">Time Window</div>

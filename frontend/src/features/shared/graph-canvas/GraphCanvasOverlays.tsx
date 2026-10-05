@@ -264,9 +264,11 @@ function GraphHoverCard({ hoverCard }: { hoverCard: GraphHoverCardState }) {
   const { node, x, y } = hoverCard;
   const address = node.metrics && typeof node.metrics === "object" ? String(node.metrics.address ?? "") : "";
   const flowUSD = node.metrics && typeof node.metrics === "object" ? Number(node.metrics.usd_spot ?? 0) : 0;
+  const category = node.metrics && typeof node.metrics.label_category === "string" ? node.metrics.label_category : "";
   return (
     <div className="graph-hover-card" style={{ left: `${x + 14}px`, top: `${y + 14}px` }}>
       <strong>{node.displayLabel || node.label || node.id}</strong>
+      {category ? <span className={`label-category-badge label-category-${category}`}>{category.replace(/_/g, " ")}</span> : null}
       <span className="graph-hover-kind">
         {node.kind}
         {node.chain ? ` · ${node.chain}` : ""}

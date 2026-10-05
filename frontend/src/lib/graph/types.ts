@@ -34,6 +34,7 @@ export interface GraphFilterState {
   txnTypes: Record<GraphTxnBucket, boolean>;
   availableChains: string[];
   selectedChains: string[];
+  hiddenLabelCategories?: string[];
   graphMinTime: string;
   graphMaxTime: string;
   graphMinTxnUSD: number | null;

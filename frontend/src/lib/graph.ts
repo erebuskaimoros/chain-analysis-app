@@ -40,3 +40,4 @@ export {
   mergeAddressExplorerResponse,
   mergeExplorerExpansionResponse,
 } from "./graph/merge";
+export { applyLabelCategoryFilter, labelCategoriesOf, nodeLabelCategory } from "./graph/labelCategories";

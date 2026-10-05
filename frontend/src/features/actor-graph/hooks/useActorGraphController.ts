@@ -27,9 +27,11 @@ import {
 } from "../../../lib/graphState";
 import {
   actorExpansionSeeds,
+  applyLabelCategoryFilter,
   applyNodeUpdates,
   cloneGraphFilterState,
   deriveActorVisibleGraph,
+  labelCategoriesOf,
   filterSupportingActions,
   mergeActorGraphResponse,
   refreshableLiveValueNodes,
@@ -175,6 +177,7 @@ export function useActorGraphController() {
     syncWithGraph,
     toggleTxnType,
     toggleChain,
+    toggleLabelCategory,
     updateDate,
     updateNumber,
     resetAllFilters,
@@ -329,12 +332,15 @@ export function useActorGraphController() {
 
   const visibleGraph = useMemo(
     () =>
-      graph
-        ? deriveActorVisibleGraph(graph, graphFilters, metadata, {
-            expandedActorIDs,
-            expandedExternalChains,
-          })
-        : null,
+      applyLabelCategoryFilter(
+        graph
+          ? deriveActorVisibleGraph(graph, graphFilters, metadata, {
+              expandedActorIDs,
+              expandedExternalChains,
+            })
+          : null,
+        graphFilters.hiddenLabelCategories
+      ),
     [expandedActorIDs, expandedExternalChains, graph, graphFilters, metadata]
   );
   const defaultSaveStateName = graph
@@ -662,9 +668,11 @@ export function useActorGraphController() {
     savedCanvasState,
     graphFilters,
     filtersActive,
+    labelCategories: labelCategoriesOf(graph?.nodes),
     filterActions: {
       toggleTxnType,
       toggleChain,
+      toggleLabelCategory,
       updateDate,
       updateNumber,
       resetAllFilters,

@@ -49,6 +49,18 @@ export function useGraphFilterState() {
     }));
   }
 
+  function toggleLabelCategory(category: string, visible: boolean) {
+    setGraphFilters((current) => {
+      const hidden = new Set(current.hiddenLabelCategories ?? []);
+      if (visible) {
+        hidden.delete(category);
+      } else {
+        hidden.add(category);
+      }
+      return { ...current, hiddenLabelCategories: Array.from(hidden).sort() };
+    });
+  }
+
   function updateDate(field: "startTime" | "endTime", value: string) {
     setGraphFilters((current) => {
       const next = cloneGraphFilterState(current);
@@ -89,6 +101,7 @@ export function useGraphFilterState() {
     syncWithGraph,
     toggleTxnType,
     toggleChain,
+    toggleLabelCategory,
     updateDate,
     updateNumber,
     resetAllFilters,
