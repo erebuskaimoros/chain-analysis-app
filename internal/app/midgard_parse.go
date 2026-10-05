@@ -365,12 +365,33 @@ func parseOutboundMemoTxID(memo string) string {
 	return cleanTxID(txID)
 }
 
+// cleanTxID normalises a transaction ID to the form Midgard reports, so IDs
+// from external trackers and Midgard legs compare equal: trimmed, upper-case,
+// and without the 0x prefix that EVM explorers put on 32-byte hashes. Other
+// IDs keep their characters. A zero hash means no transaction.
 func cleanTxID(raw string) string {
 	raw = strings.ToUpper(strings.TrimSpace(raw))
+	if hash, ok := strings.CutPrefix(raw, "0X"); ok && isHexTxHash(hash) {
+		raw = hash
+	}
 	if raw == "" || isZeroTxID(raw) {
 		return ""
 	}
 	return raw
+}
+
+// isHexTxHash reports whether an upper-cased ID is a 32-byte hash written as
+// 64 hex digits, the shape of an EVM transaction hash after its 0x prefix.
+func isHexTxHash(txID string) bool {
+	if len(txID) != 64 {
+		return false
+	}
+	for _, r := range txID {
+		if (r < '0' || r > '9') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func isZeroTxID(txID string) bool {

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"math/big"
 	"sort"
 	"strings"
 	"time"
@@ -570,6 +571,12 @@ func (b *graphBuilder) stitchMidgardAction(action midgardAction, externalTransfe
 	for i := range action.In {
 		leg := &action.In[i]
 		if !b.isProtocolTransitAddress(leg.Address) {
+			// The leg already names the sender, so its deposit is the action's
+			// own input. Match it by sender, tx and coin rather than by the
+			// receiving vault, which may have rotated out of inbound_addresses.
+			for _, match := range matchSenderDepositExternalTransfers(*leg, byTxID[cleanTxID(leg.TxID)]) {
+				consumed[externalTransferKey(match)] = struct{}{}
+			}
 			continue
 		}
 		matches := b.matchInboundExternalTransfers(leg, byTxID[cleanTxID(leg.TxID)])
@@ -589,8 +596,13 @@ func (b *graphBuilder) stitchMidgardAction(action midgardAction, externalTransfe
 	}
 
 	for _, leg := range action.Out {
-		matches := b.matchOutboundExternalTransfers(leg, byTxID[cleanTxID(leg.TxID)])
-		for _, match := range matches {
+		candidates := byTxID[cleanTxID(leg.TxID)]
+		for _, match := range b.matchOutboundExternalTransfers(leg, candidates) {
+			consumed[externalTransferKey(match)] = struct{}{}
+		}
+		// The payout may come from a vault that has rotated out of
+		// inbound_addresses, so also match it by recipient, tx and coin.
+		for _, match := range matchRecipientPayoutExternalTransfers(leg, candidates) {
 			consumed[externalTransferKey(match)] = struct{}{}
 		}
 	}
@@ -630,6 +642,77 @@ func (b *graphBuilder) matchInboundExternalTransfers(leg *midgardActionLeg, cand
 	}
 	return filterExternalTransfersByCoins(filtered, leg.Coins)
 }
+
+// matchSenderDepositExternalTransfers returns the tracker transfers that are an
+// in-leg's own deposit: sent from the leg's address to another address and
+// carrying one of the leg's coins. Candidates already share the leg's tx ID.
+func matchSenderDepositExternalTransfers(leg midgardActionLeg, candidates []externalTransfer) []externalTransfer {
+	sender := normalizeAddress(leg.Address)
+	if sender == "" || len(candidates) == 0 {
+		return nil
+	}
+	var matches []externalTransfer
+	for _, candidate := range candidates {
+		if normalizeAddress(candidate.From) != sender || normalizeAddress(candidate.To) == sender {
+			continue
+		}
+		if externalTransferCarriesLegCoin(candidate, leg.Coins) {
+			matches = append(matches, candidate)
+		}
+	}
+	return matches
+}
+
+// matchRecipientPayoutExternalTransfers returns the tracker transfers that are
+// an out-leg's own payout: received by the leg's address from another address
+// and carrying one of the leg's coins. Candidates already share the leg's tx ID.
+func matchRecipientPayoutExternalTransfers(leg midgardActionLeg, candidates []externalTransfer) []externalTransfer {
+	recipient := normalizeAddress(leg.Address)
+	if recipient == "" || len(candidates) == 0 {
+		return nil
+	}
+	var matches []externalTransfer
+	for _, candidate := range candidates {
+		if normalizeAddress(candidate.To) != recipient || normalizeAddress(candidate.From) == recipient {
+			continue
+		}
+		if externalTransferCarriesLegCoin(candidate, leg.Coins) {
+			matches = append(matches, candidate)
+		}
+	}
+	return matches
+}
+
+// externalTransferCarriesLegCoin reports whether a transfer moves one of a
+// leg's coins: the same asset and the same amount, give or take
+// legAmountToleranceDivisor. Tracker amounts are already rescaled to the 1e8
+// base units Midgard uses, so the tolerance only absorbs rounding.
+func externalTransferCarriesLegCoin(transfer externalTransfer, coins []midgardActionCoin) bool {
+	asset := normalizeAsset(transfer.Asset)
+	amount, ok := new(big.Int).SetString(strings.TrimSpace(transfer.AmountRaw), 10)
+	if asset == "" || !ok || amount.Sign() <= 0 {
+		return false
+	}
+	for _, coin := range coins {
+		if normalizeAsset(coin.Asset) != asset {
+			continue
+		}
+		want, ok := new(big.Int).SetString(strings.TrimSpace(coin.Amount), 10)
+		if !ok || want.Sign() <= 0 {
+			continue
+		}
+		diff := new(big.Int).Sub(amount, want)
+		diff.Abs(diff)
+		limit := new(big.Int).Quo(want, big.NewInt(legAmountToleranceDivisor))
+		if diff.Cmp(big.NewInt(1)) <= 0 || diff.Cmp(limit) <= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// legAmountToleranceDivisor sets the leg amount tolerance to 0.1%.
+const legAmountToleranceDivisor = 1000
 
 func (b *graphBuilder) matchOutboundExternalTransfers(leg midgardActionLeg, candidates []externalTransfer) []externalTransfer {
 	if len(candidates) == 0 {

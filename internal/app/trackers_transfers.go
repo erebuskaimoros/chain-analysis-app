@@ -984,8 +984,10 @@ func (a *App) fetchNodeRealTransfers(ctx context.Context, chain, address string,
 					continue
 				}
 				category := strings.TrimSpace(strings.ToLower(nestedString(row, "category")))
-				txHash := cleanTxID(firstNonEmpty(nestedString(row, "hash"), nestedString(row, "txHash")))
-				if txHash == "" {
+				// Keep the 0x prefix: the hash is sent back to NodeReal for
+				// token transfers and is shown as the transfer's tx ID.
+				txHash := strings.ToUpper(strings.TrimSpace(firstNonEmpty(nestedString(row, "hash"), nestedString(row, "txHash"))))
+				if txHash == "" || isZeroTxID(txHash) {
 					continue
 				}
 				if category == "20" {
