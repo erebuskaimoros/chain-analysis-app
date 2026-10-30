@@ -195,9 +195,10 @@ func TestFetchBNBBeaconTransfersDepositAndMultiSend(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"totalNum": 2,
+				"pageSize": 100,
 				"subTxDtoList": []map[string]any{
-					{"fromAddr": testBNBVault, "toAddr": testBNBSwapper, "value": json.Number("1.5"), "txAsset": "BNB"},
-					{"fromAddr": testBNBVault, "toAddr": testBNBWallet, "value": json.Number("2"), "txAsset": "BNB"},
+					{"hash": multiHash, "height": 1600000100, "type": "TRANSFER", "fromAddr": testBNBVault, "toAddr": testBNBSwapper, "value": json.Number("1.5"), "asset": "BNB", "fee": json.Number("0.0003")},
+					{"hash": multiHash, "height": 1600000100, "type": "TRANSFER", "fromAddr": testBNBVault, "toAddr": testBNBWallet, "value": json.Number("2"), "asset": "BNB", "fee": json.Number("0.0003")},
 				},
 			})
 		default:

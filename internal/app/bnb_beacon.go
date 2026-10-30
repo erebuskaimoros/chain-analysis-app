@@ -55,6 +55,10 @@ type bnbBeaconTx struct {
 	Memo          string      `json:"memo"`
 	HasChildren   int         `json:"hasChildren"`
 	MappedTxAsset string      `json:"mappedTxAsset"`
+	// sub-tx-list legs name these hash, height and asset.
+	Hash   string `json:"hash"`
+	Height int64  `json:"height"`
+	Asset  string `json:"asset"`
 }
 
 type bnbBeaconTxsResponse struct {
@@ -394,7 +398,9 @@ func (a *App) fetchBNBBeaconSubTxs(ctx context.Context, baseURLs []string, paren
 			continue
 		}
 		for i := range legs {
-			legs[i].TxHash = firstNonEmpty(legs[i].TxHash, parent.TxHash)
+			legs[i].TxHash = firstNonEmpty(legs[i].TxHash, legs[i].Hash, parent.TxHash)
+			legs[i].TxAsset = firstNonEmpty(legs[i].TxAsset, legs[i].Asset)
+			legs[i].BlockHeight = firstNonZeroInt64(legs[i].BlockHeight, legs[i].Height)
 			legs[i].TxType = firstNonEmpty(legs[i].TxType, parent.TxType)
 			legs[i].Memo = firstNonEmpty(legs[i].Memo, parent.Memo)
 			legs[i].BlockHeight = firstNonZeroInt64(legs[i].BlockHeight, parent.BlockHeight)
