@@ -45,6 +45,7 @@ type Config struct {
 	TronGridAPIKey         string
 	XRPRPCURL              string
 	RadixGatewayURL        string
+	BNBBeaconExplorerURL   string
 	// DefiLlamaURL prices EVM tokens without a THORChain pool; empty disables it.
 	DefiLlamaURL string
 	// ActorRefreshInterval refreshes watched actors on a schedule; zero disables it.
@@ -133,6 +134,7 @@ func LoadConfigFromEnv() Config {
 		TronGridAPIKey:         strings.TrimSpace(os.Getenv("CHAIN_ANALYSIS_TRONGRID_API_KEY")),
 		XRPRPCURL:              strings.TrimRight(getEnv("CHAIN_ANALYSIS_XRP_RPC_URL", "https://s1.ripple.com:51234|https://s2.ripple.com:51234|https://xrplcluster.com"), "/"),
 		RadixGatewayURL:        strings.TrimRight(getEnv("CHAIN_ANALYSIS_RADIX_GATEWAY_URL", "https://mainnet.radixdlt.com"), "/"),
+		BNBBeaconExplorerURL:   strings.TrimRight(getEnv("CHAIN_ANALYSIS_BNB_BEACON_URL", "https://explorer.bnbchain.org"), "/"),
 		DefiLlamaURL:           strings.TrimRight(getEnv("CHAIN_ANALYSIS_DEFILLAMA_URL", "https://coins.llama.fi"), "/"),
 		RequestTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_TIMEOUT_SECONDS", 20)) * time.Second,
 		MidgardTimeout:         time.Duration(getIntEnv("CHAIN_ANALYSIS_MIDGARD_TIMEOUT_SECONDS", 10)) * time.Second,
@@ -462,6 +464,7 @@ func defaultChainTrackerProviders() map[string]string {
 		"TRON": "trongrid",
 		"XRP":  "xrpl",
 		"XRD":  "radix",
+		"BNB":  "bnbbeacon",
 	}
 }
 
@@ -481,6 +484,7 @@ func defaultChainTrackerCandidates() map[string][]string {
 		"TRON": {"trongrid"},
 		"XRP":  {"xrpl"},
 		"XRD":  {"radix"},
+		"BNB":  {"bnbbeacon"},
 	}
 }
 
@@ -559,6 +563,8 @@ func providerSupportsChain(provider, chain string) bool {
 		return chain != "BSC"
 	case "radix":
 		return chain == "XRD"
+	case "bnbbeacon":
+		return chain == "BNB"
 	default:
 		return true
 	}

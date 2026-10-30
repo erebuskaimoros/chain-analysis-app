@@ -43,6 +43,12 @@ type externalTransfer struct {
 	ActionKey     string
 	ActionLabel   string
 	Confidence    float64
+	// Memo is the on-chain memo, kept for chains whose memos carry THORChain
+	// routing (BNB Beacon Chain).
+	Memo string `json:",omitempty"`
+	// ProtocolSide marks which end ("from", "to" or "both") is a THORChain
+	// vault, so the graph labels it and does not expand through it.
+	ProtocolSide string `json:",omitempty"`
 }
 
 func (a *App) thornodeClient() *ThorClient {
@@ -197,6 +203,8 @@ func nativeAssetForChain(chain string) string {
 		return "MAYA.CACAO"
 	case "XRD":
 		return "XRD.XRD"
+	case "BNB":
+		return "BNB.BNB"
 	default:
 		return evmNativeAsset(chain)
 	}

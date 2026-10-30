@@ -278,6 +278,7 @@ func normalizeAddress(address string) string {
 		strings.HasPrefix(lower, "bc1"),
 		strings.HasPrefix(lower, "ltc1"),
 		strings.HasPrefix(lower, "cosmos1"),
+		strings.HasPrefix(lower, "bnb1"),
 		strings.HasPrefix(lower, "account_rdx"),
 		strings.HasPrefix(lower, "component_rdx"),
 		strings.HasPrefix(lower, "resource_rdx"):

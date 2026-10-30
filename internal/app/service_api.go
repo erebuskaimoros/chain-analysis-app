@@ -103,6 +103,7 @@ func (a *App) HealthSnapshot() HealthSnapshot {
 			"xrp_rpc_expanded":       a.cfg.xrplRPCURLs(),
 			"radix_gateway":          a.cfg.RadixGatewayURL,
 			"radix_gateway_expanded": parseURLListValue(a.cfg.RadixGatewayURL),
+			"bnb_beacon_explorer":    a.cfg.BNBBeaconExplorerURL,
 		},
 	}
 }

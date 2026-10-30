@@ -343,6 +343,8 @@ func externalTrackerUnavailableWarning(chain, provider string) string {
 		return fmt.Sprintf("%s tracker unavailable; configure CHAIN_ANALYSIS_XRP_RPC_URL to follow native-chain flows", chain)
 	case "radix":
 		return fmt.Sprintf("%s tracker unavailable; configure CHAIN_ANALYSIS_RADIX_GATEWAY_URL to follow native-chain flows", chain)
+	case "bnbbeacon":
+		return fmt.Sprintf("%s tracker unavailable; configure CHAIN_ANALYSIS_BNB_BEACON_URL to follow BNB Beacon Chain flows", chain)
 	default:
 		return fmt.Sprintf("%s tracker unavailable", chain)
 	}
@@ -386,6 +388,9 @@ func (a *App) fetchExternalTransfersWithProvider(ctx context.Context, provider, 
 	case "radix":
 		transfers, truncated, err := a.fetchRadixTransfers(ctx, address, start, end, maxPages)
 		return transfers, truncated, "", err
+	case "bnbbeacon":
+		transfers, truncated, err := a.fetchBNBBeaconTransfers(ctx, address, start, end, maxPages)
+		return transfers, truncated, "", err
 	default:
 		return nil, false, fmt.Sprintf("%s tracker provider %q unavailable", firstNonEmpty(chain, "external"), provider), errExternalTrackerUnavailable
 	}
@@ -405,15 +410,27 @@ func (b *graphBuilder) projectExternalTransfer(transfer externalTransfer, baseDe
 		TokenName:     transfer.TokenName,
 		TokenDecimals: transfer.TokenDecimals,
 	}, assetMetadataFromAsset(transfer.Asset))
+	actionClass := externalTransferActionClass(transfer)
+	if actionClass != "transfers" && !b.allowed(actionClass) {
+		return nil, nil
+	}
 	source := b.makeAddressRef(transfer.From, transfer.Chain, baseDepth)
 	target := b.makeAddressRef(transfer.To, transfer.Chain, baseDepth+1)
+	switch transfer.ProtocolSide {
+	case protocolSideFrom:
+		source = thorchainVaultRef(source)
+	case protocolSideTo:
+		target = thorchainVaultRef(target)
+	case protocolSideBoth:
+		source, target = thorchainVaultRef(source), thorchainVaultRef(target)
+	}
 	if source.ID == "" || target.ID == "" || source.Key == target.Key {
 		return nil, nil
 	}
 	seg := projectedSegment{
 		Source:           source,
 		Target:           target,
-		ActionClass:      "transfers",
+		ActionClass:      actionClass,
 		ActionKey:        actionKey,
 		ActionLabel:      actionLabel,
 		ActionDomain:     "native_chain",
@@ -449,6 +466,31 @@ func (b *graphBuilder) projectExternalTransfer(transfer externalTransfer, baseDe
 		}
 	}
 	return []projectedSegment{seg}, uniqueFrontierAddresses(next)
+}
+
+// externalTransferActionClass files memo-derived swap links under swaps so
+// they filter with Midgard swaps; every other tracker transfer is a transfer.
+func externalTransferActionClass(transfer externalTransfer) string {
+	if transfer.ActionKey == bnbBeaconActionSwap {
+		return "swaps"
+	}
+	return "transfers"
+}
+
+// thorchainVaultRef turns a plain external address into a labeled THORChain
+// vault node. Vaults are shared by every user, so they are never expanded.
+func thorchainVaultRef(ref flowRef) flowRef {
+	if ref.ID == "" || ref.Kind != "external_address" {
+		return ref
+	}
+	ref.ID = fmt.Sprintf("inbound:%s:protocol:%d", ref.Key, ref.Depth)
+	ref.Kind = "inbound"
+	ref.Stage = "protocol"
+	ref.Collapsed = false
+	if strings.HasPrefix(ref.Label, shortAddress(ref.Address)) {
+		ref.Label = "THORChain " + firstNonEmpty(ref.Chain, "BNB") + " Vault " + shortAddress(ref.Address)
+	}
+	return ref
 }
 
 func externalTransferKey(transfer externalTransfer) string {
@@ -2084,6 +2126,8 @@ func externalTransferConfidenceReason(transfer externalTransfer) string {
 		return "inferred from balance changes in a multi-party transaction"
 	case transfer.Confidence >= 0.95:
 		return "on-chain transfer"
+	case strings.HasPrefix(transfer.ActionKey, "tracker.bnb.memo_link."):
+		return "linked through the THORChain memo on the BNB Beacon Chain deposit"
 	case strings.HasPrefix(transfer.ActionKey, "tracker.utxo"):
 		return "UTXO transfer; sender attributed from the transaction's inputs"
 	default:
