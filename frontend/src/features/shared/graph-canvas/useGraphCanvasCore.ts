@@ -8,6 +8,25 @@ import { selectedGraphNodes } from "./utils";
 const DOUBLE_TAP_WINDOW_MS = 320;
 export const GRAPH_MIN_ZOOM = 0.05;
 export const GRAPH_MAX_ZOOM = 10;
+// Below this zoom node labels are hidden; a fit that lands here shows dots.
+const READABLE_ZOOM = 0.32;
+const FOCUS_ZOOM = 0.5;
+// Fitting a handful of nodes would blow them up to fill the map.
+const MAX_FIT_ZOOM = 1.2;
+
+export type GraphLayoutPhase =
+  | { phase: "busy"; nodeCount: number }
+  | { phase: "done"; nodeCount: number; focused: boolean };
+
+// focusOnStart zooms to a readable level on the busiest starting point
+// (depth 0) when fitting everything would make every node a dot.
+function focusOnStart(cy: cytoscape.Core) {
+  const starts = cy.nodes().filter((node) => Number(node.data("depth") ?? 1) === 0);
+  const pool = starts.nonempty() ? starts : cy.nodes();
+  const busiest = pool.max((node) => node.degree(false)).ele;
+  cy.zoom(FOCUS_ZOOM);
+  cy.center(busiest ?? pool);
+}
 
 interface UseGraphCanvasCoreOptions {
   mode: "actor" | "explorer";
@@ -27,6 +46,7 @@ interface UseGraphCanvasCoreOptions {
   cyMountRef: MutableRefObject<HTMLDivElement | null>;
   scheduleLabelRender: () => void;
   cancelScheduledLabelRender: () => void;
+  onLayoutPhase?: (phase: GraphLayoutPhase) => void;
 }
 
 export function useGraphCanvasCore({
@@ -47,7 +67,10 @@ export function useGraphCanvasCore({
   cyMountRef,
   scheduleLabelRender,
   cancelScheduledLabelRender,
+  onLayoutPhase,
 }: UseGraphCanvasCoreOptions) {
+  const layoutPhaseRef = useRef(onLayoutPhase);
+  layoutPhaseRef.current = onLayoutPhase;
   const layoutSeqRef = useRef(0);
   const lastTapRef = useRef<{ id: string; at: number }>({ id: "", at: 0 });
   const nodeTapTimerRef = useRef<number | null>(null);
@@ -228,19 +251,35 @@ export function useGraphCanvasCore({
 
       const currentLayoutSeq = ++layoutSeqRef.current;
       const isStale = () => layoutSeqRef.current !== currentLayoutSeq || !cyRef.current;
-      void applyElkLayout(cy, mode, nodes, preservedPositions, isStale).then(() => {
-        if (isStale()) {
-          return;
-        }
-        const viewport = viewportRef.current;
-        if (viewport) {
-          cy.zoom(viewport.zoom);
-          cy.pan(viewport.pan);
-        } else {
-          cy.fit(cy.elements(), 40);
-        }
-        scheduleLabelRender();
-      });
+      layoutPhaseRef.current?.({ phase: "busy", nodeCount: nodes.length });
+      void applyElkLayout(cy, mode, nodes, preservedPositions, isStale)
+        .then(() => {
+          if (isStale()) {
+            return;
+          }
+          const viewport = viewportRef.current;
+          let focused = false;
+          if (viewport) {
+            cy.zoom(viewport.zoom);
+            cy.pan(viewport.pan);
+          } else {
+            cy.fit(cy.elements(), 40);
+            if (cy.zoom() < READABLE_ZOOM && cy.nodes().length > 1) {
+              focusOnStart(cy);
+              focused = true;
+            } else if (cy.zoom() > MAX_FIT_ZOOM) {
+              cy.zoom(MAX_FIT_ZOOM);
+              cy.center();
+            }
+          }
+          scheduleLabelRender();
+          layoutPhaseRef.current?.({ phase: "done", nodeCount: nodes.length, focused });
+        })
+        .catch(() => {
+          if (!isStale()) {
+            layoutPhaseRef.current?.({ phase: "done", nodeCount: nodes.length, focused: false });
+          }
+        });
     } else if (topologyChanged) {
       // Incremental change (expansion, filter toggle): diff elements in place and
       // anchor new nodes next to their already-positioned neighbors. Existing
@@ -255,6 +294,7 @@ export function useGraphCanvasCore({
         placeNewNodesNearAnchors(cy, mode, nodes, edges, newNodeIDs);
       }
       scheduleLabelRender();
+      layoutPhaseRef.current?.({ phase: "done", nodeCount: nodes.length, focused: false });
     } else {
       syncElementData(cy, nodes, edges);
       scheduleLabelRender();

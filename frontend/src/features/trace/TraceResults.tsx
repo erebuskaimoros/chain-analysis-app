@@ -1,13 +1,19 @@
 import { useMemo, useState } from "react";
-import { formatShortDateTime, formatUSD, shortHash } from "../../lib/format";
+import { PinIcon } from "../../app/icons";
+import { useActiveCase } from "../../app/activeCase";
+import { useRouter } from "../../app/router";
+import { formatShortDateTime, formatUSD, middleTruncate, pluralize, shortHash } from "../../lib/format";
 import { chainForAsset, explorerURLForAddress, explorerURLForTx } from "../../lib/graph/actions";
 import { deriveExplorerVisibleGraph } from "../../lib/graph/derive";
 import { createGraphFilterState } from "../../lib/graph/filters";
 import type { GraphSelection } from "../../lib/graph/types";
+import { encodeSeed } from "../../lib/identify";
 import type { AddressExplorerResponse, TraceAmount, TraceEndpoint, TraceResponse } from "../../lib/types";
+import { ChainBadge } from "../../ui/AddressText";
+import { MenuButton, type MenuItem } from "../../ui/Menu";
 import { GraphCanvas } from "../shared/GraphCanvas";
 import { SelectionInspector } from "../shared/SelectionInspector";
-import { PinToCase } from "./PinToCase";
+import { TraceOutcomeChart } from "./TraceOutcomeChart";
 
 const FLOW_ROW_LIMIT = 500;
 
@@ -55,36 +61,46 @@ function CategoryBadge({ category }: { category?: string }) {
 function TxLink({ txID, chain }: { txID: string; chain: string }) {
   const url = explorerURLForTx(txID, chain);
   if (!url) {
-    return <span className="mono-wrap">{shortHash(txID)}</span>;
+    return <span className="mono">{shortHash(txID)}</span>;
   }
   return (
-    <a className="table-link mono-wrap" href={url} target="_blank" rel="noreferrer" title={txID}>
+    <a className="mono" href={url} target="_blank" rel="noreferrer" title={txID}>
       {shortHash(txID)}
     </a>
   );
 }
 
-function EndpointTable({ title, endpoints, emptyText }: { title: string; endpoints: TraceEndpoint[]; emptyText: string }) {
+function EndpointTable({
+  title,
+  endpoints,
+  emptyText,
+  actionsFor,
+}: {
+  title: string;
+  endpoints: TraceEndpoint[];
+  emptyText: string;
+  actionsFor: (endpoint: TraceEndpoint) => MenuItem[];
+}) {
   return (
-    <section className="panel page-panel">
-      <div className="panel-head">
-        <div>
-          <span className="eyebrow">{endpoints.length} endpoints</span>
-          <h2>{title}</h2>
-        </div>
+    <section className="section" aria-label={title}>
+      <div className="section-head">
+        <h2>
+          {title} <span className="count">{endpoints.length}</span>
+        </h2>
       </div>
       {endpoints.length ? (
-        <div className="table-wrap">
+        <div className="table-wrap trace-table-wrap">
           <table className="data-table">
             <thead>
               <tr>
                 <th>Endpoint</th>
                 <th>Why it stops</th>
                 <th className="numeric">Traced</th>
-                <th className="numeric">USD at time</th>
+                <th className="numeric">Value at the time</th>
                 <th className="numeric">Confidence</th>
                 <th className="numeric">Holds now</th>
                 <th className="numeric">Hop</th>
+                <th className="cell-actions" aria-label="Row actions" />
               </tr>
             </thead>
             <tbody>
@@ -95,13 +111,18 @@ function EndpointTable({ title, endpoints, emptyText }: { title: string; endpoin
                     <td>
                       <CategoryBadge category={endpoint.category} />{" "}
                       {url ? (
-                        <a className="table-link" href={url} target="_blank" rel="noreferrer" title={endpoint.address}>
+                        <a href={url} target="_blank" rel="noreferrer" title={endpoint.address}>
                           {endpoint.label}
                         </a>
                       ) : (
                         endpoint.label
                       )}
-                      {endpoint.chain ? <span className="mono-wrap"> ({endpoint.chain})</span> : null}
+                      {endpoint.chain ? (
+                        <>
+                          {" "}
+                          <ChainBadge chain={endpoint.chain} />
+                        </>
+                      ) : null}
                     </td>
                     <td>{traceReasonLabel(endpoint.reason)}</td>
                     <td className="numeric">
@@ -113,6 +134,11 @@ function EndpointTable({ title, endpoints, emptyText }: { title: string; endpoin
                       {endpoint.holdings_usd != null ? formatUSD(endpoint.holdings_usd) : endpoint.holdings_status || "—"}
                     </td>
                     <td className="numeric">{endpoint.depth}</td>
+                    <td className="cell-actions">
+                      {endpoint.address ? (
+                        <MenuButton label={`Actions for ${endpoint.label}`} items={actionsFor(endpoint)} />
+                      ) : null}
+                    </td>
                   </tr>
                 );
               })}
@@ -126,8 +152,29 @@ function EndpointTable({ title, endpoints, emptyText }: { title: string; endpoin
   );
 }
 
+function summarySentence(result: TraceResponse) {
+  const backward = result.query.direction === "backward";
+  const seeds = pluralize(result.query.seeds.length, "seed");
+  const reached = result.sinks.length;
+  return (
+    <>
+      <strong className="num">{formatUSD(result.totals.seed_usd)}</strong> traced {backward ? "back into" : "forward from"} {seeds}{" "}
+      reached {pluralize(reached, backward ? "labelled source" : "endpoint")} worth{" "}
+      <strong className="num">{formatUSD(result.totals.sink_usd)}</strong>
+      {result.totals.frontier_usd > 0 ? (
+        <>
+          , and <strong className="num">{formatUSD(result.totals.frontier_usd)}</strong> stopped at the hop, branch or value limits
+        </>
+      ) : null}
+      .
+    </>
+  );
+}
+
 export function TraceResults({ result }: { result: TraceResponse }) {
   const [selection, setSelection] = useState<GraphSelection>(null);
+  const { addToCase } = useActiveCase();
+  const { navigate } = useRouter();
   const backward = result.query.direction === "backward";
   const labels = useMemo(() => new Map(result.nodes.map((node) => [node.id, node.label || node.id])), [result.nodes]);
   const visibleGraph = useMemo(
@@ -148,61 +195,60 @@ export function TraceResults({ result }: { result: TraceResponse }) {
   const gaps = result.coverage_gaps ?? [];
   const warnings = result.warnings ?? [];
 
-  return (
-    <div className="page-stack trace-results">
-      <section className="panel page-panel">
-        <div className="panel-head">
-          <div>
-            <span className="eyebrow">{backward ? "Backward trace" : "Forward trace"}</span>
-            <h2>Result{result.run_id ? ` (trace ${result.run_id})` : ""}</h2>
-          </div>
-          {result.run_id ? <PinToCase runID={result.run_id} /> : null}
-        </div>
-        <div className="trace-tiles">
-          <div className="trace-tile">
-            <span className="trace-tile-label">{backward ? "Traced into the seeds" : "Traced from the seeds"}</span>
-            <strong className="trace-tile-value">{formatUSD(result.totals.seed_usd)}</strong>
-            <span className="trace-tile-detail">
-              <AssetList assets={result.totals.seed_assets ?? []} />
-            </span>
-          </div>
-          <div className="trace-tile">
-            <span className="trace-tile-label">{backward ? "Reached sources" : "Reached sinks"}</span>
-            <strong className="trace-tile-value">{formatUSD(result.totals.sink_usd)}</strong>
-            <span className="trace-tile-detail">{result.sinks.length} endpoints</span>
-          </div>
-          <div className="trace-tile">
-            <span className="trace-tile-label">Stopped by limits</span>
-            <strong className="trace-tile-value">{formatUSD(result.totals.frontier_usd)}</strong>
-            <span className="trace-tile-detail">{result.frontier.length} endpoints</span>
-          </div>
-          <div className="trace-tile">
-            <span className="trace-tile-label">Coverage gaps</span>
-            <strong className="trace-tile-value">{gaps.length}</strong>
-            <span className="trace-tile-detail">{gaps.length ? "Some history is missing" : "Full history fetched"}</span>
-          </div>
-        </div>
-        <h3>Method</h3>
-        <ul className="trace-method">
-          {result.method.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      </section>
+  function endpointActions(endpoint: TraceEndpoint): MenuItem[] {
+    const address = endpoint.address ?? "";
+    const seed = encodeSeed(address, endpoint.chain);
+    const url = explorerURLForAddress(address, endpoint.chain ?? "");
+    const items: MenuItem[] = [
+      { label: "Explore this address", onSelect: () => navigate("explorer", { address }) },
+      { label: "Trace on from here", onSelect: () => navigate("trace", { seed }) },
+      {
+        label: "Add to the active case",
+        onSelect: () => addToCase([{ kind: "address", ref: seed }], endpoint.label || middleTruncate(address)),
+      },
+      { label: "Copy address", onSelect: () => void navigator.clipboard?.writeText(address) },
+    ];
+    if (url) {
+      items.push({ label: "Open in a block explorer", onSelect: () => window.open(url, "_blank", "noopener,noreferrer") });
+    }
+    return items;
+  }
 
-      <section className="panel page-panel">
-        <div className="panel-head">
-          <div>
-            <span className="eyebrow">
-              {result.edges.length} traced edges · {result.nodes.length} addresses
-            </span>
-            <h2>Trace graph</h2>
-          </div>
+  return (
+    <div className="trace-results">
+      <div className="trace-summary">
+        <p className="trace-summary-text">{summarySentence(result)}</p>
+        {result.run_id ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => addToCase([{ kind: "trace_run", ref: String(result.run_id) }], `trace ${result.run_id}`)}
+          >
+            <PinIcon />
+            Add trace to case
+          </button>
+        ) : null}
+      </div>
+
+      <TraceOutcomeChart result={result} />
+
+      <section className="section" aria-label="Trace graph">
+        <div className="section-head">
+          <h2>
+            Trace graph <span className="count">{pluralize(result.edges.length, "flow")}</span>
+          </h2>
+          <span className="section-note">{pluralize(result.nodes.length, "address", "addresses")}</span>
         </div>
         {result.edges.length ? (
-          <div className="trace-graph">
+          <div className="trace-graph graph-embed">
             <GraphCanvas mode="explorer" nodes={visibleGraph.nodes} edges={visibleGraph.edges} selection={selection} onSelectionChange={setSelection} />
-            <SelectionInspector selection={selection} emptyMessage="Select a node or edge to inspect it." />
+            <div className="section">
+              <SelectionInspector
+                selection={selection}
+                emptyMessage="Click an address or a flow on the graph to see its details."
+                nodeLabel={(id) => labels.get(id) ?? id}
+              />
+            </div>
           </div>
         ) : (
           <p className="empty-state">No traced flows in this window.</p>
@@ -213,18 +259,24 @@ export function TraceResults({ result }: { result: TraceResponse }) {
         title={backward ? "Sources" : "Sinks"}
         endpoints={result.sinks}
         emptyText={backward ? "No labelled sources were reached." : "No sinks were reached."}
+        actionsFor={endpointActions}
       />
-      <EndpointTable title="Stopped by limits" endpoints={result.frontier} emptyText="Nothing was cut off by the hop, branch or value limits." />
+      <EndpointTable
+        title="Stopped by limits"
+        endpoints={result.frontier}
+        emptyText="Nothing was cut off by the hop, branch or value limits."
+        actionsFor={endpointActions}
+      />
 
-      <section className="panel page-panel">
-        <div className="panel-head">
-          <div>
-            <span className="eyebrow">{flows.length} traced transactions</span>
-            <h2>Flows</h2>
-          </div>
+      <section className="section" aria-label="Flows">
+        <div className="section-head">
+          <h2>
+            Flows <span className="count">{flows.length}</span>
+          </h2>
+          <span className="section-note">Every traced payment, oldest first</span>
         </div>
         {flows.length ? (
-          <div className="table-wrap">
+          <div className="table-wrap trace-table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
@@ -232,7 +284,7 @@ export function TraceResults({ result }: { result: TraceResponse }) {
                   <th>From → To</th>
                   <th>Type</th>
                   <th className="numeric">Traced</th>
-                  <th className="numeric">USD at time</th>
+                  <th className="numeric">Value at the time</th>
                   <th>Transactions</th>
                   <th className="numeric">Confidence</th>
                 </tr>
@@ -240,7 +292,7 @@ export function TraceResults({ result }: { result: TraceResponse }) {
               <tbody>
                 {flows.slice(0, FLOW_ROW_LIMIT).map(({ edge, tx }, index) => (
                   <tr key={`${edge.id}|${tx.tx_id}|${tx.asset}|${index}`}>
-                    <td>{formatShortDateTime(tx.time)}</td>
+                    <td className="cell-muted">{formatShortDateTime(tx.time)}</td>
                     <td>
                       {labels.get(edge.from) ?? edge.from} → {labels.get(edge.to) ?? edge.to}
                     </td>
@@ -280,39 +332,48 @@ export function TraceResults({ result }: { result: TraceResponse }) {
         ) : (
           <p className="empty-state">No traced transactions.</p>
         )}
-        {flows.length > FLOW_ROW_LIMIT ? <p className="form-message">Showing the first {FLOW_ROW_LIMIT} transactions.</p> : null}
+        {flows.length > FLOW_ROW_LIMIT ? <p className="section-note">Showing the first {FLOW_ROW_LIMIT} transactions.</p> : null}
       </section>
 
-      {gaps.length || warnings.length ? (
-        <section className="panel page-panel">
-          <div className="panel-head">
-            <div>
-              <span className="eyebrow">Coverage</span>
-              <h2>Gaps and warnings</h2>
-            </div>
-          </div>
-          {gaps.length ? (
-            <>
-              <h3>Coverage gaps</h3>
-              <ul className="trace-method">
-                {gaps.map((gap) => (
-                  <li key={gap}>{gap}</li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-          {warnings.length ? (
-            <>
-              <h3>Warnings</h3>
-              <ul className="trace-method">
-                {warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            </>
-          ) : null}
+      <div className="trace-two">
+        <section className="section" aria-label="How this was traced">
+          <h2>How this was traced</h2>
+          <ul className="trace-method">
+            {result.method.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
         </section>
-      ) : null}
+        <section className="section" aria-label="Coverage">
+          <h2>Coverage</h2>
+          {gaps.length || warnings.length ? (
+            <>
+              {gaps.length ? (
+                <>
+                  <h3 className="section-title">Coverage gaps</h3>
+                  <ul className="trace-method">
+                    {gaps.map((gap) => (
+                      <li key={gap}>{gap}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {warnings.length ? (
+                <>
+                  <h3 className="section-title">Warnings</h3>
+                  <ul className="trace-method">
+                    {warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <p className="section-note">Full history was fetched for every address in the trace.</p>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

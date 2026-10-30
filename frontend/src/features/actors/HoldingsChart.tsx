@@ -107,7 +107,7 @@ export function HoldingsChart({ points, title = "Holdings value at each refresh"
     <figure className="holdings-chart">
       <figcaption className="holdings-chart-head">
         <span className="holdings-chart-title">{title}</span>
-        <button type="button" className="button secondary small" onClick={() => setShowTable((value) => !value)}>
+        <button type="button" className="btn btn-sm" onClick={() => setShowTable((value) => !value)}>
           {showTable ? "Show chart" : "Show table"}
         </button>
       </figcaption>

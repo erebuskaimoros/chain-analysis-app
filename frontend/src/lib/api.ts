@@ -29,6 +29,7 @@ import type {
   TraceRun,
 } from "./types";
 import { preferAtTimeValues } from "./atTimeValues";
+import { JobCanceledError } from "./jobErrors";
 
 export async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -97,11 +98,16 @@ export function removeFromBlocklist(address: string) {
 
 const JOB_POLL_MS = 750;
 
+export { JobCanceledError, isJobCanceled } from "./jobErrors";
+
 export interface JobWatchOptions<P> {
   onProgress?: (job: JobSnapshot<unknown, P>) => void;
   onPartial?: (partial: P) => void;
   isCanceled?: () => boolean;
   pollMs?: number;
+  // Fetch the (possibly large) partial result only when its summary counts
+  // change, instead of on every poll.
+  partialOnCountChange?: boolean;
 }
 
 export function getJob<T, P = unknown>(id: string, includePartial = false) {
@@ -117,13 +123,31 @@ export function cancelJob(id: string) {
 export async function runJob<T, P = unknown>(path: string, payload: unknown, options: JobWatchOptions<P> = {}): Promise<T> {
   let job = await fetchJSON<JobSnapshot<T, P>>(path, { method: "POST", body: JSON.stringify(payload) });
   const wantPartial = Boolean(options.onPartial);
+  let lastPartialCounts = "";
   while (job.status === "running") {
     if (options.isCanceled?.()) {
       void cancelJob(job.id).catch(() => undefined);
-      throw new Error("Job canceled.");
+      throw new JobCanceledError();
     }
     options.onProgress?.(job);
     await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? JOB_POLL_MS));
+    if (options.isCanceled?.()) {
+      void cancelJob(job.id).catch(() => undefined);
+      throw new JobCanceledError();
+    }
+    if (wantPartial && options.partialOnCountChange) {
+      job = await getJob<T, P>(job.id, false);
+      const counts = JSON.stringify(job.partial_counts ?? {});
+      if (job.status === "running" && job.partial_counts && counts !== lastPartialCounts) {
+        lastPartialCounts = counts;
+        const withPartial = await getJob<T, P>(job.id, true);
+        if (withPartial.status === "running" && withPartial.partial != null) {
+          options.onPartial?.(withPartial.partial);
+        }
+        job = withPartial;
+      }
+      continue;
+    }
     job = await getJob<T, P>(job.id, wantPartial);
     if (wantPartial && job.partial != null) {
       options.onPartial?.(job.partial);
@@ -135,8 +159,34 @@ export async function runJob<T, P = unknown>(path: string, payload: unknown, opt
   throw new Error(job.error || `Job ${job.status}.`);
 }
 
-export async function buildActorGraph(payload: ActorGraphRequest, onProgress?: (job: JobSnapshot) => void) {
-  return preferAtTimeValues(await runJob<ActorGraphResponse>("/api/v1/jobs/actor-graph", payload, { onProgress }));
+// A graph build's partial result: what the server has projected so far.
+export type ActorGraphPartial = Pick<ActorGraphResponse, "query" | "actors" | "warnings" | "nodes" | "edges">;
+
+export async function buildActorGraph(
+  payload: ActorGraphRequest,
+  onProgress?: (job: JobSnapshot) => void,
+  options: { isCanceled?: () => boolean; onPartial?: (partial: ActorGraphResponse) => void } = {}
+) {
+  return preferAtTimeValues(
+    await runJob<ActorGraphResponse, ActorGraphPartial>("/api/v1/jobs/actor-graph", payload, {
+      onProgress: onProgress as ((job: JobSnapshot<unknown, ActorGraphPartial>) => void) | undefined,
+      isCanceled: options.isCanceled,
+      partialOnCountChange: true,
+      onPartial: options.onPartial
+        ? (partial) =>
+            options.onPartial?.(
+              preferAtTimeValues({
+                ...partial,
+                warnings: partial.warnings ?? [],
+                nodes: partial.nodes ?? [],
+                edges: partial.edges ?? [],
+                stats: {},
+                supporting_actions: [],
+              })
+            )
+        : undefined,
+    })
+  );
 }
 
 export async function expandActorGraph(payload: ActorGraphExpandRequest) {
@@ -173,8 +223,16 @@ export function deleteActorGraphRun(id: number) {
   return fetchJSON<{ ok: boolean }>(`/api/v1/runs/actor-graph/${id}`, { method: "DELETE" });
 }
 
-export async function buildAddressExplorer(payload: AddressExplorerRequest) {
-  return preferAtTimeValues(await runJob<AddressExplorerResponse>("/api/v1/jobs/address-explorer", payload));
+export async function buildAddressExplorer(
+  payload: AddressExplorerRequest,
+  options: { onProgress?: (job: JobSnapshot) => void; isCanceled?: () => boolean } = {}
+) {
+  return preferAtTimeValues(
+    await runJob<AddressExplorerResponse>("/api/v1/jobs/address-explorer", payload, {
+      onProgress: options.onProgress,
+      isCanceled: options.isCanceled,
+    })
+  );
 }
 
 export async function listAddressExplorerRuns() {
@@ -260,8 +318,12 @@ export function refreshActor(actorID: number, onProgress?: (job: JobSnapshot) =>
 
 // startTrace follows funds from the request's seeds as a background job; the
 // server saves each finished trace as a run.
-export function startTrace(payload: TraceRequest, onProgress?: (job: JobSnapshot) => void) {
-  return runJob<TraceResponse>("/api/v1/jobs/trace", payload, { onProgress });
+export function startTrace(
+  payload: TraceRequest,
+  onProgress?: (job: JobSnapshot) => void,
+  options: { isCanceled?: () => boolean } = {}
+) {
+  return runJob<TraceResponse>("/api/v1/jobs/trace", payload, { onProgress, isCanceled: options.isCanceled });
 }
 
 export function listTraceRuns() {
