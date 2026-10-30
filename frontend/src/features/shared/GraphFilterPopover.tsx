@@ -39,14 +39,14 @@ export function GraphFilterPopover({
   return (
     <>
       <div className="graph-filter-head">
-        <strong>Filters</strong>
-        <button type="button" className="button secondary slim" onClick={onReset}>
+        <strong>Filter the graph</strong>
+        <button type="button" className="btn btn-sm" onClick={onReset}>
           Reset
         </button>
       </div>
 
       <div className="graph-filter-section">
-        <div className="graph-filter-section-title">Txn Types</div>
+        <div className="graph-filter-section-title">Transaction types</div>
         <div className="graph-filter-options">
           {GRAPH_FILTER_TXN_TYPES.map((item) => (
             <label key={item.key} className="graph-filter-option">
@@ -62,7 +62,7 @@ export function GraphFilterPopover({
       </div>
 
       <div className="graph-filter-section">
-        <div className="graph-filter-section-title">Chains Shown</div>
+        <div className="graph-filter-section-title">Chains</div>
         <div className="graph-filter-options graph-filter-options-scroll">
           {filterState.availableChains.length ? (
             filterState.availableChains.map((chain) => (
@@ -83,7 +83,7 @@ export function GraphFilterPopover({
 
       {labelCategories.length && onToggleLabelCategory ? (
         <div className="graph-filter-section">
-          <div className="graph-filter-section-title">Labeled Entities Shown</div>
+          <div className="graph-filter-section-title">Labeled entities</div>
           <div className="graph-filter-options graph-filter-options-scroll">
             {labelCategories.map((category) => (
               <label key={category} className="graph-filter-option">
@@ -100,7 +100,7 @@ export function GraphFilterPopover({
       ) : null}
 
       <div className="graph-filter-section">
-        <div className="graph-filter-section-title">Time Window</div>
+        <div className="graph-filter-section-title">Time window</div>
         <label className="graph-filter-field">
           <span>Start</span>
           <input type="datetime-local" value={startValue} onChange={(event) => onStartTimeChange(event.target.value)} />
@@ -112,7 +112,7 @@ export function GraphFilterPopover({
       </div>
 
       <div className="graph-filter-section">
-        <div className="graph-filter-section-title">Txn Value ($)</div>
+        <div className="graph-filter-section-title">Transaction value (USD)</div>
         <label className="graph-filter-field">
           <span>Min</span>
           <input type="number" min="0" step="any" value={minTxnUSDValue} onChange={(event) => onMinUSDChange(event.target.value)} />

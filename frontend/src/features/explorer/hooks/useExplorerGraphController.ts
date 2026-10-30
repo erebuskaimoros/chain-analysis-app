@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   buildAddressExplorer,
@@ -7,6 +7,7 @@ import {
   listAddressExplorerRuns,
   lookupAction,
 } from "../../../lib/api";
+import { isJobCanceled } from "../../../lib/jobErrors";
 import { DEFAULT_DISPLAY_MODE, DEFAULT_FLOW_TYPES } from "../../../lib/constants";
 import { buildGraphStateFilename, downloadJSON } from "../../../lib/download";
 import {
@@ -18,7 +19,15 @@ import {
   type SavedGraphCanvasState,
 } from "../../../lib/graphState";
 import { applyLabelCategoryFilter, cloneGraphFilterState, deriveExplorerVisibleGraph, labelCategoriesOf, filterSupportingActions, mergeAddressExplorerResponse, mergeExplorerExpansionResponse, explorerExpansionSeeds, type GraphSelection } from "../../../lib/graph";
-import type { ActionLookupResponse, AddressExplorerRequest, AddressExplorerResponse } from "../../../lib/types";
+import type {
+  ActionLookupResponse,
+  AddressExplorerRequest,
+  AddressExplorerResponse,
+  AddressExplorerRun,
+  JobSnapshot,
+} from "../../../lib/types";
+import { useToast } from "../../../app/toast";
+import type { MapProgressState } from "../../shared/workspace/MapOverlays";
 import { useGraphFilterState } from "../../shared/graph-hooks/useGraphFilterState";
 import { useGraphMetadata } from "../../shared/graph-hooks/useGraphMetadata";
 import { useSelectionGuard } from "../../shared/graph-hooks/useSelectionGuard";
@@ -100,6 +109,7 @@ function normalizeExplorerFormState(value: unknown, fallback: ExplorerFormState)
 
 export function useExplorerGraphController() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const runsQuery = useQuery({
     queryKey: ["address-explorer-runs"],
     queryFn: listAddressExplorerRuns,
@@ -129,16 +139,53 @@ export function useExplorerGraphController() {
   const [preview, setPreview] = useState<AddressExplorerResponse | null>(null);
   const [graph, setGraph] = useState<AddressExplorerResponse | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
-  const [selectedRunID, setSelectedRunID] = useState("");
-  const [statusText, setStatusText] = useState("Enter an address to preview address activity.");
+  const [statusText, setStatusText] = useState("Paste an address to see its activity across chains.");
+  const [progress, setProgress] = useState<MapProgressState | null>(null);
+  const [lookupTxID, setLookupTxID] = useState("");
+  const [isExpanding, setIsExpanding] = useState(false);
+  const jobRunRef = useRef(0);
   const [lookupResult, setLookupResult] = useState<ActionLookupResponse | null>(null);
   const [lookupError, setLookupError] = useState("");
   const [expandedHopSeeds, setExpandedHopSeeds] = useState<string[]>([]);
   const [graphResetKey, setGraphResetKey] = useState(0);
   const [savedCanvasState, setSavedCanvasState] = useState<SavedGraphCanvasState | null>(null);
 
+  // Each preview or batch load is a server job; a newer one (or Cancel)
+  // makes the older one stop.
+  function runExplorerJob(request: AddressExplorerRequest) {
+    const runID = jobRunRef.current + 1;
+    jobRunRef.current = runID;
+    const isCanceled = () => jobRunRef.current !== runID;
+    setProgress({ stage: request.mode === "preview" ? "checking the address" : "loading actions", done: 0, total: 0 });
+    return buildAddressExplorer(request, {
+      isCanceled,
+      onProgress: (job: JobSnapshot) => {
+        if (!isCanceled()) {
+          setProgress({ stage: job.stage || "working", done: job.done, total: job.total, message: job.message });
+        }
+      },
+    }).finally(() => {
+      if (!isCanceled()) {
+        setProgress(null);
+      }
+    });
+  }
+
+  function cancelJob() {
+    jobRunRef.current += 1;
+    setProgress(null);
+    setStatusText("Canceled.");
+  }
+
+  function describeError(error: unknown, fallback: string) {
+    if (isJobCanceled(error)) {
+      return "Canceled.";
+    }
+    return error instanceof Error ? error.message : fallback;
+  }
+
   const previewMutation = useMutation({
-    mutationFn: buildAddressExplorer,
+    mutationFn: runExplorerJob,
     onSuccess: (response) => {
       setPreview(response);
       setGraph(null);
@@ -155,12 +202,12 @@ export function useExplorerGraphController() {
       );
     },
     onError: (error) => {
-      setStatusText(error instanceof Error ? error.message : "Explorer preview failed.");
+      setStatusText(describeError(error, "Explorer preview failed."));
     },
   });
 
   const graphMutation = useMutation({
-    mutationFn: buildAddressExplorer,
+    mutationFn: runExplorerJob,
     onSuccess: async (response, request) => {
       setPreview(response);
       setGraph((current) => {
@@ -184,7 +231,7 @@ export function useExplorerGraphController() {
       }
     },
     onError: (error) => {
-      setStatusText(error instanceof Error ? error.message : "Explorer graph load failed.");
+      setStatusText(describeError(error, "Explorer graph load failed."));
     },
   });
 
@@ -205,11 +252,6 @@ export function useExplorerGraphController() {
       setLookupError(error instanceof Error ? error.message : "Action lookup failed.");
     },
   });
-
-  const selectedRun = useMemo(
-    () => runsQuery.data?.find((run) => String(run.id) === selectedRunID) ?? null,
-    [runsQuery.data, selectedRunID]
-  );
 
   const visibleGraph = useMemo(
     () => applyLabelCategoryFilter(graph ? deriveExplorerVisibleGraph(graph, graphFilters, metadata) : null, graphFilters.hiddenLabelCategories),
@@ -234,46 +276,76 @@ export function useExplorerGraphController() {
       `Checked ${requestedCount} unavailable node(s); refreshed ${response.nodes.length}.`,
   });
 
-  async function loadGraph(direction: "newest" | "oldest", offset = 0) {
-    const request = explorerRequest(form, "graph", direction, offset);
+  // formOverride lets callers load right after changing the form, before the
+  // state update lands (opening the page from a link, running a saved run).
+  async function loadGraph(direction: "newest" | "oldest", offset = 0, formOverride?: ExplorerFormState) {
+    const request = explorerRequest(formOverride ?? form, "graph", direction, offset);
     setStatusText(offset > 0 ? "Loading more actions..." : "Loading explorer graph...");
-    await graphMutation.mutateAsync(request);
+    try {
+      await graphMutation.mutateAsync(request);
+    } catch {
+      // onError reports the failure.
+    }
   }
 
-  async function requestPreview() {
-    const request = explorerRequest(form, "preview", "", 0);
+  async function requestPreview(formOverride?: ExplorerFormState) {
+    const current = formOverride ?? form;
+    const request = explorerRequest(current, "preview", "", 0);
     if (!request.address) {
       setStatusText("Address is required.");
       return;
     }
-    const response = await previewMutation.mutateAsync(request);
-    if (!response.direction_required) {
-      await loadGraph("newest", 0);
+    try {
+      const response = await previewMutation.mutateAsync(request);
+      if (!response.direction_required) {
+        await loadGraph("newest", 0, current);
+      }
+    } catch {
+      // onError reports the failure.
     }
   }
 
-  async function onLoadRun() {
-    if (!selectedRun) {
-      return;
+  async function onRunAgain(run: AddressExplorerRun) {
+    const nextForm = {
+      address: run.request.address,
+      min_usd: String(run.request.min_usd ?? 0),
+      batch_size: run.request.batch_size || 10,
+    };
+    setForm(nextForm);
+    setStatusText(`Exploring ${run.request.address} again…`);
+    try {
+      await graphMutation.mutateAsync({
+        ...run.request,
+        mode: "graph",
+        offset: 0,
+        direction: run.request.direction || "newest",
+      });
+    } catch {
+      // onError reports the failure.
     }
-    setForm({
-      address: selectedRun.request.address,
-      min_usd: String(selectedRun.request.min_usd ?? 0),
-      batch_size: selectedRun.request.batch_size || 10,
-    });
-    await graphMutation.mutateAsync({
-      ...selectedRun.request,
-      mode: "graph",
-      offset: 0,
-      direction: selectedRun.request.direction || "newest",
-    });
   }
 
-  async function onDeleteRun() {
-    if (!selectedRun) {
-      return;
+  async function onDeleteRun(run: AddressExplorerRun) {
+    await deleteRunMutation.mutateAsync(run.id);
+    toast("Deleted the exploration");
+  }
+
+  // Opening the page from a link or search: explore an address, or look up
+  // a transaction.
+  function applyIntent(params: Record<string, string>) {
+    if (params.address) {
+      const nextForm = { ...form, address: params.address.trim() };
+      setForm(nextForm);
+      void requestPreview(nextForm);
     }
-    await deleteRunMutation.mutateAsync(selectedRun.id);
+    if (params.tx) {
+      onLookup(params.tx.trim());
+    }
+  }
+
+  function onLookup(txID: string) {
+    setLookupTxID(txID);
+    lookupMutation.mutate(txID);
   }
 
   async function onExpandNode(node: NonNullable<typeof visibleGraph>["nodes"][number]) {
@@ -315,6 +387,7 @@ export function useExplorerGraphController() {
     }
     const nextSeedSet = [...expandedHopSeeds, ...newSeeds.map((seed) => seed.encoded)];
     setStatusText(`Expanding one edge from ${newSeeds.length} address(es)…`);
+    setIsExpanding(true);
     try {
       const expansion = await expandActorGraph({
         actor_ids: [],
@@ -336,6 +409,8 @@ export function useExplorerGraphController() {
       setStatusText(`Expanded from ${newSeeds.length} new address seed(s).`);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Edge expansion failed.");
+    } finally {
+      setIsExpanding(false);
     }
   }
 
@@ -406,7 +481,6 @@ export function useExplorerGraphController() {
       setLookupError("");
       setExpandedHopSeeds(readStringArray(uiState.expanded_hop_seeds));
       setSavedCanvasState(readSavedGraphCanvasState(uiState.canvas));
-      setSelectedRunID("");
       setGraphFilters(restoreSavedGraphFilters(uiState.filters, graphState));
       setGraphResetKey((value) => value + 1);
       setStatusText(`Loaded graph state from ${file.name}.`);
@@ -438,13 +512,13 @@ export function useExplorerGraphController() {
     isPreviewing: previewMutation.isPending,
     isLoadingGraph: graphMutation.isPending,
     runs: runsQuery.data ?? [],
-    selectedRunID,
-    setSelectedRunID,
-    onLoadRun,
+    onRunAgain,
     onDeleteRun,
-    isDeletingRun: deleteRunMutation.isPending,
-    hasSelectedRun: Boolean(selectedRun),
     isLoadingRuns: runsQuery.isLoading,
+    progress,
+    cancelJob,
+    isExpanding,
+    applyIntent,
     visibleGraph,
     filteredActions,
     selection,
@@ -480,7 +554,8 @@ export function useExplorerGraphController() {
     showActionFraction,
     lookupResult,
     lookupError,
+    lookupTxID,
     isLookupLoading: lookupMutation.isPending,
-    onLookup: (txID: string) => lookupMutation.mutate(txID),
+    onLookup,
   };
 }

@@ -58,11 +58,11 @@ describe("HealthPanel", () => {
       </QueryClientProvider>
     );
 
-    await screen.findByText("Liquidity Engines");
+    await screen.findByText("Liquidity engines");
     expect(screen.getByText("THOR")).toBeTruthy();
     expect(screen.getByText("MAYA")).toBeTruthy();
-    expect(screen.getByText("THORNode 1 • Midgard 1 • Legacy 1")).toBeTruthy();
-    expect(screen.getByText("MAYANode 1 • Midgard 1")).toBeTruthy();
+    expect(screen.getByText("THORNode 1, Midgard 1, Legacy 1")).toBeTruthy();
+    expect(screen.getByText("MAYANode 1, Midgard 1")).toBeTruthy();
   });
 
   it("tolerates null legacy action sources from the health API", async () => {
@@ -102,6 +102,6 @@ describe("HealthPanel", () => {
     );
 
     await screen.findByText("MAYA");
-    expect(screen.getByText("MAYANode 1 • Midgard 1")).toBeTruthy();
+    expect(screen.getByText("MAYANode 1, Midgard 1")).toBeTruthy();
   });
 });

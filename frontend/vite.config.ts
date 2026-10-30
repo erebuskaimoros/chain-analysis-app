@@ -31,6 +31,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // In `npm run dev`, forward API calls to the Go server (make restart-server).
+    proxy: {
+      "/api": "http://127.0.0.1:8090",
+    },
   },
   test: {
     environment: "jsdom",

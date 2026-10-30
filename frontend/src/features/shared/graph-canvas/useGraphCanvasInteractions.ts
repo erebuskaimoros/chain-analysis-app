@@ -483,6 +483,17 @@ export function useGraphCanvasInteractions({
       };
     }
 
+    // GraphCanvas watches the surface with a ResizeObserver and keeps the
+    // view centred through any size change; this path covers browsers without it.
+    if (typeof ResizeObserver !== "undefined") {
+      return () => {
+        if (shell instanceof HTMLElement) {
+          shell.classList.remove("fullscreen");
+        }
+        document.body.style.overflow = "";
+      };
+    }
+
     const frame = window.requestAnimationFrame(() => {
       cy.resize();
       // Keep whatever was centered before the resize centered after it, instead
@@ -618,6 +629,8 @@ export function useGraphCanvasInteractions({
     if (menu.mode === "nodes") {
       if (action === "expand-nodes") {
         nodeMenuActions?.onExpandNodes?.(menu.nodes);
+      } else if (action === "add-nodes-to-case") {
+        nodeMenuActions?.onAddNodesToCase?.(menu.nodes);
       } else if (action === "cluster-nodes") {
         const cy = cyRef.current;
         if (cy && clusterGraphNodes(cy, menu.nodes.map((node) => node.id))) {
@@ -629,6 +642,15 @@ export function useGraphCanvasInteractions({
 
     const node = menu.node;
     switch (action) {
+      case "explore-address":
+        nodeMenuActions?.onExploreAddress?.(node);
+        break;
+      case "trace-from":
+        nodeMenuActions?.onTraceFrom?.(node);
+        break;
+      case "add-to-case":
+        nodeMenuActions?.onAddToCase?.(node);
+        break;
       case "explorer":
         nodeMenuActions?.onOpenExplorer?.(node);
         break;
