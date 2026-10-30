@@ -113,6 +113,13 @@ restarting. The UI is embedded with `go:embed`, so rebuild the server after
   `CHAIN_ANALYSIS_UTXO_TRACKERS`, `CHAIN_ANALYSIS_COSMOS_TRACKERS`,
   `CHAIN_ANALYSIS_SOLANA_RPC_URL`, `CHAIN_ANALYSIS_XRP_RPC_URL`,
   `CHAIN_ANALYSIS_RADIX_GATEWAY_URL`
+- `CHAIN_ANALYSIS_BNB_BEACON_URL` (default `https://explorer.bnbchain.org`):
+  archive of the shut-down BNB Beacon Chain. `bnb1…` addresses are traced
+  through it, and THORChain memos on its vault transfers link pre-mainnet
+  (BEPSwap) wallets: swap memos link sender to recipient, `OUTBOUND:` payouts
+  are matched to the inbound that paid for them, and `SWITCH:`/`BOND:` memos
+  link the BNB wallet to its native `thor1…` address. Vaults show as labeled
+  nodes and are not expanded.
 
 Tracker endpoint values can be multi-homed:
 

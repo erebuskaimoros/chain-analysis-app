@@ -21,7 +21,7 @@ func (a *App) loadProtocolDirectoryFresh(ctx context.Context) (protocolDirectory
 			"BTC": {}, "ETH": {}, "LTC": {}, "BCH": {}, "DOGE": {},
 			"AVAX": {}, "BSC": {}, "GAIA": {}, "BASE": {},
 			"SOL": {}, "TRON": {}, "XRP": {}, "THOR": {},
-			"MAYA": {}, "ARB": {}, "XRD": {},
+			"MAYA": {}, "ARB": {}, "XRD": {}, "BNB": {},
 		},
 	}
 
@@ -190,6 +190,11 @@ func (p priceBook) hasPoolAsset(asset string) bool {
 func (p priceBook) supportsGraphAsset(asset string) bool {
 	meta := assetMetadataFromAsset(asset)
 	if meta.AssetKind != "fungible_token" {
+		return true
+	}
+	// BNB Beacon Chain pools were delisted, so the live pool list cannot
+	// vouch for BEP2 tokens; the min-USD filter still drops unpriced ones.
+	if chainFromAsset(asset) == "BNB" {
 		return true
 	}
 	if !p.HasPoolData || len(p.PoolAssets) == 0 {

@@ -172,6 +172,8 @@ export function explorerURLForAddress(address: string, chain: string) {
       return `https://tronscan.org/#/address/${encodeURIComponent(rawAddress)}`;
     case "XRP":
       return `https://xrpscan.com/account/${encodeURIComponent(rawAddress)}`;
+    case "BNB":
+      return `https://explorer.bnbchain.org/address/${encodeURIComponent(rawAddress)}`;
     default:
       return "";
   }
@@ -218,6 +220,8 @@ export function explorerURLForTx(txID: string, chain: string) {
       return `https://tronscan.org/#/transaction/${encodeURIComponent(lower)}`;
     case "XRP":
       return `https://xrpscan.com/tx/${encodeURIComponent(raw.toUpperCase())}`;
+    case "BNB":
+      return `https://explorer.bnbchain.org/tx/${encodeURIComponent(raw.toUpperCase())}`;
     default:
       return "";
   }

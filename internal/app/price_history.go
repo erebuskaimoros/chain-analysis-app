@@ -134,12 +134,22 @@ func historyPoolAsset(prices priceBook, asset string) string {
 	return ""
 }
 
+// bnbBeaconDefiLlamaCoins prices the BEP2 assets that matter for BEPSwap-era
+// flows; their THORChain pools are gone, so pool history cannot.
+var bnbBeaconDefiLlamaCoins = map[string]string{
+	"BNB.BNB":      "coingecko:binancecoin",
+	"BNB.RUNE-B1A": "coingecko:thorchain",
+}
+
 // defiLlamaCoin returns the DefiLlama coin id for an EVM token asset such as
-// ETH.USDC-0XA0B8..., or "" when the asset is not an EVM token.
+// ETH.USDC-0XA0B8... or a listed BEP2 asset, or "" when DefiLlama cannot price it.
 func defiLlamaCoin(asset string) string {
 	chain, rest, ok := strings.Cut(normalizeAsset(asset), ".")
 	if !ok {
 		return ""
+	}
+	if coin, ok := bnbBeaconDefiLlamaCoins[normalizeAsset(asset)]; ok {
+		return coin
 	}
 	network := map[string]string{"ETH": "ethereum", "BSC": "bsc", "AVAX": "avax", "BASE": "base", "ARB": "arbitrum"}[chain]
 	if network == "" {

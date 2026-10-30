@@ -511,6 +511,8 @@ func normalizeChain(chain, address string) string {
 		inferred = "BCH"
 	case strings.HasPrefix(lower, "cosmos1"):
 		inferred = "GAIA"
+	case strings.HasPrefix(lower, "bnb1"):
+		inferred = "BNB"
 	case strings.HasPrefix(lower, "account_rdx"),
 		strings.HasPrefix(lower, "component_rdx"),
 		strings.HasPrefix(lower, "resource_rdx"):
